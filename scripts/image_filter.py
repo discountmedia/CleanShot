@@ -27,6 +27,15 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── PILLOW DECOMPRESSION BOMB LIMIT ──────────────────────────────────────────
+# Some large format images exceed Pillow's default safety limit.
+# We increase it here since we trust our own dataset source.
+try:
+    from PIL import Image as _PILImage
+    _PILImage.MAX_IMAGE_PIXELS = 300_000_000  # 300MP — handles very large TIFFs
+except Exception:
+    pass
+
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 ROOT_DIR      = Path(os.getenv("ROOT_IMAGE_DIR",    "D:/100kb Salesman Images"))
 INDEX_PATH    = Path(os.getenv("FOLDER_INDEX_PATH", "./output/folder_index.json"))
@@ -405,18 +414,34 @@ def run_filter(index: list) -> tuple[list, list, dict]:
     return all_pass, all_reject, summary
 
 
+class _SafeEncoder(json.JSONEncoder):
+    """Handles numpy int64 and other non-standard numeric types from imagehash."""
+    def default(self, obj):
+        try:
+            import numpy as np
+            if isinstance(obj, (np.integer,)):
+                return int(obj)
+            if isinstance(obj, (np.floating,)):
+                return float(obj)
+        except ImportError:
+            pass
+        if hasattr(obj, 'item'):   # numpy scalar fallback
+            return obj.item()
+        return super().default(obj)
+
+
 def write_outputs(pass_list: list, reject_list: list, summary: dict):
     """Write all three output files."""
     PASS_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     with open(PASS_PATH, "w", encoding="utf-8") as f:
-        json.dump(pass_list, f, indent=2, ensure_ascii=False)
+        json.dump(pass_list, f, indent=2, ensure_ascii=False, cls=_SafeEncoder)
 
     with open(REJECT_PATH, "w", encoding="utf-8") as f:
-        json.dump(reject_list, f, indent=2, ensure_ascii=False)
+        json.dump(reject_list, f, indent=2, ensure_ascii=False, cls=_SafeEncoder)
 
     with open(SUMMARY_PATH, "w", encoding="utf-8") as f:
-        json.dump(summary, f, indent=2, ensure_ascii=False)
+        json.dump(summary, f, indent=2, ensure_ascii=False, cls=_SafeEncoder)
 
     print(f"\nOutputs written:")
     print(f"  filter_pass.json    -> {PASS_PATH}    ({len(pass_list):,} images)")

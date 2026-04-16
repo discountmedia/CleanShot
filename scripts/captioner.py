@@ -40,6 +40,13 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+# ── PILLOW DECOMPRESSION BOMB LIMIT ──────────────────────────────────────────
+try:
+    from PIL import Image as _PILImage
+    _PILImage.MAX_IMAGE_PIXELS = 300_000_000
+except Exception:
+    pass
+
 # ── CONFIG ────────────────────────────────────────────────────────────────────
 FILTER_PASS_PATH  = Path("./output/filter_pass.json")
 CAPTION_CACHE     = Path("./output/caption_cache.json")
@@ -50,8 +57,8 @@ ERROR_LOG         = Path("./output/batch_error_log.json")
 PASS1_MODEL       = "claude-haiku-4-5"
 PASS2_MODEL       = "claude-sonnet-4-6"
 MIN_QUALITY_SCORE = 4       # Pass 1 score threshold — below this = excluded
-MAX_IMAGE_LONG_EDGE = 1024  # resize before encoding to keep token count low
-BATCH_SIZE        = 2000    # images per batch submission
+MAX_IMAGE_LONG_EDGE = 512   # resize before encoding — keeps batch payloads well under 256MB
+BATCH_SIZE        = 250     # images per batch — keeps each batch well under 256MB limit
 POLL_INTERVAL     = 120     # seconds between batch status checks
 
 # ── PROMPTS ───────────────────────────────────────────────────────────────────
@@ -166,19 +173,22 @@ def encode_image(image_path: Path, max_long_edge: int = MAX_IMAGE_LONG_EDGE) -> 
 # ── BATCH BUILDING ────────────────────────────────────────────────────────────
 def make_custom_id(record: dict) -> str:
     """
-    Build a unique, reversible custom_id for a batch request.
-    Format: {make}__{model}__{filename_stem}
-    Sanitized to only contain alphanumeric, underscore, hyphen.
-    Max 64 chars.
+    Build a unique custom_id for a batch request.
+    Format: {make}__{model}__{filename_stem}__{path_hash}
+    The 8-char MD5 hash of the full path guarantees uniqueness
+    even when make/model/filename combinations collide after sanitization.
+    Max 64 chars total.
     """
     import re
-    make     = (record.get("metadata", {}).get("make")  or "unknown").lower()
-    model    = (record.get("metadata", {}).get("model") or "unknown").lower()
-    filename = Path(record["path"]).stem
+    import hashlib
+    make      = (record.get("metadata", {}).get("make")  or "unknown").lower()
+    model     = (record.get("metadata", {}).get("model") or "unknown").lower()
+    filename  = Path(record["path"]).stem
+    path_hash = hashlib.md5(record["path"].encode()).hexdigest()[:8]
 
-    raw = f"{make}__{model}__{filename}"
+    raw       = f"{make}__{model}__{filename}"
     sanitized = re.sub(r"[^a-z0-9_\-]", "_", raw)
-    return sanitized[:64]
+    return f"{sanitized[:54]}__{path_hash}"
 
 
 def build_pass1_request(record: dict, b64: str, media_type: str) -> dict:
@@ -247,11 +257,11 @@ def submit_batches(client, records: list[dict], pass_num: int,
     """
     batch_ids    = []
     current_batch = []
+    current_batch_bytes = 0
+    MAX_BATCH_BYTES = 190_000_000  # 190MB safety limit (API max 256MB)
     skipped      = 0
     encode_errors = 0
     total        = len(records)
-
-    print(f"\nPass {pass_num}: Building batch requests for {total:,} images...")
 
     for i, record in enumerate(records):
         custom_id = make_custom_id(record)
@@ -277,13 +287,16 @@ def submit_batches(client, records: list[dict], pass_num: int,
             req = build_pass2_request(record, b64, media_type)
 
         current_batch.append((custom_id, req, record))
+        current_batch_bytes += len(b64)
 
-        # Submit when batch is full
-        if len(current_batch) >= BATCH_SIZE:
+        # Submit when batch is full OR approaching size limit
+        if len(current_batch) >= BATCH_SIZE or current_batch_bytes >= MAX_BATCH_BYTES:
+            print(f"  Submitting batch {len(current_batch):,} images ({current_batch_bytes/1_000_000:.1f}MB)...")
             batch_id = _submit_single_batch(client, current_batch, pass_num, len(batch_ids) + 1)
             if batch_id:
                 batch_ids.append(batch_id)
             current_batch = []
+            current_batch_bytes = 0
 
         if (i + 1) % 200 == 0:
             print(f"  Encoded {i+1:,}/{total:,}  "

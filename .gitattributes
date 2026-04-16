@@ -1,2 +1,15 @@
-# Auto detect text files and perform LF normalization
+# Normalize line endings
 * text=auto
+
+# Python files always LF
+*.py text eol=lf
+
+# JSON always LF
+*.json text eol=lf
+
+# JSONL always LF
+*.jsonl text eol=lf
+
+# Windows batch files CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
