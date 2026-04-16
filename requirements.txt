@@ -1,0 +1,7 @@
+anthropic
+google-cloud-storage
+pillow
+imagehash
+opencv-python
+tqdm
+python-dotenv
