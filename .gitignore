@@ -1,0 +1,18 @@
+# Secrets - never commit
+.env
+/credentials/cleanshot-493512*.json
+
+# Generated pipeline output
+output/*.json
+output/*.jsonl
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Windows
+Thumbs.db
+desktop.ini
