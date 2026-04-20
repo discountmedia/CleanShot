@@ -1,92 +1,65 @@
-# ═══════════════════════════════════════════════════════════════════
-#  CleanShot local dev — mirrors Cloud Run + Memorystore production
-#
-#  Usage:
-#    cd backend
-#    docker compose up --build
-#
-#  Reads VARS from ./backend/.env (Compose's built-in behaviour).
-#  Translates Windows paths to container paths via explicit `environment:`.
-# ═══════════════════════════════════════════════════════════════════
-
-name: cleanshot-backend
+version: '3.8'
 
 services:
-  # ─── Redis ──────────────────────────────────────────────────────
-  # Production: Memorystore (GCP). Local: redis:7-alpine.
-  redis:
-    image: redis:7-alpine
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
-  # ─── API ────────────────────────────────────────────────────────
-  # Production: Cloud Run service. Local: this container.
+  # ═══════════════════════════════════════════════════════════════
+  #  CleanShot API - FastAPI server for job submission and progress
+  # ═══════════════════════════════════════════════════════════════
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
-    restart: unless-stopped
     ports:
-      # Host 8000 → container 8080 (Cloud Run convention)
-      - "8000:8080"
+      - "8000:8000"
     environment:
-      PORT: "8080"
-      # Container-local path — volume mount below makes SA key available
-      GOOGLE_APPLICATION_CREDENTIALS: /credentials/forklift-pipeline.json
-      # Everything else pulled from .env at compose time
-      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
-      GCP_LOCATION: ${GCP_LOCATION:-us-central1}
-      GCS_REFERENCES_BUCKET: ${GCS_REFERENCES_BUCKET}
-      GCS_SESSIONS_BUCKET: ${GCS_SESSIONS_BUCKET}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-image}
-      USE_VERTEX_AI: "true"
-      REDIS_URL: redis://redis:6379/0
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      SESSION_TTL_SECONDS: ${SESSION_TTL_SECONDS:-86400}
-      SIGNED_URL_TTL_SECONDS: ${SIGNED_URL_TTL_SECONDS:-900}
+      - REDIS_URL=redis://redis:6379/0
+      - GCS_SESSIONS_BUCKET=cleanshot-sessions-df-2026
+      - GCS_REFERENCES_BUCKET=cleanshot-training-df-2026
+      - GCP_PROJECT_ID=cleanshot-493512
+      - GEMINI_MODEL=gemini-2.5-flash-image
+      - LOG_LEVEL=INFO
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/cleanshot-493512-a264359e94f8.json
     volumes:
-      # Mount SA credentials read-only from repo root credentials/
-      # NEVER bake credentials into the image.
-      - ../credentials:/credentials:ro
-      # Live code reload during dev (remove in production)
-      - ./app:/app/app:ro
+      # Mount code for hot reload during development
+      - ./app:/app/app
+      - ../credentials:/app/credentials:ro
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
-  # ─── Worker ─────────────────────────────────────────────────────
-  # Production: separate Cloud Run service (--no-cpu-throttling, min-instances=1)
-  # Local: this container.
+  # ═══════════════════════════════════════════════════════════════
+  #  CleanShot Workers - Arq workers for AI processing
+  # ═══════════════════════════════════════════════════════════════
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
-    restart: unless-stopped
     environment:
-      GOOGLE_APPLICATION_CREDENTIALS: /credentials/forklift-pipeline.json
-      GCP_PROJECT_ID: ${GCP_PROJECT_ID}
-      GCP_LOCATION: ${GCP_LOCATION:-us-central1}
-      GCS_REFERENCES_BUCKET: ${GCS_REFERENCES_BUCKET}
-      GCS_SESSIONS_BUCKET: ${GCS_SESSIONS_BUCKET}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-2.5-flash-image}
-      USE_VERTEX_AI: "true"
-      REDIS_URL: redis://redis:6379/0
-      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      - REDIS_URL=redis://redis:6379/0
+      - GCS_SESSIONS_BUCKET=cleanshot-sessions-df-2026
+      - GCS_REFERENCES_BUCKET=cleanshot-training-df-2026
+      - GCP_PROJECT_ID=cleanshot-493512
+      - GEMINI_MODEL=gemini-2.5-flash-image
+      - LOG_LEVEL=INFO
+      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/cleanshot-493512-a264359e94f8.json
     volumes:
-      - ../credentials:/credentials:ro
-      - ./app:/app/app:ro
+      # Mount code for hot reload during development
+      - ./app:/app/app
+      - ../credentials:/app/credentials:ro
     depends_on:
-      redis:
-        condition: service_healthy
+      - redis
+    # Scale this for "10 simultaneously" - run: docker compose up --scale worker=10
+    command: arq app.workers.arq_worker.WorkerSettings
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Redis - Job queue and session storage
+  # ═══════════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
 
 volumes:
-  redis-data:
+  redis_data:

@@ -9,7 +9,9 @@ from fastapi import FastAPI, Depends
 from google import genai
 
 from app.config import settings
-from app.api import health, jobs, condition
+from app.api import health
+# TODO: Enable these imports once the endpoints are fully implemented
+# from app.api import jobs, condition
 from app.services.gemini import GeminiService
 from app.services.storage import StorageService
 from app.services.session import SessionService
@@ -116,11 +118,12 @@ def get_session_service() -> SessionService:
 # Health check
 app.include_router(health.router, prefix="/health", tags=["health"])
 
+# TODO: Enable these routers once the endpoints are fully implemented
 # Job status and progress (SSE endpoint)
-app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
+# app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
 
-# Condition enhancement pipeline
-app.include_router(condition.router, prefix="/api/v1/condition", tags=["condition"])
+# Condition enhancement pipeline  
+# app.include_router(condition.router, prefix="/api/v1/condition", tags=["condition"])
 
 
 @app.get("/")
