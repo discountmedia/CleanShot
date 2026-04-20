@@ -1,0 +1,17 @@
+# ═══════════════════════════════════════════════════════════════════
+#  API dependencies — install in Windows .venv
+#  Usage: pip install -r requirements-api.txt
+# ═══════════════════════════════════════════════════════════════════
+
+-r requirements-base.txt
+
+# ─── Web framework ────────────────────────────────────────────────
+fastapi>=0.115,<1
+uvicorn[standard]>=0.32,<1
+
+# ─── SSE (Server-Sent Events) for progress streaming ──────────────
+# Phase 2 playbook §4.1 mandates SSE over WebSockets
+sse-starlette>=2.1,<3
+
+# ─── File upload handling ─────────────────────────────────────────
+python-multipart>=0.0.17,<0.1

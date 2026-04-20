@@ -1,0 +1,364 @@
+{
+  "total_folders": 2325,
+  "total_images": 12607,
+  "passed": 12009,
+  "rejected": 598,
+  "hard_rejected": 317,
+  "duplicates": 281,
+  "blurry_flagged": 352,
+  "per_make": {
+    "Aisle-Master": {
+      "pass": 12,
+      "reject": 0
+    },
+    "Baoli": {
+      "pass": 24,
+      "reject": 0
+    },
+    "Bendi": {
+      "pass": 67,
+      "reject": 1
+    },
+    "Big Joe": {
+      "pass": 18,
+      "reject": 0
+    },
+    "Blue Giant": {
+      "pass": 9,
+      "reject": 0
+    },
+    "Bobcat": {
+      "pass": 86,
+      "reject": 0
+    },
+    "Cascade": {
+      "pass": 6,
+      "reject": 3
+    },
+    "Case": {
+      "pass": 67,
+      "reject": 7
+    },
+    "Cat": {
+      "pass": 535,
+      "reject": 8
+    },
+    "Cat Mitsu": {
+      "pass": 129,
+      "reject": 0
+    },
+    "Caterpillar": {
+      "pass": 206,
+      "reject": 6
+    },
+    "Clark": {
+      "pass": 521,
+      "reject": 7
+    },
+    "Crown": {
+      "pass": 413,
+      "reject": 5
+    },
+    "CrownHamech": {
+      "pass": 10,
+      "reject": 0
+    },
+    "Daewoo": {
+      "pass": 85,
+      "reject": 1
+    },
+    "Donkey": {
+      "pass": 27,
+      "reject": 1
+    },
+    "Doosan": {
+      "pass": 246,
+      "reject": 16
+    },
+    "Ekko": {
+      "pass": 214,
+      "reject": 85
+    },
+    "Eoslift": {
+      "pass": 8,
+      "reject": 2
+    },
+    "Everun": {
+      "pass": 10,
+      "reject": 1
+    },
+    "Flexi": {
+      "pass": 21,
+      "reject": 1
+    },
+    "Gehl": {
+      "pass": 96,
+      "reject": 0
+    },
+    "Genie": {
+      "pass": 209,
+      "reject": 16
+    },
+    "GMG": {
+      "pass": 120,
+      "reject": 33
+    },
+    "Hamech": {
+      "pass": 32,
+      "reject": 0
+    },
+    "Harlo": {
+      "pass": 12,
+      "reject": 0
+    },
+    "Heli": {
+      "pass": 22,
+      "reject": 0
+    },
+    "Hummerbee": {
+      "pass": 0,
+      "reject": 6
+    },
+    "Hybrid": {
+      "pass": 10,
+      "reject": 0
+    },
+    "Hyster": {
+      "pass": 1068,
+      "reject": 27
+    },
+    "Hytsu": {
+      "pass": 8,
+      "reject": 0
+    },
+    "Hyundai": {
+      "pass": 26,
+      "reject": 0
+    },
+    "Ingersoll Rand": {
+      "pass": 43,
+      "reject": 0
+    },
+    "JCB": {
+      "pass": 166,
+      "reject": 1
+    },
+    "JLG": {
+      "pass": 366,
+      "reject": 10
+    },
+    "John Deere": {
+      "pass": 39,
+      "reject": 0
+    },
+    "Jungheinrich": {
+      "pass": 32,
+      "reject": 0
+    },
+    "Kalmar": {
+      "pass": 58,
+      "reject": 0
+    },
+    "Komatsu": {
+      "pass": 340,
+      "reject": 2
+    },
+    "Kubota": {
+      "pass": 13,
+      "reject": 0
+    },
+    "Lift Hero": {
+      "pass": 703,
+      "reject": 31
+    },
+    "Lift King": {
+      "pass": 15,
+      "reject": 0
+    },
+    "Linde": {
+      "pass": 155,
+      "reject": 1
+    },
+    "LiuGong": {
+      "pass": 96,
+      "reject": 6
+    },
+    "LOADMAC": {
+      "pass": 40,
+      "reject": 2
+    },
+    "LonKing": {
+      "pass": 13,
+      "reject": 0
+    },
+    "Lull": {
+      "pass": 41,
+      "reject": 0
+    },
+    "Manitou": {
+      "pass": 37,
+      "reject": 2
+    },
+    "Merlo": {
+      "pass": 17,
+      "reject": 6
+    },
+    "Mima": {
+      "pass": 33,
+      "reject": 4
+    },
+    "MircoLift": {
+      "pass": 9,
+      "reject": 1
+    },
+    "Mitsubishi": {
+      "pass": 366,
+      "reject": 4
+    },
+    "Moffet": {
+      "pass": 31,
+      "reject": 2
+    },
+    "Namco": {
+      "pass": 14,
+      "reject": 0
+    },
+    "Nissan": {
+      "pass": 764,
+      "reject": 21
+    },
+    "Octane": {
+      "pass": 556,
+      "reject": 147
+    },
+    "Palfinger": {
+      "pass": 10,
+      "reject": 0
+    },
+    "Palfinger Crayler": {
+      "pass": 10,
+      "reject": 0
+    },
+    "Panasian Lift": {
+      "pass": 8,
+      "reject": 0
+    },
+    "Patriot": {
+      "pass": 11,
+      "reject": 0
+    },
+    "Pettibone": {
+      "pass": 10,
+      "reject": 0
+    },
+    "Presto": {
+      "pass": 10,
+      "reject": 1
+    },
+    "Prime Mover": {
+      "pass": 12,
+      "reject": 0
+    },
+    "Princeton": {
+      "pass": 33,
+      "reject": 0
+    },
+    "Raymond": {
+      "pass": 284,
+      "reject": 25
+    },
+    "Sellick": {
+      "pass": 28,
+      "reject": 7
+    },
+    "SinoBoom": {
+      "pass": 52,
+      "reject": 2
+    },
+    "Skyjack": {
+      "pass": 98,
+      "reject": 4
+    },
+    "Skytrak": {
+      "pass": 51,
+      "reject": 1
+    },
+    "Snorkel": {
+      "pass": 12,
+      "reject": 0
+    },
+    "Sumitomo": {
+      "pass": 11,
+      "reject": 0
+    },
+    "Tailift": {
+      "pass": 42,
+      "reject": 0
+    },
+    "Taylor": {
+      "pass": 4,
+      "reject": 0
+    },
+    "TCM": {
+      "pass": 166,
+      "reject": 1
+    },
+    "Terex": {
+      "pass": 34,
+      "reject": 0
+    },
+    "Toyota": {
+      "pass": 1148,
+      "reject": 38
+    },
+    "Tusk": {
+      "pass": 34,
+      "reject": 0
+    },
+    "Uline": {
+      "pass": 7,
+      "reject": 0
+    },
+    "Un Li-Ion and LP": {
+      "pass": 80,
+      "reject": 9
+    },
+    "Utilev": {
+      "pass": 12,
+      "reject": 0
+    },
+    "Vegas Media": {
+      "pass": 0,
+      "reject": 0
+    },
+    "Viper": {
+      "pass": 10,
+      "reject": 0
+    },
+    "Volvo": {
+      "pass": 15,
+      "reject": 0
+    },
+    "World Lift": {
+      "pass": 8,
+      "reject": 0
+    },
+    "XCMG": {
+      "pass": 10,
+      "reject": 3
+    },
+    "Xtreme": {
+      "pass": 15,
+      "reject": 3
+    },
+    "Yale": {
+      "pass": 1458,
+      "reject": 29
+    },
+    "Zoom-Lion": {
+      "pass": 62,
+      "reject": 9
+    }
+  },
+  "superseded_folders_skipped": 1090
+}

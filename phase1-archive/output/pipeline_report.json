@@ -1,0 +1,361 @@
+{
+  "generated_at": "2026-04-16 14:04:04",
+  "parser": {
+    "available": true,
+    "total_folders": 2325,
+    "excluded": 135,
+    "included": 2325,
+    "clean": 1987,
+    "with_anomalies": 338,
+    "total_images": 23744,
+    "superseded": 1090,
+    "fuel_counts": {
+      "Liquid Propane": 870,
+      "Electric": 750,
+      "Diesel": 496,
+      "Unknown": 175,
+      "Gasoline": 31,
+      "Dual Fuel": 3
+    },
+    "make_counts": {
+      "Toyota": 292,
+      "Hyster": 267,
+      "Yale": 227,
+      "Lift Hero": 217,
+      "Octane": 163,
+      "Nissan": 122,
+      "Cat": 88,
+      "Clark": 81,
+      "JLG": 80,
+      "Genie": 76,
+      "Mitsubishi": 60,
+      "Crown": 59,
+      "Ekko": 51,
+      "Komatsu": 46,
+      "Raymond": 41,
+      "Doosan": 38,
+      "JCB": 34,
+      "Linde": 27,
+      "GMG": 23,
+      "Caterpillar": 21
+    },
+    "tire_counts": {
+      "Cushion": 1105,
+      "Pneumatic": 1055,
+      "Unknown": 152,
+      "Tracks": 5,
+      "Rough Terrain": 5,
+      "Skid Steer": 3
+    },
+    "anomaly_types": {
+      "discarded_token": 192,
+      "missing_tire_capacity": 152,
+      "missing_fuel": 23,
+      "missing_model": 16,
+      "unknown_fuel_token": 14
+    },
+    "high_priority": [
+      {
+        "folder": "Crown_2012_C-5_1050-65_P-6.5K_LP",
+        "anomalies": [
+          "missing_model: no model tokens found between year and tire segment",
+          "unknown_fuel_token: '1050-65' not in fuel normalization table",
+          "unknown_fuel_token: 'P-6.5K' not in fuel normalization table"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD20_P-4K_4WE_Blue_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD20_P-4K_4WE_Green_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD20_P-4K_4WE_Yellow_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD25_P-5K_4WE_Blue_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD25_P-5K_4WE_Green_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD25_P-5K_4WE_Yellow_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD30_P-6K_4WE_Blue_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD30_P-6K_4WE_Green_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD30_P-6K_4WE_Yellow_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD35_P-8K_4WE_Blue_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD35_P-8K_4WE_Cab_(all_colors_+_black)",
+        "anomalies": [
+          "discarded_token: 'all' — known erroneous token",
+          "discarded_token: 'colors' — known erroneous token",
+          "discarded_token: '+' — unrecognized trailing token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD35_P-8K_4WE_Green_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2022_CPD35_P-8K_4WE_Yellow_(updated_set_of_10)",
+        "anomalies": [
+          "discarded_token: 'updated' — known erroneous token",
+          "discarded_token: 'set' — known erroneous token",
+          "discarded_token: 'of' — known erroneous token"
+        ]
+      },
+      {
+        "folder": "Lift_Hero_2023_CDD15E1CB_3.O_C-3.3K_no_logo",
+        "anomalies": [
+          "discarded_token: 'no' — known erroneous token",
+          "discarded_token: 'logo' — known erroneous token",
+          "missing_fuel: no fuel type token found after tire-capacity segment"
+        ]
+      },
+      {
+        "folder": "Raymond_2001_EASI-OPC30TT_C-3k_SP_WT",
+        "anomalies": [
+          "unknown_fuel_token: 'SP' not in fuel normalization table",
+          "unknown_fuel_token: 'WT' not in fuel normalization table",
+          "missing_fuel: no fuel type token found after tire-capacity segment"
+        ]
+      }
+    ]
+  },
+  "filter": {
+    "available": true,
+    "total": 12607,
+    "passed": 12009,
+    "rejected": 598,
+    "duplicates": 281,
+    "blurry_flagged": 352,
+    "superseded_skip": 1090,
+    "pass_pct": 95.3,
+    "reject_reasons": {
+      "low_resolution": 299,
+      "duplicate": 281,
+      "file_too_small": 18
+    },
+    "make_stats": {
+      "Yale": {
+        "pass": 1458,
+        "reject": 29
+      },
+      "Toyota": {
+        "pass": 1148,
+        "reject": 38
+      },
+      "Hyster": {
+        "pass": 1068,
+        "reject": 27
+      },
+      "Nissan": {
+        "pass": 764,
+        "reject": 21
+      },
+      "Lift Hero": {
+        "pass": 703,
+        "reject": 31
+      },
+      "Octane": {
+        "pass": 556,
+        "reject": 147
+      },
+      "Cat": {
+        "pass": 535,
+        "reject": 8
+      },
+      "Clark": {
+        "pass": 521,
+        "reject": 7
+      },
+      "Crown": {
+        "pass": 413,
+        "reject": 5
+      },
+      "JLG": {
+        "pass": 366,
+        "reject": 10
+      },
+      "Mitsubishi": {
+        "pass": 366,
+        "reject": 4
+      },
+      "Komatsu": {
+        "pass": 340,
+        "reject": 2
+      },
+      "Raymond": {
+        "pass": 284,
+        "reject": 25
+      },
+      "Doosan": {
+        "pass": 246,
+        "reject": 16
+      },
+      "Ekko": {
+        "pass": 214,
+        "reject": 85
+      },
+      "Genie": {
+        "pass": 209,
+        "reject": 16
+      },
+      "Caterpillar": {
+        "pass": 206,
+        "reject": 6
+      },
+      "JCB": {
+        "pass": 166,
+        "reject": 1
+      },
+      "TCM": {
+        "pass": 166,
+        "reject": 1
+      },
+      "Linde": {
+        "pass": 155,
+        "reject": 1
+      }
+    }
+  },
+  "caption": {
+    "available": true,
+    "pass1_total": 12009,
+    "pass1_passing": 11546,
+    "pass1_failing": 463,
+    "pass1_scores": {
+      "1": 3,
+      "2": 101,
+      "3": 359,
+      "4": 1,
+      "5": 555,
+      "6": 465,
+      "7": 1627,
+      "8": 6848,
+      "9": 2050
+    },
+    "pass2_total": 11546,
+    "flagged": 432,
+    "angle_dist": {
+      "three-quarter-front": 2358,
+      "three-quarter-rear": 1748,
+      "side-left": 1694,
+      "front": 1625,
+      "detail": 1615,
+      "side-right": 1557,
+      "rear": 436,
+      "operator-area": 260,
+      "overhead": 244,
+      "unknown": 8,
+      "mast-detail": 1
+    },
+    "env_dist": {
+      "showroom": 4673,
+      "outdoor-yard": 3661,
+      "indoor-warehouse": 2689,
+      "studio": 328,
+      "unknown": 188,
+      "studio-white": 5,
+      "loading-dock": 2
+    },
+    "cond_dist": {
+      "clean-used": 7784,
+      "new": 1924,
+      "worn": 1640,
+      "heavily-worn": 192,
+      "damaged": 6
+    },
+    "score_dist": {
+      "9": 3181,
+      "8": 5579,
+      "7": 2082,
+      "6": 500,
+      "5": 174,
+      "4": 27,
+      "3": 3
+    },
+    "error_types": {},
+    "error_count": 0
+  },
+  "manifest": {
+    "available": true,
+    "total_uploaded": 10435,
+    "total_failed": 0,
+    "rejected_captions": 1111,
+    "split_counts": {
+      "training": 8834,
+      "validation": 1601
+    },
+    "cap_reject_reasons": {
+      "caption_missing_forklift_reference": 484,
+      "flagged_by_claude": 432,
+      "invalid_angle": 261,
+      "invalid_environment": 5,
+      "low_quality_score": 3
+    }
+  }
+}

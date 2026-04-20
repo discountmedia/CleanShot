@@ -1,0 +1,63 @@
+version: '3.8'
+
+services:
+  # ═══════════════════════════════════════════════════════════════
+  #  CleanShot API - FastAPI server for job submission and progress
+  # ═══════════════════════════════════════════════════════════════
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.api
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - GCS_SESSIONS_BUCKET=cleanshot-sessions-df-2026
+      - GCS_REFERENCES_BUCKET=cleanshot-training-df-2026
+      - GCP_PROJECT_ID=cleanshot-493512
+      - GEMINI_MODEL=gemini-2.5-flash-image
+      - LOG_LEVEL=INFO
+    volumes:
+      # Mount code for hot reload during development
+      - ./app:/app/app
+      - ./credentials:/app/credentials:ro
+    depends_on:
+      - redis
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  # ═══════════════════════════════════════════════════════════════
+  #  CleanShot Workers - Arq workers for AI processing
+  # ═══════════════════════════════════════════════════════════════
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.worker
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - GCS_SESSIONS_BUCKET=cleanshot-sessions-df-2026
+      - GCS_REFERENCES_BUCKET=cleanshot-training-df-2026
+      - GCP_PROJECT_ID=cleanshot-493512
+      - GEMINI_MODEL=gemini-2.5-flash-image
+      - LOG_LEVEL=INFO
+    volumes:
+      # Mount code for hot reload during development
+      - ./app:/app/app
+      - ./credentials:/app/credentials:ro
+    depends_on:
+      - redis
+    # Scale this for "10 simultaneously" - run: docker compose up --scale worker=10
+    command: arq app.workers.arq_worker.WorkerSettings
+
+  # ═══════════════════════════════════════════════════════════════
+  #  Redis - Job queue and session storage
+  # ═══════════════════════════════════════════════════════════════
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+
+volumes:
+  redis_data:

@@ -1,0 +1,49 @@
+# syntax=docker/dockerfile:1.7
+# ═══════════════════════════════════════════════════════════════════
+#  CleanShot API container — FastAPI + google-genai
+#  Target: Cloud Run (us-central1) OR local docker-compose
+# ═══════════════════════════════════════════════════════════════════
+
+FROM python:3.12-slim AS runtime
+
+# Non-root user (Cloud Run best practice)
+RUN groupadd --system --gid 1001 cleanshot \
+ && useradd  --system --uid 1001 --gid cleanshot --home /app cleanshot
+
+# Minimal runtime deps — API pod does NO pixel work, so no libvips here
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends ca-certificates curl \
+ && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install Python deps in a separate layer for Docker cache efficiency
+COPY requirements-base.txt requirements-api.txt ./
+RUN pip install --no-cache-dir --upgrade pip \
+ && pip install --no-cache-dir -r requirements-api.txt \
+ && rm -rf /root/.cache/pip
+
+# Copy application code
+COPY app/ ./app/
+
+# Drop privileges
+USER cleanshot
+
+# Cloud Run injects PORT at runtime; default 8080 for local docker-compose
+ENV PORT=8080 \
+    PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1
+
+EXPOSE 8080
+
+# Healthcheck for local docker-compose; Cloud Run uses its own probing
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD curl -fsS "http://127.0.0.1:${PORT}/healthz" || exit 1
+
+# --proxy-headers + forwarded-allow-ips: Cloud Run puts us behind Google LB,
+# so trust X-Forwarded-* headers for real client IPs in logs.
+CMD exec uvicorn app.main:app \
+      --host 0.0.0.0 \
+      --port ${PORT} \
+      --proxy-headers \
+      --forwarded-allow-ips='*'

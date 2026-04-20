@@ -1,0 +1,28 @@
+# ═══════════════════════════════════════════════════════════════════
+#  CleanShot Worker Dockerfile - Arq + pyvips + google-genai
+# ═══════════════════════════════════════════════════════════════════
+FROM python:3.12-slim
+
+WORKDIR /app
+
+# Install system dependencies for image processing
+RUN apt-get update && apt-get install -y \
+    libvips-dev \
+    libpq-dev \
+    build-essential \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python dependencies
+COPY requirements-worker.txt .
+RUN pip install --no-cache-dir -r requirements-worker.txt
+
+# Copy application code
+COPY app/ ./app/
+
+# Health check for worker (checks if it can connect to Redis)
+HEALTHCHECK --interval=30s --timeout=10s --start-period=10s --retries=3 \
+    CMD python -c "import redis; r=redis.from_url('redis://redis:6379/0'); r.ping()" || exit 1
+
+# Run the Arq worker
+CMD ["arq", "app.workers.arq_worker.WorkerSettings"]

@@ -1,0 +1,24 @@
+# ═══════════════════════════════════════════════════════════════════
+#  Worker dependencies — install in WSL2 .venv-wsl
+#  Usage: pip install -r requirements-worker.txt
+#
+#  Prerequisite on WSL2 (Ubuntu):
+#    sudo apt update && sudo apt install -y libvips-dev libpq-dev
+# ═══════════════════════════════════════════════════════════════════
+
+-r requirements-base.txt
+
+# ─── Job queue ────────────────────────────────────────────────────
+# Arq: async-native, Redis-backed, uvloop on Linux (won't run on Windows)
+arq>=0.26,<1
+
+# ─── Image processing ─────────────────────────────────────────────
+# pyvips: libvips bindings, releases GIL, ~10x faster than PIL for compositing
+pyvips>=2.2,<3
+# Pillow as fallback and for formats pyvips is awkward with
+pillow>=11.0,<12
+
+# ─── Deferred — uncomment when you reach Step 3 (Reference Matching) ──
+# google-cloud-aiplatform==1.136.0   # multimodalembedding@001
+# psycopg[binary]>=3.2,<4             # Postgres driver (async)
+# pgvector>=0.3,<1                    # vector column type for SQLAlchemy
