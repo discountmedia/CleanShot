@@ -1,23 +1,33 @@
 """
-CleanShot Backend - Main FastAPI Application
-Sets up the API server with dependency injection and lifespan management.
+CleanShot Backend — FastAPI application entrypoint.
+
+Lifespan:
+  - Connects Redis (for /jobs reads + asset/session storage)
+  - Connects Arq pool (for enqueueing jobs to the worker)
+  - Pre-warms Gemini SDK client
+  - Builds StorageService and SessionService
 """
 
 import structlog
 from contextlib import asynccontextmanager
-from fastapi import FastAPI, Depends
-from google import genai
+
+from arq import create_pool
+from arq.connections import RedisSettings
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from redis.asyncio import Redis
 
 from app.config import settings
-from app.api import health
-# TODO: Enable these imports once the endpoints are fully implemented
-# from app.api import jobs, condition
-from app.services.gemini import GeminiService
-from app.services.storage import StorageService
+from app.api import health, sessions, assets, condition, jobs
+from app.services import gemini
 from app.services.session import SessionService
+from app.services.storage import StorageService
 
 
-# Configure structured logging
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+
 structlog.configure(
     processors=[
         structlog.stdlib.filter_by_level,
@@ -25,119 +35,103 @@ structlog.configure(
         structlog.stdlib.PositionalArgumentsFormatter(),
         structlog.processors.TimeStamper(fmt="ISO"),
         structlog.processors.StackInfoRenderer(),
-        structlog.processors.JSONRenderer()
+        structlog.processors.JSONRenderer(),
     ],
     logger_factory=structlog.stdlib.LoggerFactory(),
     wrapper_class=structlog.stdlib.BoundLogger,
     cache_logger_on_first_use=True,
 )
-
 logger = structlog.get_logger()
 
 
-class AppState:
-    """Global application state container."""
-    gemini_client: genai.Client = None
-    gemini_service: GeminiService = None
-    storage_service: StorageService = None
-    session_service: SessionService = None
-
-
-app_state = AppState()
-
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """
-    Application lifespan manager.
-    Initialize services on startup, cleanup on shutdown.
-    """
-    logger.info("Starting CleanShot backend", 
-                gcp_project=settings.gcp_project_id,
-                gemini_model=settings.gemini_model)
-    
-    # Initialize Gemini client (once per app lifetime, not per request)
-    app_state.gemini_client = genai.Client(
-        vertexai=settings.use_vertex_ai,
+    logger.info(
+        "Starting CleanShot API",
         project=settings.gcp_project_id,
-        location=settings.gcp_location
+        model=settings.gemini_model,
+        region=settings.gcp_location,
     )
-    
-    # Initialize services with dependency injection
-    app_state.storage_service = StorageService()
-    app_state.session_service = SessionService()
-    app_state.gemini_service = GeminiService(
-        client=app_state.gemini_client,
-        storage_service=app_state.storage_service
+
+    # Redis (used by SessionService for hash reads/writes)
+    app.state.redis = Redis.from_url(settings.redis_url, decode_responses=False)
+    await app.state.redis.ping()  # fail fast if Redis is unreachable
+
+    # Arq pool (used by /enhance to enqueue jobs)
+    app.state.arq_pool = await create_pool(
+        RedisSettings.from_dsn(settings.redis_url)
     )
-    
-    logger.info("CleanShot backend initialized successfully")
-    
-    yield  # App runs here
-    
-    # Cleanup
-    logger.info("Shutting down CleanShot backend")
-    if app_state.gemini_client:
-        app_state.gemini_client.close()
-        if hasattr(app_state.gemini_client, 'aio'):
-            await app_state.gemini_client.aio.aclose()
+
+    # Services
+    app.state.storage_service = StorageService()
+    app.state.session_service = SessionService(app.state.redis)
+
+    # Pre-warm Gemini client (saves ~150ms on the first /enhance call)
+    gemini.get_client()
+
+    logger.info("CleanShot API ready")
+    yield
+
+    logger.info("Shutting down CleanShot API")
+    await app.state.arq_pool.aclose()
+    await app.state.redis.aclose()
 
 
-# Create FastAPI app with lifespan management
+# ---------------------------------------------------------------------------
+# App
+# ---------------------------------------------------------------------------
+
 app = FastAPI(
     title="CleanShot Backend",
-    description="Multi-tool forklift image processing pipeline built on Gemini 2.5 Flash Image",
-    version="2.1.0",
-    lifespan=lifespan
+    description="Multi-tool forklift image processing on Gemini 2.5 Flash Image",
+    version="2.2.0",
+    lifespan=lifespan,
 )
 
 
-# ═══════════════════════════════════════════════════════════════════
-#  Dependency Injection Functions
-# ═══════════════════════════════════════════════════════════════════
-
-def get_gemini_service() -> GeminiService:
-    """Dependency: Get the Gemini service instance."""
-    return app_state.gemini_service
-
-
-def get_storage_service() -> StorageService:
-    """Dependency: Get the storage service instance."""
-    return app_state.storage_service
-
-
-def get_session_service() -> SessionService:
-    """Dependency: Get the session service instance."""
-    return app_state.session_service
+# CORS — locked down to known origins. Add Vercel URLs when frontend deploys.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",   # local Vite dev
+        "http://localhost:5173",   # Vite default port
+        # "https://cleanshot.app", # production frontend (uncomment when live)
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
-# ═══════════════════════════════════════════════════════════════════
-#  API Routes
-# ═══════════════════════════════════════════════════════════════════
+# ---------------------------------------------------------------------------
+# Routes (all v1 under /api/v1)
+# ---------------------------------------------------------------------------
 
-# Health check
-app.include_router(health.router, prefix="/health", tags=["health"])
+# Health endpoints at root (Cloud Run / Dockerfile expect /healthz, /readyz)
+app.include_router(health.router)
 
-# TODO: Enable these routers once the endpoints are fully implemented
-# Job status and progress (SSE endpoint)
-# app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["jobs"])
+# Versioned API
+app.include_router(sessions.router, prefix="/api/v1")
+app.include_router(assets.router, prefix="/api/v1")
+app.include_router(condition.router, prefix="/api/v1")
+app.include_router(jobs.router, prefix="/api/v1")
 
-# Condition enhancement pipeline  
-# app.include_router(condition.router, prefix="/api/v1/condition", tags=["condition"])
 
-
-@app.get("/")
+@app.get("/", tags=["meta"])
 async def root():
-    """Root endpoint - basic info about the API."""
     return {
         "service": "CleanShot Backend",
-        "version": "2.1.0",
-        "status": "running",
-        "gemini_model": settings.gemini_model,
-        "docs": "/docs"
+        "version": "2.2.0",
+        "model": settings.gemini_model,
+        "docs": "/docs",
     }
 
 
+# Local dev entrypoint: `python -m app.main`
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
@@ -145,5 +139,5 @@ if __name__ == "__main__":
         host=settings.api_host,
         port=settings.api_port,
         log_level=settings.log_level.lower(),
-        reload=True
+        reload=True,
     )
