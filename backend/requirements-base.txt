@@ -23,3 +23,6 @@ google-auth>=2.35,<3
 
 # --- Redis client (used by both API for /jobs reads and worker via Arq) ---
 redis>=5.2,<6
+
+# --- Job queue (API enqueues jobs, worker consumes them) ---
+arq>=0.26,<1

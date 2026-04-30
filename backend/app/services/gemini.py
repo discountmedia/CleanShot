@@ -41,7 +41,7 @@ def get_client() -> genai.Client:
                 # SDK-level retry: 5 attempts, exponential, jittered
                 retry_options=genai_types.HttpRetryOptions(
                     attempts=5,
-                    multiplier=2.0,
+                    exp_base=2.0,
                     jitter=0.5,
                 ),
             ),

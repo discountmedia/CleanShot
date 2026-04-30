@@ -8,10 +8,6 @@
 
 -r requirements-base.txt
 
-# --- Job queue ---
-# Arq: async-native, Redis-backed, uvloop on Linux (won't run on Windows)
-arq>=0.26,<1
-
 # --- Image processing ---
 # pyvips: libvips bindings, releases the GIL for true parallelism
 # Used for the Resize tab and any future post-processing
