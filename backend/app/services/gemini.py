@@ -12,6 +12,15 @@ v2.3 additions:
     rust removal, realism guardrail to avoid over-restoration
   - Per-photo extra_instructions for edge cases
 
+v2.5 hardening (after rear-→-front fabrication failure mode in production):
+  - PRESERVATION RULES moved to TOP of prompt (LLMs weight early instructions
+    more heavily; brand rules previously dominated)
+  - Anti-fabrication clause added explicitly: do not invent missing parts
+  - Every brand rule gated with "if visible in the source photo" — a rear-view
+    photo with no forks no longer triggers fork-paint hallucination
+  - Explicit perspective-lock: forbids rotation, mirror, angle change
+  - Temperature dropped from 0.3 to 0.1 for stricter source adherence
+
 Auth: Application Default Credentials. On Cloud Run this is the attached SA.
 Locally, run `gcloud auth application-default login` once and mount the creds
 into the docker-compose container.
@@ -65,41 +74,63 @@ def get_client() -> genai.Client:
 # Prompt construction (modular — brand rules are toggleable per-request)
 # -----------------------------------------------------------------------------
 
-# Always-on rules. These keep the AI from generating a fake-looking forklift
-# or fundamentally changing the unit. Not exposed to end-users.
+# v2.5: Preservation comes FIRST. LLMs weight early instructions more heavily,
+# and the previous prompt order (brand rules first, preservation last) caused
+# the fork-paint rule to override perspective preservation, producing
+# rear-view-→-front-view fabrications.
+
+PRESERVATION_RULES = (
+    "PRIMARY DIRECTIVE — Preserve the source photograph exactly:\n"
+    "- Do NOT change the viewing angle, perspective, or orientation. "
+    "If the source shows the REAR of the forklift, the output must show the rear. "
+    "If the source shows a SIDE, the output must show that same side. "
+    "Do not rotate, flip, mirror, or reconstruct the unit from a different angle.\n"
+    "- Do NOT add, remove, or replace parts that are not visible in the source. "
+    "If the source has no forks visible, do not draw forks. "
+    "If the source has no operator cage visible, do not draw one. "
+    "Restore only what is already in the photo.\n"
+    "- Preserve the exact forklift model, attachments, decals, manufacturer "
+    "branding, and proportions. Do not substitute the unit for a different model.\n"
+    "- Keep the background, lighting direction, and shadows consistent with the "
+    "source photo."
+)
 
 REALISM_GUARDRAIL = (
     "Realism guardrail: the forklift must still look like a realistic used unit "
-    "the customer will receive. Do NOT make it appear factory-new unless the source "
-    "photo already shows a near-new unit. Some honest patina and age is acceptable "
-    "and preferred over a fake-looking pristine result."
-)
-
-PRESERVATION_RULES = (
-    "Preserve the exact forklift model, attachments, decals, and overall proportions. "
-    "Match the original perspective and lighting. Keep the background unchanged."
+    "the customer will receive. Do NOT make it appear factory-new unless the "
+    "source photo already shows a near-new unit. Some honest patina and age is "
+    "acceptable and preferred over a fake-looking pristine result."
 )
 
 
-# Toggleable Discount Forklift brand rules. Default on, end-user can disable
-# any individual rule per-photo if Gemini repeatedly produces bad output.
+# Toggleable Discount Forklift brand rules.
+# v2.5: Every rule is gated with "if visible in the source." This is the
+# critical change that prevents the fork-paint rule from forcing a perspective
+# flip when no forks are visible in the source.
 
 FORK_PAINT_RULE = (
-    "Forks must be painted red with yellow tips. If the forks are unpainted, rusted, "
-    "scratched, or a different color, repaint them red with bright yellow tips. "
-    "The paint should look freshly applied but not unrealistically perfect."
+    "If — and only if — the lifting forks are clearly visible in the source "
+    "photo, paint them red with bright yellow tips. The paint should look "
+    "freshly applied but not unrealistically perfect. "
+    "If the forks are not visible (e.g., the photo shows the rear or a side "
+    "view that does not show the forks), do NOT add or fabricate them — "
+    "leave the photo as-is."
 )
 
 TIRE_SHINE_RULE = (
-    "Tires should look freshly cleaned with a slight wet/shiny sheen, as if recently "
-    "tire-dressed. IMPORTANT EXCEPTION: if the tires are cushion-style (solid rubber, "
-    "no tread pattern) or marked non-marking (typically white or grey), keep them matte. "
-    "Do NOT add shine to cushion or non-marking tires."
+    "If tires are clearly visible in the source photo, give them a slight "
+    "wet/shiny sheen as if recently tire-dressed. "
+    "EXCEPTION: if the visible tires are cushion-style (solid rubber, no tread "
+    "pattern) or marked non-marking (typically white or grey), keep them matte. "
+    "Do NOT add shine to cushion or non-marking tires. "
+    "If no tires are visible in the source photo, do not modify or add any."
 )
 
 RUST_REMOVAL_RULE = (
-    "Clean up rust, corrosion, scratches, chipped paint, and minor dents on body panels. "
-    "Do not over-restore — the realism guardrail above takes priority over this rule."
+    "Clean up rust, corrosion, scratches, chipped paint, and minor dents that "
+    "are visible on body panels in the source photo. "
+    "Do not over-restore — the realism guardrail above takes priority. "
+    "Do not invent surfaces or panels that are not visible in the source."
 )
 
 
@@ -107,18 +138,21 @@ RUST_REMOVAL_RULE = (
 
 LEVEL_INSTRUCTIONS = {
     "light": (
-        "Light cleanup pass: remove surface dust, dirt, and minor scuffs. "
-        "Leave honest wear visible — the unit should still look used."
+        "Light cleanup pass: remove surface dust, dirt, and minor scuffs that "
+        "are visible in the source. Leave honest wear visible — the unit "
+        "should still look used."
     ),
     "moderate": (
-        "Moderate restoration: clean, repaint where needed, and polish to a "
-        "presentable dealer-lot condition. The unit should look well-maintained "
-        "but clearly used."
+        "Moderate restoration: clean, repaint where needed (only on visible "
+        "surfaces), and polish to a presentable dealer-lot condition. The unit "
+        "should look well-maintained but clearly used."
     ),
     "heavy": (
         "Heavy restoration: bring the unit close to showroom condition while "
-        "respecting the realism guardrail. Remove most visible wear, but the "
-        "result should still look like a real used forklift, not factory-new."
+        "respecting the realism guardrail and preservation directive above. "
+        "Remove most visible wear, but the result must still look like a "
+        "real used forklift photographed from the same angle, not a "
+        "factory-new replacement."
     ),
 }
 
@@ -130,9 +164,22 @@ def build_prompt(
     apply_rust_removal: bool = True,
     extra_instructions: Optional[str] = None,
 ) -> str:
-    """Assemble a Gemini prompt from level + brand toggles + per-photo extras."""
+    """
+    Assemble a Gemini prompt from level + brand toggles + per-photo extras.
+
+    v2.5 ordering:
+      1. Role + preservation directive (highest weight)
+      2. Realism guardrail
+      3. Intensity level
+      4. Toggleable brand styling rules (each gated 'if visible')
+      5. Optional per-photo extras
+    """
     parts = [
-        "You are restoring a forklift photograph for a dealership listing.",
+        "You are restoring a forklift photograph for a dealership listing. "
+        "The goal is to make the EXISTING photo look more presentable, "
+        "NOT to generate an idealized replacement image.",
+        PRESERVATION_RULES,
+        REALISM_GUARDRAIL,
         LEVEL_INSTRUCTIONS.get(enhancement_level, LEVEL_INSTRUCTIONS["moderate"]),
     ]
 
@@ -147,12 +194,10 @@ def build_prompt(
 
     if rules:
         parts.append(
-            "Brand styling rules:\n" + "\n".join(f"- {r}" for r in rules)
+            "Brand styling rules — each applies only if the relevant feature is "
+            "actually visible in the source photo:\n"
+            + "\n".join(f"- {r}" for r in rules)
         )
-
-    # Always-on rules (cannot be disabled by end-users)
-    parts.append(REALISM_GUARDRAIL)
-    parts.append(PRESERVATION_RULES)
 
     # Optional per-photo additions
     if extra_instructions:
@@ -237,7 +282,9 @@ async def enhance_image(
         config=genai_types.GenerateContentConfig(
             # Image-only response; no text. Use the Modality enum, not strings.
             response_modalities=[genai_types.Modality.IMAGE],
-            temperature=0.3,  # lower = more deterministic, less drift
+            # v2.5: Dropped from 0.3 → 0.1. Stricter adherence to the
+            # preservation directive; less creative drift.
+            temperature=0.1,
         ),
     )
 
