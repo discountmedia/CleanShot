@@ -1,9 +1,15 @@
 // =============================================================================
 //  API client — typed fetch wrappers for the v2.4 backend
 //
-//  Reads VITE_API_URL and VITE_API_KEY at build time. In dev with vite.config
-//  proxying to localhost:8000, VITE_API_URL can be relative ("/api/v1"); in
-//  production set it to the full Cloud Run URL.
+//  Reads VITE_API_URL and VITE_API_KEY at build time.
+//
+//  VITE_API_URL handling is idempotent:
+//    - In dev with vite.config proxying /api → localhost:8000, leave it
+//      unset (or empty) and the relative '/api/v1' will route through Vite's
+//      dev server.
+//    - In production, set it to either the bare host
+//      (https://forklift-api-xxxx-uc.a.run.app) or with the prefix already
+//      appended — both resolve to the same final URL.
 // =============================================================================
 
 import type {
@@ -17,7 +23,12 @@ import type {
   ScanResult,
 } from './types';
 
-const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
+// Strip trailing slash, then strip trailing /api/v1 if someone already added
+// it, then append /api/v1. Idempotent: works whether the env var includes
+// the prefix or not, with or without a trailing slash.
+const RAW = import.meta.env.VITE_API_URL ?? '';
+const API_URL = RAW.replace(/\/$/, '').replace(/\/api\/v1$/, '') + '/api/v1';
+
 const API_KEY = import.meta.env.VITE_API_KEY ?? '';
 
 export class ApiError extends Error {

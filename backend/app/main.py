@@ -82,8 +82,10 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:3000",
         "http://localhost:5173",
-        # "https://cleanshot.app",  # production frontend (uncomment when live)
     ],
+    # Vercel deploys: matches both the production URL and all preview hashes
+    # (e.g. clean-shot-2yu5jgd9b-discountforkliftmedia-3481s-projects.vercel.app)
+    allow_origin_regex=r"https://clean-shot[a-z0-9\-]*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
