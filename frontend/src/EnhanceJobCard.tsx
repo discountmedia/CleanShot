@@ -21,6 +21,7 @@ const INTENSITY_LABELS: Record<EnhancementLevel, string> = {
   light: 'Light',
   moderate: 'Moderate',
   heavy: 'Heavy',
+};
 
 interface EnhanceJobCardProps {
   job_id: string;
