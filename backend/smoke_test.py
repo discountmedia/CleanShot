@@ -1,10 +1,10 @@
 """
 End-to-end smoke test for CleanShot v1 (Enhance tab only).
+Usage:
+    python smoke_test.py path/to/forklift.jpg [api_base_url]
 
-Run AFTER `docker compose up` is healthy AND you have a forklift photo
-on disk to test with. Usage:
-
-    python smoke_test.py path/to/forklift.jpg
+If api_base_url is omitted, defaults to http://localhost:8000/api/v1
+For production, pass: https://forklift-api-l4xpvatepq-uc.a.run.app/api/v1
 
 Walks the full flow:
   1. POST /sessions
@@ -17,19 +17,16 @@ Walks the full flow:
 Requires: requests
     pip install requests
 """
-
 import sys
 import time
 import requests
 
-API = "http://localhost:8000/api/v1"
 
-
-def main(image_path: str) -> int:
-    print(f"== Smoke test against {API}")
+def main(image_path: str, api_base: str) -> int:
+    print(f"== Smoke test against {api_base}")
 
     # --- 1. Session
-    r = requests.post(f"{API}/sessions")
+    r = requests.post(f"{api_base}/sessions")
     r.raise_for_status()
     session_id = r.json()["session_id"]
     print(f"[1] session_id = {session_id}")
@@ -37,7 +34,7 @@ def main(image_path: str) -> int:
     # --- 2. Upload URL
     mime = "image/jpeg" if image_path.lower().endswith((".jpg", ".jpeg")) else "image/png"
     r = requests.post(
-        f"{API}/assets/upload-url",
+        f"{api_base}/assets/upload-url",
         json={"session_id": session_id, "mime_type": mime},
     )
     r.raise_for_status()
@@ -56,7 +53,7 @@ def main(image_path: str) -> int:
 
     # --- 4. Enqueue enhance
     r = requests.post(
-        f"{API}/enhance",
+        f"{api_base}/enhance",
         json={
             "session_id": session_id,
             "asset_id": asset_id,
@@ -72,7 +69,7 @@ def main(image_path: str) -> int:
     start = time.time()
     while True:
         time.sleep(2)
-        r = requests.get(f"{API}/jobs/{job_id}")
+        r = requests.get(f"{api_base}/jobs/{job_id}")
         r.raise_for_status()
         job = r.json()
         elapsed = int(time.time() - start)
@@ -96,7 +93,9 @@ def main(image_path: str) -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 2 or len(sys.argv) > 3:
         print(__doc__)
         sys.exit(64)
-    sys.exit(main(sys.argv[1]))
+    image_path = sys.argv[1]
+    api_base = sys.argv[2] if len(sys.argv) == 3 else "http://localhost:8000/api/v1"
+    sys.exit(main(image_path, api_base))
