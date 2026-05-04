@@ -1,4 +1,4 @@
-# =============================================================================
+﻿# =============================================================================
 #  API container deps
 #  Usage (local Windows venv): pip install -r requirements-api.txt
 # =============================================================================
@@ -11,3 +11,5 @@ uvicorn[standard]>=0.32,<1
 
 # --- File upload handling (multipart/form-data parsing for direct uploads if needed) ---
 python-multipart>=0.0.17,<0.1
+openai>=1.50,<2 
+anthropic>=0.40,<1 
