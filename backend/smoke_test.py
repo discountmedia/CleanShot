@@ -1,27 +1,3 @@
-End-to-end smoke test for CleanShot v1 — supports both enhance and scan.
-
-Usage:
-    # Enhance a forklift photo (default operation):
-    python smoke_test.py path/to/forklift.jpg [api_base_url]
-
-    # Run multi-provider scan on an image:
-    python smoke_test.py path/to/image.jpg [api_base_url] --scan
-
-If api_base_url is omitted, defaults to http://localhost:8000/api/v1.
-For production:
-    https://forklift-api-l4xpvatepq-uc.a.run.app/api/v1
-
-Walks the full flow:
-  1. POST /sessions
-  2. POST /assets/upload-url
-  3. PUT bytes directly to GCS via signed URL
-  4. POST /enhance OR /scan
-  5. Poll GET /jobs/{id} until status in {done, failed}
-  6. Print result on success
-
-Requires: requests
-    pip install requests
-"""
 import sys
 import time
 import json
