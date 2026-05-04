@@ -1,26 +1,24 @@
 // =============================================================================
 //  EnhanceTab — image enhancement with brand rule toggles.
 //
-//  Flow:
-//    1. Upload images via dropzone
-//    2. Pick intensity (light / moderate / heavy), brand rules, extra notes
-//    3. Click "Enhance selected" → POST /enhance per asset, returns job_id
-//    4. useJob polls each job until done
-//    5. Result: side-by-side viewer + "Scan this image" link to Scan tab
+//  v2 (per-asset progress):
+//    - Submit fires N parallel POST /enhance, one per selected asset
+//    - Each submission gets its own EnhanceJobCard with independent polling
+//    - Regenerate appends a new card (so users can compare attempts)
+//    - Thumbnails reflect the latest job's status per asset
 // =============================================================================
 
 import { useState } from 'react';
-import { AlertTriangle, ScanLine, Sparkles, RotateCcw } from 'lucide-react';
+import { AlertTriangle, Sparkles } from 'lucide-react';
 
 import { useStore } from '../lib/store';
 import { useUpload } from '../hooks/useUpload';
-import { useJob } from '../hooks/useJob';
 import { api, ApiError } from '../lib/api';
 
 import { Dropzone } from '../components/Dropzone';
 import { ImageThumbnail } from '../components/ImageThumbnail';
-import { ProgressBar } from '../components/ProgressBar';
 import { Toggle } from '../components/Toggle';
+import { EnhanceJobCard } from '../components/EnhanceJobCard';
 
 import type { EnhancementLevel, EnhanceJobLocal } from '../lib/types';
 
@@ -30,6 +28,13 @@ const INTENSITY_LABELS: Record<EnhancementLevel, string> = {
   heavy: 'Heavy',
 };
 
+interface SubmittedJob {
+  job_id: string;
+  asset_id: string;
+  intensity: EnhancementLevel;
+  submitted_at: number;   // for sorting newest-first
+}
+
 export function EnhanceTab() {
   const session_id = useStore((s) => s.session_id);
   const assets = useStore((s) => s.assets);
@@ -37,7 +42,6 @@ export function EnhanceTab() {
   const toggleSelection = useStore((s) => s.toggleEnhanceSelection);
   const enhanceJobs = useStore((s) => s.enhance_jobs);
   const setEnhanceJob = useStore((s) => s.setEnhanceJob);
-  const prefillScan = useStore((s) => s.prefillScan);
 
   const { upload, isUploading, uploadError } = useUpload();
 
@@ -49,8 +53,8 @@ export function EnhanceTab() {
   const [extras, setExtras] = useState('');
 
   const [submitError, setSubmitError] = useState<string | null>(null);
-  const [activeJobId, setActiveJobId] = useState<string | null>(null);
-  const job = useJob(activeJobId);
+  const [submittedJobs, setSubmittedJobs] = useState<SubmittedJob[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleFiles = async (files: File[]) => {
     setSubmitError(null);
@@ -58,85 +62,74 @@ export function EnhanceTab() {
     ids.forEach((id) => toggleSelection(id));
   };
 
-  const handleSubmit = async () => {
-    if (!session_id || selection.length === 0) return;
-    setSubmitError(null);
-
-    // Submit all selected assets in parallel; track the first job for the
-    // active progress display. Future iteration: per-asset job tracking.
+  /** Submit a single asset for enhance. Used by both batch submit and regenerate. */
+  const submitOne = async (asset_id: string): Promise<SubmittedJob | null> => {
+    if (!session_id) return null;
     try {
-      const responses = await Promise.all(
-        selection.map((asset_id) =>
-          api.postEnhance({
-            session_id,
-            asset_id,
-            enhancement_level: intensity,
-            apply_fork_paint: forkPaint,
-            apply_tire_shine: tireShine,
-            apply_rust_removal: rustRemoval,
-            extra_instructions: extras.trim() || undefined,
-          }),
-        ),
-      );
-
-      responses.forEach((r, i) => {
-        const localJob: EnhanceJobLocal = {
-          job_id: r.job_id,
-          asset_id: selection[i],
-          status: 'queued',
-          progress: 0,
-        };
-        setEnhanceJob(selection[i], localJob);
+      const response = await api.postEnhance({
+        session_id,
+        asset_id,
+        enhancement_level: intensity,
+        apply_fork_paint: forkPaint,
+        apply_tire_shine: tireShine,
+        apply_rust_removal: rustRemoval,
+        extra_instructions: extras.trim() || undefined,
       });
-
-      if (responses.length > 0) setActiveJobId(responses[0].job_id);
+      const localJob: EnhanceJobLocal = {
+        job_id: response.job_id,
+        asset_id,
+        status: 'queued',
+        progress: 0,
+      };
+      setEnhanceJob(asset_id, localJob);
+      return {
+        job_id: response.job_id,
+        asset_id,
+        intensity,
+        submitted_at: Date.now(),
+      };
     } catch (err) {
-      setSubmitError(err instanceof ApiError ? err.detail : String(err));
+      const msg = err instanceof ApiError ? err.detail : String(err);
+      setSubmitError(`${asset_id}: ${msg}`);
+      return null;
     }
   };
 
-  const renderResultPanel = () => {
-    if (!job.job || job.status !== 'done') return null;
-    const completedAssetId = job.job.asset_id_in;
-    const sourceAsset = completedAssetId ? assets[completedAssetId] : null;
-    const downloadUrl = job.job.download_url;
-    if (!sourceAsset || !downloadUrl) return null;
+  const handleSubmitBatch = async () => {
+    if (!session_id || selection.length === 0) return;
+    setSubmitError(null);
+    setIsSubmitting(true);
 
-    return (
-      <div className="card">
-        <div className="row between" style={{ marginBottom: 'var(--space-4)' }}>
-          <span className="section-title">Result</span>
-          <div className="row" style={{ gap: 'var(--space-3)' }}>
-            <button className="btn btn-ghost btn-sm" onClick={handleSubmit}>
-              <RotateCcw size={12} /> Regenerate
-            </button>
-            <button
-              className="btn btn-ghost btn-sm"
-              onClick={() => prefillScan(sourceAsset.asset_id)}
-            >
-              <ScanLine size={12} /> Scan this image
-            </button>
-            <a
-              className="btn btn-primary btn-sm"
-              href={downloadUrl}
-              download={sourceAsset.filename}
-            >
-              Download
-            </a>
-          </div>
-        </div>
-        <div className="grid-2">
-          <div className="col" style={{ gap: 'var(--space-2)' }}>
-            <span className="label">Original</span>
-            <img src={sourceAsset.preview_url} alt="Original" style={{ borderRadius: 4 }} />
-          </div>
-          <div className="col" style={{ gap: 'var(--space-2)' }}>
-            <span className="label">Enhanced · {INTENSITY_LABELS[intensity]}</span>
-            <img src={downloadUrl} alt="Enhanced" style={{ borderRadius: 4 }} />
-          </div>
-        </div>
-      </div>
-    );
+    try {
+      const results = await Promise.all(selection.map((id) => submitOne(id)));
+      const newJobs = results.filter((j): j is SubmittedJob => j !== null);
+
+      // Append new jobs, dedupe by job_id (idempotent backend may return
+      // a job_id that's already in our list when toggle settings unchanged)
+      setSubmittedJobs((prev) => {
+        const existing = new Set(prev.map((j) => j.job_id));
+        const filtered = newJobs.filter((j) => !existing.has(j.job_id));
+        // Newest first
+        return [...filtered, ...prev];
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleRegenerate = async (asset_id: string) => {
+    setIsSubmitting(true);
+    try {
+      const result = await submitOne(asset_id);
+      if (result) {
+        setSubmittedJobs((prev) => {
+          if (prev.some((j) => j.job_id === result.job_id)) return prev;
+          return [result, ...prev];
+        });
+      }
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // ===========================================================================
@@ -282,39 +275,37 @@ export function EnhanceTab() {
             </span>
             <button
               className="btn btn-primary btn-lg"
-              onClick={handleSubmit}
-              disabled={selection.length === 0 || job.status === 'running'}
+              onClick={handleSubmitBatch}
+              disabled={selection.length === 0 || isSubmitting}
             >
-              <Sparkles size={14} /> Enhance {selection.length || ''}
+              <Sparkles size={14} />
+              {isSubmitting ? 'Submitting…' : `Enhance ${selection.length || ''}`}
             </button>
           </div>
         </div>
       )}
 
-      {/* ---- Active job progress ---- */}
-      {job.job && !job.isTerminal && (
-        <div className="card">
-          <div className="row between" style={{ marginBottom: 'var(--space-3)' }}>
-            <span className="label">Processing</span>
-            <span className="label">{job.progress}%</span>
+      {/* ---- Job cards (one per submission, newest first) ---- */}
+      {submittedJobs.length > 0 && (
+        <div className="col" style={{ gap: 'var(--space-4)' }}>
+          <div className="row between">
+            <span className="section-title">
+              Results · {submittedJobs.length} job{submittedJobs.length === 1 ? '' : 's'}
+            </span>
           </div>
-          <ProgressBar percent={job.progress} variant="yellow" height={6} />
-          <div className="muted" style={{ marginTop: 'var(--space-3)', fontSize: 11 }}>
-            {job.message || 'Calling Gemini…'}
-          </div>
-        </div>
-      )}
-
-      {/* ---- Result ---- */}
-      {renderResultPanel()}
-
-      {job.job?.status === 'failed' && (
-        <div className="alert">
-          <AlertTriangle size={20} className="alert-icon" />
-          <div className="alert-content">
-            <div className="alert-title">Enhance failed</div>
-            <div className="alert-body">{job.message}</div>
-          </div>
+          {submittedJobs.map((job) => {
+            const sourceAsset = assets[job.asset_id];
+            if (!sourceAsset) return null;
+            return (
+              <EnhanceJobCard
+                key={job.job_id}
+                job_id={job.job_id}
+                sourceAsset={sourceAsset}
+                intensity={job.intensity}
+                onRegenerate={() => handleRegenerate(job.asset_id)}
+              />
+            );
+          })}
         </div>
       )}
     </div>
