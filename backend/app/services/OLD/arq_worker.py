@@ -8,9 +8,6 @@ Job lifecycle:
   4. Worker updates job:{id} hash with progress at each step
   5. API's GET /jobs/{id} polls that hash
 
-v2.3: process_image now accepts brand rule toggles and extra_instructions,
-which it passes through to gemini.enhance_image() unchanged.
-
 Splitting into two queues (image + video) happens in Phase 4.5 when
 Veo lands. For v1 launch, one queue is enough.
 """
@@ -41,10 +38,6 @@ async def process_image(
     asset_id: str,
     operation: str,
     enhancement_level: str = "moderate",
-    apply_fork_paint: bool = True,
-    apply_tire_shine: bool = True,
-    apply_rust_removal: bool = True,
-    extra_instructions: Optional[str] = None,
 ):
     """
     The single v1 worker function. Currently handles 'enhance';
@@ -54,11 +47,7 @@ async def process_image(
         ctx: Arq job context (contains 'redis', 'job_id', etc.)
         asset_id: ID of the asset to process (resolves to GCS URI via Redis)
         operation: "enhance" (more added later)
-        enhancement_level: "light" | "moderate" | "heavy"
-        apply_fork_paint: include the red-forks brand rule
-        apply_tire_shine: include the shiny-tires brand rule
-        apply_rust_removal: include the rust-cleanup brand rule
-        extra_instructions: optional per-photo prompt addition
+        enhancement_level: "light" | "moderate" | "heavy" (only used for enhance)
     """
     job_id = ctx["job_id"]
     redis: Redis = ctx["redis_pool"]
@@ -96,10 +85,6 @@ async def process_image(
                 image_gcs_uri=gcs_uri,
                 mime_type=mime_type,
                 enhancement_level=enhancement_level,
-                apply_fork_paint=apply_fork_paint,
-                apply_tire_shine=apply_tire_shine,
-                apply_rust_removal=apply_rust_removal,
-                extra_instructions=extra_instructions,
             )
         else:
             raise ValueError(f"Unknown operation: {operation!r}")
