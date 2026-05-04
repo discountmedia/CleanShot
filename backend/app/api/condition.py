@@ -46,7 +46,7 @@ class EnhanceResponse(BaseModel):
 
 
 def _stable_job_id(prefix: str, payload: dict) -> str:
-    """SHA-derived ID. Same inputs → same job_id (idempotency)."""
+    """SHA-derived ID. Same inputs -> same job_id (idempotency)."""
     digest = hashlib.sha256(
         json.dumps(payload, sort_keys=True).encode()
     ).hexdigest()[:16]

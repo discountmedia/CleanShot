@@ -1,29 +1,28 @@
 """
 Arq Worker — single image queue for v1.
 
+v2.3: Toggleable brand rules in enhance.
+v2.4: Adds 'scan' operation for multi-provider artifact detection.
+
 Job lifecycle:
   1. API enqueues 'process_image' with stable _job_id (idempotency)
   2. Worker reads asset metadata from Redis
-  3. Worker calls Gemini, writes result to derivatives bucket
-  4. Worker updates job:{id} hash with progress at each step
+  3. Worker calls the right service (gemini.enhance_image or scan.scan_image)
+  4. Worker writes result (image or JSON) and updates job hash
   5. API's GET /jobs/{id} polls that hash
-
-v2.3: process_image now accepts brand rule toggles and extra_instructions,
-which it passes through to gemini.enhance_image() unchanged.
-
-Splitting into two queues (image + video) happens in Phase 4.5 when
-Veo lands. For v1 launch, one queue is enough.
 """
 
+import json
 import time
 import structlog
 from typing import Optional
 
 from arq.connections import RedisSettings
 from redis.asyncio import Redis
+from google.cloud import storage as gcs
 
 from app.config import settings
-from app.services import gemini
+from app.services import gemini, scan as scan_service
 from app.services.storage import StorageService
 from app.services.session import SessionService
 
@@ -47,18 +46,9 @@ async def process_image(
     extra_instructions: Optional[str] = None,
 ):
     """
-    The single v1 worker function. Currently handles 'enhance';
-    'clean' and 'resize' will be added as additional operation values.
-
-    Args:
-        ctx: Arq job context (contains 'redis', 'job_id', etc.)
-        asset_id: ID of the asset to process (resolves to GCS URI via Redis)
-        operation: "enhance" (more added later)
-        enhancement_level: "light" | "moderate" | "heavy"
-        apply_fork_paint: include the red-forks brand rule
-        apply_tire_shine: include the shiny-tires brand rule
-        apply_rust_removal: include the rust-cleanup brand rule
-        extra_instructions: optional per-photo prompt addition
+    Single worker function handling all image operations:
+      - operation="enhance" -> gemini.enhance_image() with toggleable brand rules
+      - operation="scan"    -> scan.scan_image() multi-provider artifact detection
     """
     job_id = ctx["job_id"]
     redis: Redis = ctx["redis_pool"]
@@ -89,9 +79,9 @@ async def process_image(
         gcs_uri = asset["gcs_uri"]
         mime_type = asset.get("mime_type", "image/jpeg")
 
-        await _progress(15, f"Calling Gemini ({operation})")
-
         if operation == "enhance":
+            await _progress(15, "Calling Gemini (enhance)")
+
             image_bytes = await gemini.enhance_image(
                 image_gcs_uri=gcs_uri,
                 mime_type=mime_type,
@@ -101,34 +91,60 @@ async def process_image(
                 apply_rust_removal=apply_rust_removal,
                 extra_instructions=extra_instructions,
             )
+
+            await _progress(80, "Writing result to GCS")
+            derivative_uri = storage_svc.save_derivative(
+                image_data=image_bytes,
+                original_uri=gcs_uri,
+                operation=operation,
+                mime_type="image/png",
+            )
+
+            await redis.hset(
+                f"job:{job_id}",
+                mapping={
+                    "status": "done",
+                    "progress": 100,
+                    "message": "Complete",
+                    "result_uri": derivative_uri,
+                    "updated_at": time.time(),
+                },
+            )
+            await redis.expire(f"job:{job_id}", settings.job_ttl_seconds)
+            log.info("Enhance job complete", derivative_uri=derivative_uri)
+            return derivative_uri
+
+        elif operation == "scan":
+            await _progress(15, "Downloading image bytes")
+            image_bytes = _download_gcs_bytes(gcs_uri)
+
+            await _progress(30, "Calling Gemini + OpenAI + Anthropic (scan)")
+            scan_result = await scan_service.scan_image(
+                image_gcs_uri=gcs_uri,
+                image_bytes=image_bytes,
+                mime_type=mime_type,
+            )
+
+            await _progress(95, "Storing scan results")
+            # Scan output is JSON, not an image. Store inline in Redis hash.
+            await redis.hset(
+                f"job:{job_id}",
+                mapping={
+                    "status": "done",
+                    "progress": 100,
+                    "message": "Complete",
+                    "scan_result": json.dumps(scan_result),
+                    "updated_at": time.time(),
+                },
+            )
+            await redis.expire(f"job:{job_id}", settings.job_ttl_seconds)
+            log.info("Scan job complete",
+                     verdict=scan_result.get("verdict"),
+                     source=scan_result.get("source"))
+            return scan_result
+
         else:
             raise ValueError(f"Unknown operation: {operation!r}")
-
-        await _progress(80, "Writing result to GCS")
-
-        # Gemini 2.5 Flash Image returns PNG by default
-        derivative_uri = storage_svc.save_derivative(
-            image_data=image_bytes,
-            original_uri=gcs_uri,
-            operation=operation,
-            mime_type="image/png",
-        )
-
-        # Final state — frontend stops polling on status in {done, failed}
-        await redis.hset(
-            f"job:{job_id}",
-            mapping={
-                "status": "done",
-                "progress": 100,
-                "message": "Complete",
-                "result_uri": derivative_uri,
-                "updated_at": time.time(),
-            },
-        )
-        await redis.expire(f"job:{job_id}", settings.job_ttl_seconds)
-
-        log.info("Job complete", derivative_uri=derivative_uri)
-        return derivative_uri
 
     except Exception as exc:
         log.exception("Job failed")
@@ -145,18 +161,35 @@ async def process_image(
 
 
 # -----------------------------------------------------------------------------
+# Helpers
+# -----------------------------------------------------------------------------
+
+_gcs_client: Optional[gcs.Client] = None
+
+
+def _download_gcs_bytes(gcs_uri: str) -> bytes:
+    """Download an object's bytes given a gs://bucket/key URI."""
+    global _gcs_client
+    if _gcs_client is None:
+        _gcs_client = gcs.Client()
+    if not gcs_uri.startswith("gs://"):
+        raise ValueError(f"Expected gs:// URI, got: {gcs_uri}")
+    without_scheme = gcs_uri[5:]
+    bucket_name, _, blob_name = without_scheme.partition("/")
+    bucket = _gcs_client.bucket(bucket_name)
+    blob = bucket.blob(blob_name)
+    return blob.download_as_bytes()
+
+
+# -----------------------------------------------------------------------------
 # Lifecycle
 # -----------------------------------------------------------------------------
 
 async def startup(ctx):
-    """Initialize per-worker shared state (services, Redis pool, etc.)."""
     logger.info("Worker starting up")
-    # Build a Redis client for the worker to write progress hashes.
-    # ctx['redis'] is Arq's own pool; we add ours for clarity.
     ctx["redis_pool"] = Redis.from_url(settings.redis_url, decode_responses=False)
     ctx["session_service"] = SessionService(ctx["redis_pool"])
     ctx["storage_service"] = StorageService()
-    # Pre-warm the Gemini client (saves ~150ms on the first job)
     gemini.get_client()
     logger.info("Worker ready")
 
@@ -173,19 +206,14 @@ async def shutdown(ctx):
 # -----------------------------------------------------------------------------
 
 class WorkerSettings:
-    """Arq config — pointed at by the Dockerfile.worker CMD."""
-
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-
     functions = [process_image]
-
     on_startup = startup
     on_shutdown = shutdown
-
     queue_name = settings.image_queue_name
     max_jobs = settings.max_jobs_per_worker
     job_timeout = settings.job_timeout_seconds
-    keep_result = settings.job_ttl_seconds  # 7 days
-    max_tries = 3  # Arq's worker-process retries (separate from SDK retries)
+    keep_result = settings.job_ttl_seconds
+    max_tries = 3
     health_check_interval = 30
     log_results = True

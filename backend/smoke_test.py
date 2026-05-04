@@ -1,29 +1,35 @@
-"""
-End-to-end smoke test for CleanShot v1 (Enhance tab only).
+End-to-end smoke test for CleanShot v1 — supports both enhance and scan.
+
 Usage:
+    # Enhance a forklift photo (default operation):
     python smoke_test.py path/to/forklift.jpg [api_base_url]
 
-If api_base_url is omitted, defaults to http://localhost:8000/api/v1
-For production, pass: https://forklift-api-l4xpvatepq-uc.a.run.app/api/v1
+    # Run multi-provider scan on an image:
+    python smoke_test.py path/to/image.jpg [api_base_url] --scan
+
+If api_base_url is omitted, defaults to http://localhost:8000/api/v1.
+For production:
+    https://forklift-api-l4xpvatepq-uc.a.run.app/api/v1
 
 Walks the full flow:
   1. POST /sessions
   2. POST /assets/upload-url
   3. PUT bytes directly to GCS via signed URL
-  4. POST /enhance
+  4. POST /enhance OR /scan
   5. Poll GET /jobs/{id} until status in {done, failed}
-  6. Print download URL on success
+  6. Print result on success
 
 Requires: requests
     pip install requests
 """
 import sys
 import time
+import json
 import requests
 
 
-def main(image_path: str, api_base: str) -> int:
-    print(f"== Smoke test against {api_base}")
+def run_test(image_path: str, api_base: str, operation: str) -> int:
+    print(f"== Smoke test ({operation}) against {api_base}")
 
     # --- 1. Session
     r = requests.post(f"{api_base}/sessions")
@@ -51,15 +57,21 @@ def main(image_path: str, api_base: str) -> int:
         return 1
     print(f"[3] uploaded {image_path} to GCS")
 
-    # --- 4. Enqueue enhance
-    r = requests.post(
-        f"{api_base}/enhance",
-        json={
-            "session_id": session_id,
-            "asset_id": asset_id,
-            "enhancement_level": "moderate",
-        },
-    )
+    # --- 4. Submit job (enhance or scan)
+    if operation == "scan":
+        r = requests.post(
+            f"{api_base}/scan",
+            json={"session_id": session_id, "asset_id": asset_id},
+        )
+    else:
+        r = requests.post(
+            f"{api_base}/enhance",
+            json={
+                "session_id": session_id,
+                "asset_id": asset_id,
+                "enhancement_level": "moderate",
+            },
+        )
     r.raise_for_status()
     job_id = r.json()["job_id"]
     print(f"[4] job_id = {job_id}")
@@ -86,16 +98,41 @@ def main(image_path: str, api_base: str) -> int:
 
     # --- 6. Done
     print(f"\n[6] DONE in {int(time.time()-start)}s")
-    print(f"    result_uri:   {job.get('result_uri')}")
-    print(f"    download_url: {job.get('download_url')}")
-    print("\nOpen the download_url in a browser to view the enhanced image.")
+    if operation == "scan":
+        scan_result = job.get("scan_result")
+        if isinstance(scan_result, str):
+            scan_result = json.loads(scan_result)
+        print(f"    verdict:    {scan_result.get('verdict')}")
+        print(f"    confidence: {scan_result.get('confidence')}")
+        print(f"    agreement:  {scan_result.get('agreement')}")
+        print(f"    source:     {scan_result.get('source')}")
+        print(f"    summary:    {scan_result.get('summary')}")
+        if scan_result.get('issues'):
+            print(f"    issues:")
+            for issue in scan_result['issues']:
+                print(f"      - {issue}")
+        if scan_result.get('warnings'):
+            print(f"    warnings:")
+            for w in scan_result['warnings']:
+                print(f"      - {w}")
+    else:
+        print(f"    result_uri:   {job.get('result_uri')}")
+        print(f"    download_url: {job.get('download_url')}")
+        print("\nOpen the download_url in a browser to view the enhanced image.")
     return 0
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2 or len(sys.argv) > 3:
+    args = sys.argv[1:]
+    operation = "enhance"
+    if "--scan" in args:
+        operation = "scan"
+        args.remove("--scan")
+
+    if len(args) < 1 or len(args) > 2:
         print(__doc__)
         sys.exit(64)
-    image_path = sys.argv[1]
-    api_base = sys.argv[2] if len(sys.argv) == 3 else "http://localhost:8000/api/v1"
-    sys.exit(main(image_path, api_base))
+
+    image_path = args[0]
+    api_base = args[1] if len(args) == 2 else "http://localhost:8000/api/v1"
+    sys.exit(run_test(image_path, api_base, operation))
