@@ -1,47 +1,35 @@
 """
-Health Check Endpoint
-Simple health check for the CleanShot API.
+Health check endpoints.
+
+/healthz       - Liveness  (Dockerfile HEALTHCHECK calls this)
+/readyz        - Readiness (verifies Redis is reachable; Cloud Run uses this)
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 import structlog
 
 logger = structlog.get_logger()
 router = APIRouter()
 
 
-@router.get("/")
-async def health_check():
-    """
-    Health check endpoint for load balancers and monitoring.
-    Returns basic service status.
-    """
-    try:
-        return {
-            "status": "healthy",
-            "service": "cleanshot-api",
-            "version": "2.1.0"
-        }
-    except Exception as e:
-        logger.error("Health check failed", error=str(e))
-        raise HTTPException(status_code=503, detail="Service unhealthy")
+@router.get("/healthz", tags=["health"])
+async def liveness():
+    """Cheap liveness check. No dependencies probed."""
+    return {"status": "ok"}
 
 
-@router.get("/ready")
-async def readiness_check():
+@router.get("/readyz", tags=["health"])
+async def readiness(request: Request):
     """
-    Readiness check - verifies all dependencies are available.
-    Used by Kubernetes/Cloud Run for traffic routing.
+    Readiness check — verifies Redis connectivity.
+    Cloud Run uses this to decide if traffic should route here.
     """
+    redis = request.app.state.redis
     try:
-        # TODO: Add checks for Redis, GCS connectivity when we implement those
-        return {
-            "status": "ready",
-            "dependencies": {
-                "redis": "not_implemented",
-                "gcs": "not_implemented"
-            }
-        }
-    except Exception as e:
-        logger.error("Readiness check failed", error=str(e))
-        raise HTTPException(status_code=503, detail="Service not ready")
+        pong = await redis.ping()
+        if not pong:
+            raise RuntimeError("Redis PING returned falsy")
+        return {"status": "ready", "redis": "ok"}
+    except Exception as exc:
+        logger.error("Readiness check failed", error=str(exc))
+        raise HTTPException(status_code=503, detail=f"not ready: {exc}")

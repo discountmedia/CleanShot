@@ -1,58 +1,71 @@
 version: '3.8'
 
+# =============================================================================
+#  Local development stack — three containers, ADC-authenticated.
+#
+#  Prerequisite (one-time):
+#    1. Install gcloud CLI on your host
+#    2. Run: gcloud auth application-default login
+#    3. That writes credentials to:
+#         Windows:  %APPDATA%\gcloud\application_default_credentials.json
+#         Linux:    ~/.config/gcloud/application_default_credentials.json
+#         Mac:      ~/.config/gcloud/application_default_credentials.json
+#
+#  The compose file mounts that credentials file into each container at
+#  /gcp-creds/adc.json and points GOOGLE_APPLICATION_CREDENTIALS at it.
+#
+#  No JSON service-account key needed. Cloud Run uses the attached SA;
+#  local dev uses your gcloud user creds via ADC.
+# =============================================================================
+
+x-app-env: &app_env
+  GCP_PROJECT_ID: cleanshot-493512
+  GCP_LOCATION: us-central1
+  GEMINI_MODEL: gemini-2.5-flash-image
+  USE_VERTEX_AI: "true"
+  GCS_ORIGINALS_BUCKET: cleanshot-originals-prod
+  GCS_DERIVATIVES_BUCKET: cleanshot-derivatives-prod
+  GCS_REFERENCES_BUCKET: cleanshot-training-df-2026
+  REDIS_URL: redis://redis:6379/0
+  LOG_LEVEL: INFO
+  GOOGLE_APPLICATION_CREDENTIALS: /gcp-creds/application_default_credentials.json
+
 services:
-  # ═══════════════════════════════════════════════════════════════
-  #  CleanShot API - FastAPI server for job submission and progress
-  # ═══════════════════════════════════════════════════════════════
   api:
     build:
       context: .
       dockerfile: Dockerfile.api
     ports:
-      - "8000:8000"
+      - "8000:8080"
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - GCS_SESSIONS_BUCKET=cleanshot-sessions-df-2026
-      - GCS_REFERENCES_BUCKET=cleanshot-training-df-2026
-      - GCP_PROJECT_ID=cleanshot-493512
-      - GEMINI_MODEL=gemini-2.5-flash-image
-      - LOG_LEVEL=INFO
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/cleanshot-493512-a264359e94f8.json
+      <<: *app_env
+      PORT: "8080"
     volumes:
-      # Mount code for hot reload during development
       - ./app:/app/app
-      - ../credentials:/app/credentials:ro
+      # Mount your local ADC creds into the container.
+      # ${APPDATA} works on Windows; on Linux/Mac use $HOME/.config/gcloud
+      - ${APPDATA}/gcloud:/gcp-creds:ro
     depends_on:
       - redis
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    command: >
+      uvicorn app.main:app
+      --host 0.0.0.0 --port 8080
+      --reload
+      --proxy-headers --forwarded-allow-ips='*'
 
-  # ═══════════════════════════════════════════════════════════════
-  #  CleanShot Workers - Arq workers for AI processing
-  # ═══════════════════════════════════════════════════════════════
   worker:
     build:
       context: .
       dockerfile: Dockerfile.worker
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - GCS_SESSIONS_BUCKET=cleanshot-sessions-df-2026
-      - GCS_REFERENCES_BUCKET=cleanshot-training-df-2026
-      - GCP_PROJECT_ID=cleanshot-493512
-      - GEMINI_MODEL=gemini-2.5-flash-image
-      - LOG_LEVEL=INFO
-      - GOOGLE_APPLICATION_CREDENTIALS=/app/credentials/cleanshot-493512-a264359e94f8.json
+      <<: *app_env
     volumes:
-      # Mount code for hot reload during development
       - ./app:/app/app
-      - ../credentials:/app/credentials:ro
+      - ${APPDATA}/gcloud:/gcp-creds:ro
     depends_on:
       - redis
-    # Scale this for "10 simultaneously" - run: docker compose up --scale worker=10
     command: arq app.workers.arq_worker.WorkerSettings
 
-  # ═══════════════════════════════════════════════════════════════
-  #  Redis - Job queue and session storage
-  # ═══════════════════════════════════════════════════════════════
   redis:
     image: redis:7-alpine
     ports:

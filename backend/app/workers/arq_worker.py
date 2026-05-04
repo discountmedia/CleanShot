@@ -1,159 +1,176 @@
 """
-Arq Worker Configuration
-Sets up background job processing for CleanShot enhancement pipeline.
+Arq Worker — single image queue for v1.
+
+Job lifecycle:
+  1. API enqueues 'process_image' with stable _job_id (idempotency)
+  2. Worker reads asset metadata from Redis
+  3. Worker calls Gemini, writes result to derivatives bucket
+  4. Worker updates job:{id} hash with progress at each step
+  5. API's GET /jobs/{id} polls that hash
+
+Splitting into two queues (image + video) happens in Phase 4.5 when
+Veo lands. For v1 launch, one queue is enough.
 """
 
+import time
 import structlog
-from arq import create_pool
+from typing import Optional
+
 from arq.connections import RedisSettings
-from google import genai
+from redis.asyncio import Redis
 
 from app.config import settings
-from app.services.gemini import GeminiService
+from app.services import gemini
 from app.services.storage import StorageService
+from app.services.session import SessionService
 
 
 logger = structlog.get_logger()
 
 
-async def condition_enhancement_job(
-    ctx, 
-    image_gcs_uri: str, 
+# -----------------------------------------------------------------------------
+# Job functions
+# -----------------------------------------------------------------------------
+
+async def process_image(
+    ctx,
+    *,
+    asset_id: str,
+    operation: str,
     enhancement_level: str = "moderate",
-    job_id: str = None
 ):
     """
-    Background job for condition enhancement processing.
-    
+    The single v1 worker function. Currently handles 'enhance';
+    'clean' and 'resize' will be added as additional operation values.
+
     Args:
-        ctx: Arq job context
-        image_gcs_uri: GCS URI of image to process
-        enhancement_level: "light", "moderate", or "heavy"
-        job_id: Unique job identifier for progress tracking
+        ctx: Arq job context (contains 'redis', 'job_id', etc.)
+        asset_id: ID of the asset to process (resolves to GCS URI via Redis)
+        operation: "enhance" (more added later)
+        enhancement_level: "light" | "moderate" | "heavy" (only used for enhance)
     """
-    logger.info("Starting condition enhancement job", 
-                job_id=job_id,
-                image_uri=image_gcs_uri,
-                level=enhancement_level)
-    
+    job_id = ctx["job_id"]
+    redis: Redis = ctx["redis_pool"]
+    session_svc: SessionService = ctx["session_service"]
+    storage_svc: StorageService = ctx["storage_service"]
+
+    log = logger.bind(job_id=job_id, asset_id=asset_id, operation=operation)
+    log.info("Worker picked up job")
+
+    async def _progress(pct: int, msg: str, status: str = "running"):
+        await redis.hset(
+            f"job:{job_id}",
+            mapping={
+                "status": status,
+                "progress": pct,
+                "message": msg,
+                "updated_at": time.time(),
+            },
+        )
+        await redis.expire(f"job:{job_id}", settings.job_ttl_seconds)
+
     try:
-        # Initialize services
-        gemini_client = genai.Client(
-            vertexai=settings.use_vertex_ai,
-            project=settings.gcp_project_id,
-            location=settings.gcp_location
+        await _progress(5, "Loading asset metadata")
+        asset = await session_svc.get_asset(asset_id)
+        if not asset:
+            raise ValueError(f"Asset not found: {asset_id}")
+
+        gcs_uri = asset["gcs_uri"]
+        mime_type = asset.get("mime_type", "image/jpeg")
+
+        await _progress(15, f"Calling Gemini ({operation})")
+
+        if operation == "enhance":
+            image_bytes = await gemini.enhance_image(
+                image_gcs_uri=gcs_uri,
+                mime_type=mime_type,
+                enhancement_level=enhancement_level,
+            )
+        else:
+            raise ValueError(f"Unknown operation: {operation!r}")
+
+        await _progress(80, "Writing result to GCS")
+
+        # Gemini 2.5 Flash Image returns PNG by default
+        derivative_uri = storage_svc.save_derivative(
+            image_data=image_bytes,
+            original_uri=gcs_uri,
+            operation=operation,
+            mime_type="image/png",
         )
-        
-        storage_service = StorageService()
-        gemini_service = GeminiService(
-            client=gemini_client,
-            storage_service=storage_service
-        )
-        
-        # Update job progress: started
-        await ctx['redis'].hset(
+
+        # Final state — frontend stops polling on status in {done, failed}
+        await redis.hset(
             f"job:{job_id}",
             mapping={
-                "status": "processing",
-                "progress": 10,
-                "step": "Initializing enhancement pipeline"
-            }
-        )
-        
-        # Update job progress: AI processing
-        await ctx['redis'].hset(
-            f"job:{job_id}",
-            mapping={
-                "progress": 30,
-                "step": "Calling Gemini 2.5 Flash Image"
-            }
-        )
-        
-        # Perform the enhancement
-        enhanced_uri = await gemini_service.enhance_forklift_condition(
-            image_gcs_uri=image_gcs_uri,
-            enhancement_level=enhancement_level
-        )
-        
-        # Update job progress: completed
-        await ctx['redis'].hset(
-            f"job:{job_id}",
-            mapping={
-                "status": "completed",
+                "status": "done",
                 "progress": 100,
-                "step": "Enhancement complete",
-                "result_uri": enhanced_uri
-            }
+                "message": "Complete",
+                "result_uri": derivative_uri,
+                "updated_at": time.time(),
+            },
         )
-        
-        logger.info("Condition enhancement job completed",
-                    job_id=job_id,
-                    enhanced_uri=enhanced_uri)
-        
-        # Cleanup
-        gemini_client.close()
-        if hasattr(gemini_client, 'aio'):
-            await gemini_client.aio.aclose()
-            
-        return enhanced_uri
-        
-    except Exception as e:
-        logger.error("Condition enhancement job failed",
-                     job_id=job_id,
-                     error=str(e))
-        
-        # Update job progress: failed
-        await ctx['redis'].hset(
+        await redis.expire(f"job:{job_id}", settings.job_ttl_seconds)
+
+        log.info("Job complete", derivative_uri=derivative_uri)
+        return derivative_uri
+
+    except Exception as exc:
+        log.exception("Job failed")
+        await redis.hset(
             f"job:{job_id}",
             mapping={
                 "status": "failed",
-                "progress": 0,
-                "step": f"Error: {str(e)}"
-            }
+                "message": f"Error: {type(exc).__name__}: {exc}",
+                "updated_at": time.time(),
+            },
         )
-        
+        await redis.expire(f"job:{job_id}", settings.job_ttl_seconds)
         raise
 
 
+# -----------------------------------------------------------------------------
+# Lifecycle
+# -----------------------------------------------------------------------------
+
 async def startup(ctx):
-    """Worker startup function - called when worker boots."""
-    logger.info("CleanShot worker starting up")
-    
+    """Initialize per-worker shared state (services, Redis pool, etc.)."""
+    logger.info("Worker starting up")
+    # Build a Redis client for the worker to write progress hashes.
+    # ctx['redis'] is Arq's own pool; we add ours for clarity.
+    ctx["redis_pool"] = Redis.from_url(settings.redis_url, decode_responses=False)
+    ctx["session_service"] = SessionService(ctx["redis_pool"])
+    ctx["storage_service"] = StorageService()
+    # Pre-warm the Gemini client (saves ~150ms on the first job)
+    gemini.get_client()
+    logger.info("Worker ready")
+
 
 async def shutdown(ctx):
-    """Worker shutdown function - called when worker shuts down."""
-    logger.info("CleanShot worker shutting down")
+    logger.info("Worker shutting down")
+    pool: Optional[Redis] = ctx.get("redis_pool")
+    if pool is not None:
+        await pool.aclose()
 
 
-# Arq worker settings
+# -----------------------------------------------------------------------------
+# Arq WorkerSettings
+# -----------------------------------------------------------------------------
+
 class WorkerSettings:
-    """
-    Arq worker configuration for CleanShot.
-    Optimized for bursty workloads with auto-scaling.
-    """
-    
-    # Redis connection
+    """Arq config — pointed at by the Dockerfile.worker CMD."""
+
     redis_settings = RedisSettings.from_dsn(settings.redis_url)
-    
-    # Job functions that workers can execute
-    functions = [
-        condition_enhancement_job,
-    ]
-    
-    # Worker behavior
+
+    functions = [process_image]
+
     on_startup = startup
     on_shutdown = shutdown
-    
-    # Performance settings based on "10 simultaneously" requirement
-    max_jobs = 10  # Process up to 10 jobs simultaneously per worker
-    job_timeout = settings.job_timeout_seconds  # 5 minutes per job
-    keep_result = 3600  # Keep job results for 1 hour
-    
-    # Health check settings
+
+    queue_name = settings.image_queue_name
+    max_jobs = settings.max_jobs_per_worker
+    job_timeout = settings.job_timeout_seconds
+    keep_result = settings.job_ttl_seconds  # 7 days
+    max_tries = 3  # Arq's worker-process retries (separate from SDK retries)
     health_check_interval = 30
-    
-    # Logging
     log_results = True
-    
-    # Queue name for organizing different job types
-    queue_name = "cleanshot:enhancement"

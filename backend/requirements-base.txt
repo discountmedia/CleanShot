@@ -1,21 +1,28 @@
-# ═══════════════════════════════════════════════════════════════════
-#  Shared dependencies — installed in both API and worker venvs
-# ═══════════════════════════════════════════════════════════════════
+# =============================================================================
+#  Shared deps — both API and worker need these
+# =============================================================================
 
-# ─── Google AI / Cloud ────────────────────────────────────────────
-# Pinned per Phase 2 playbook §1.4 — do NOT drift onto vertexai.* modules
-google-genai==1.73.1
-google-cloud-storage==3.10.1
-
-# ─── Config / validation ──────────────────────────────────────────
+# --- Config & validation ---
 pydantic>=2.9,<3
-pydantic-settings>=2.6,<3
-python-dotenv>=1.0,<2
+pydantic-settings>=2.5,<3
 
-# ─── Reliability / observability ──────────────────────────────────
+# --- Logging ---
+structlog>=24.4,<25
+
+# --- Retry primitives ---
 tenacity>=9.0,<10
-structlog>=24.4,<26
 
-# ─── HTTP / Redis ─────────────────────────────────────────────────
-httpx>=0.27,<1
+# --- ID generation (UUIDv7 for sortable session/asset IDs) ---
+uuid6>=2024.1.12
+
+# --- Google Cloud SDKs ---
+# google-genai 1.70.0 specifically; 1.67.0 has a typing-extensions bug under py3.12
+google-genai==1.70.0
+google-cloud-storage>=2.18,<3
+google-auth>=2.35,<3
+
+# --- Redis client (used by both API for /jobs reads and worker via Arq) ---
 redis>=5.2,<6
+
+# --- Job queue (API enqueues jobs, worker consumes them) ---
+arq>=0.26,<1

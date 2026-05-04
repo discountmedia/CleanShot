@@ -16,3 +16,11 @@ venv/
 # Windows
 Thumbs.db
 desktop.ini
+
+# Backups (don't track local backup folders)
+CleanShot_backup_*/
+
+# Test images (large binaries, possibly customer data)
+phase1-archive/output/*.jpg
+phase1-archive/output/*.jpeg
+phase1-archive/output/*.png
