@@ -20,9 +20,24 @@ import type {
 const API_URL = import.meta.env.VITE_API_URL ?? '/api/v1';
 const API_KEY = import.meta.env.VITE_API_KEY ?? '';
 
+export class ApiError extends Error {
+  status: number;
+  detail: string;
+  constructor(status: number, detail: string) {
+    super(`API ${status}: ${detail}`);
+    this.name = 'ApiError';
+    this.status = status;
+    this.detail = detail;
+  }
+}
+
 /**
  * Generic fetch wrapper. Adds X-Api-Key, JSON content-type, and unwraps
- * non-2xx responses into thrown Errors with the server message attached.
+ * non-2xx responses into thrown ApiErrors with the server message attached.
+ *
+ * Reads the response body exactly once as text, then tries to parse JSON
+ * on the way out. Avoids the "body stream already read" pitfall when the
+ * server returns non-JSON error pages.
  */
 async function apiFetch<T>(
   path: string,
@@ -34,32 +49,37 @@ async function apiFetch<T>(
     ...(init.headers ?? {}),
   };
 
-  const response = await fetch(`${API_URL}${path}`, { ...init, headers });
+  let response: Response;
+  try {
+    response = await fetch(`${API_URL}${path}`, { ...init, headers });
+  } catch (err) {
+    // Network-layer failure (CORS, DNS, offline, etc.)
+    throw new ApiError(0, `Network error: ${err instanceof Error ? err.message : String(err)}`);
+  }
+
+  // Read the body once, regardless of status
+  const bodyText = await response.text();
 
   if (!response.ok) {
-    let detail = '';
+    let detail = bodyText;
     try {
-      const body = await response.json();
-      detail = body.detail ?? JSON.stringify(body);
+      const parsed = JSON.parse(bodyText);
+      detail = parsed.detail ?? bodyText;
     } catch {
-      detail = await response.text();
+      // body was not JSON — keep the raw text as detail
     }
     throw new ApiError(response.status, detail || response.statusText);
   }
 
-  // Some endpoints return 204 No Content
-  if (response.status === 204) return undefined as T;
-  return response.json() as Promise<T>;
-}
+  // 204 No Content
+  if (response.status === 204 || bodyText.length === 0) {
+    return undefined as T;
+  }
 
-export class ApiError extends Error {
-  status: number;
-  detail: string;
-  constructor(status: number, detail: string) {
-    super(`API ${status}: ${detail}`);
-    this.name = 'ApiError';
-    this.status = status;
-    this.detail = detail;
+  try {
+    return JSON.parse(bodyText) as T;
+  } catch {
+    throw new ApiError(response.status, `Server returned non-JSON response: ${bodyText.slice(0, 200)}`);
   }
 }
 
@@ -84,13 +104,23 @@ export const api = {
    * Returns the upload Response so callers can inspect status if needed.
    */
   async putToGCS(signedUrl: string, file: File): Promise<void> {
-    const response = await fetch(signedUrl, {
-      method: 'PUT',
-      headers: { 'Content-Type': file.type },
-      body: file,
-    });
+    let response: Response;
+    try {
+      response = await fetch(signedUrl, {
+        method: 'PUT',
+        headers: { 'Content-Type': file.type },
+        body: file,
+      });
+    } catch (err) {
+      throw new ApiError(0, `GCS upload network error: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     if (!response.ok) {
-      throw new ApiError(response.status, `GCS upload failed: ${response.statusText}`);
+      const text = await response.text().catch(() => '');
+      throw new ApiError(
+        response.status,
+        `GCS upload failed: ${response.statusText}${text ? ` — ${text.slice(0, 200)}` : ''}`,
+      );
     }
   },
 
