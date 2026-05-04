@@ -14,3 +14,8 @@
 pyvips>=2.2,<3
 # Pillow as a fallback for formats pyvips is awkward with
 pillow>=11.0,<12
+
+# --- Multi-provider scan SDKs ---
+# Gemini is already in base via google-genai; these add the other two providers
+openai>=1.50,<2
+anthropic>=0.40,<1
