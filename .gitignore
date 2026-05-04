@@ -24,3 +24,16 @@ CleanShot_backup_*/
 phase1-archive/output/*.jpg
 phase1-archive/output/*.jpeg
 phase1-archive/output/*.png
+
+# Frontend (Node.js / Vite / React)
+node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.env.local
+frontend/.env.*.local
+
+# Editor / IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
