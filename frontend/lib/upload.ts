@@ -3,12 +3,13 @@
  *
  * Flow (Phase 3 v3.4 / Phase 4 v4.2):
  *   1. POST /api/v1/assets/upload-url  → backend mints a V4 signed PUT URL
- *   2. Browser PUTs file bytes directly to GCS
+ *      with SignedHeaders=content-type;host
+ *   2. Browser PUTs file bytes directly to GCS, sending the canonical
+ *      Content-Type that the backend used when signing
  *   3. Backend's GCS Object Finalize Pub/Sub notification (Phase 4) triggers
- *      any post-upload pipeline; the frontend just needs the asset_id.
+ *      any post-upload pipeline; the frontend just needs the asset_id
  *
- * Bytes never round-trip through the API service. Large forklift photos
- * (often 8–25 MB raw) would otherwise blow Cloud Run memory at concurrency.
+ * Bytes never round-trip through the API service.
  */
 
 "use client";
@@ -38,15 +39,16 @@ export async function uploadFile(args: {
     mime_type: file.type || "application/octet-stream",
   });
 
-  // 2. PUT directly to GCS. We use XHR rather than fetch() because fetch
-  //    has no upload-progress API in browsers as of 2026; XHR's upload
-  //    .onprogress is the only portable way to drive a progress bar.
+  // 2. PUT directly to GCS via XHR (fetch has no upload-progress API).
+  //    The signed URL was minted with SignedHeaders=content-type;host,
+  //    so we MUST send Content-Type matching the value the backend used
+  //    when signing — otherwise GCS rejects the PUT with a 403 signature
+  //    mismatch. Use minted.mime_type (backend-canonical) rather than
+  //    file.type directly in case the backend normalized it.
   await new Promise<void>((resolve, reject) => {
     const xhr = new XMLHttpRequest();
-    xhr.open("PUT", minted.upload_url, true);
-    for (const [k, v] of Object.entries(minted.upload_headers ?? {})) {
-      xhr.setRequestHeader(k, v);
-    }
+    xhr.open("PUT", minted.signed_put_url, true);
+    xhr.setRequestHeader("Content-Type", minted.mime_type);
 
     xhr.upload.onprogress = (ev) => {
       if (onProgress && ev.lengthComputable) {
@@ -71,7 +73,7 @@ export async function uploadFile(args: {
   return {
     asset_id: minted.asset_id,
     filename: file.name,
-    mime_type: file.type || "application/octet-stream",
+    mime_type: minted.mime_type,
     uploaded_at: new Date().toISOString(),
   };
 }

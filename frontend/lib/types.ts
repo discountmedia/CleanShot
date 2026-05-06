@@ -15,8 +15,9 @@ export type Session = {
 
 export type UploadUrlResponse = {
   asset_id: string;
-  upload_url: string;        // V4 signed PUT URL
-  upload_headers: Record<string, string>;  // headers the browser must send
+  signed_put_url: string;
+  gcs_uri: string;
+  mime_type: string;
   expires_in_seconds: number;
 };
 
