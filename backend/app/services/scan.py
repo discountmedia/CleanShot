@@ -583,9 +583,22 @@ async def scan_image(
     for provider, result in zip(provider_order, raw):
         if isinstance(result, BaseException):
             err_msg = f"{type(result).__name__}: {result}"
+            # Walk the exception cause chain to find the actual underlying error.
+            # APIConnectionError wraps httpx errors which wrap socket errors;
+            # we want to see all of them.
+            cause_chain = []
+            cur = result.__cause__ or result.__context__
+            while cur is not None and len(cause_chain) < 5:
+                cause_chain.append(f"{type(cur).__name__}: {cur}")
+                cur = cur.__cause__ or cur.__context__
             warnings.append(f"{provider} failed: {err_msg}")
-            individual[provider] = {"error": err_msg}
-            logger.warning("Provider failed", provider=provider, error=err_msg)
+            individual[provider] = {"error": err_msg, "cause_chain": cause_chain}
+            logger.warning(
+                "Provider failed",
+                provider=provider,
+                error=err_msg,
+                cause_chain=cause_chain,
+        )
         else:
             successes.append(result)
             # Strip the redundant 'provider' key for the per-provider individual block
