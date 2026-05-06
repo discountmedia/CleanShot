@@ -1,7 +1,7 @@
 """
 Scan Service — Multi-provider artifact detection for AI-generated forklift photos.
 
-Calls Gemini 2.5 Flash, OpenAI gpt-4o, and Anthropic claude-sonnet-4-5 IN PARALLEL
+Calls Gemini 3 Flash, OpenAI gpt-4o, and Anthropic claude-sonnet-4-5 IN PARALLEL
 via asyncio.gather and merges the verdicts via majority vote.
 
 Voting (per Phase 4.5 v2.0 §2.3):
@@ -22,6 +22,10 @@ Auth:
   - OpenAI       : OPENAI_API_KEY     (env var, mounted from Secret Manager on worker pool)
   - Anthropic    : ANTHROPIC_API_KEY  (env var, mounted from Secret Manager on worker pool)
 
+v2.4.1: Gemini lane upgraded to gemini-3-flash-preview (configurable via
+settings.gemini_scan_model so the env var override on Cloud Run takes effect
+without a code change).
+
 Output schema (per Phase 2 v2.4 §2.4) — see _final_envelope() at the bottom.
 """
 
@@ -36,6 +40,7 @@ from typing import Any, Optional
 
 import structlog
 
+from app.config import settings
 from app.services import gemini as gemini_service
 
 
@@ -46,9 +51,13 @@ logger = structlog.get_logger()
 # Model IDs and tuning constants
 # -----------------------------------------------------------------------------
 
-# Gemini scan uses the text/JSON model, NOT settings.gemini_model
-# (which is gemini-2.5-flash-image, the image generation model used for Enhance).
-GEMINI_SCAN_MODEL = "gemini-2.5-flash"
+# Gemini scan model is configured in app.config.settings.gemini_scan_model and
+# read at call time (in _scan_with_gemini) so a Cloud Run env var override
+# takes effect without code changes. v2.4.1 default: gemini-3-flash-preview.
+#
+# OpenAI and Anthropic scan models stay hardcoded for now; promoting them to
+# settings is a follow-up patch (low priority — these only change when we
+# swap providers, which is rare).
 OPENAI_SCAN_MODEL = "gpt-4o"
 ANTHROPIC_SCAN_MODEL = "claude-sonnet-4-5"
 
@@ -198,10 +207,12 @@ Return ONLY a single JSON object matching exactly this shape (no prose, no markd
 # -----------------------------------------------------------------------------
 
 async def _scan_with_gemini(*, image_gcs_uri: str, mime_type: str) -> dict:
-    """Call Gemini 2.5 Flash (text/JSON) with the gs:// URI directly."""
+    """Call Gemini (text/JSON model from settings.gemini_scan_model) with the
+    gs:// URI directly."""
     from google.genai import types as genai_types
 
     client = gemini_service.get_client()
+    model = settings.gemini_scan_model
 
     parts = [
         genai_types.Part.from_uri(file_uri=image_gcs_uri, mime_type=mime_type),
@@ -209,7 +220,7 @@ async def _scan_with_gemini(*, image_gcs_uri: str, mime_type: str) -> dict:
     ]
 
     response = await client.aio.models.generate_content(
-        model=GEMINI_SCAN_MODEL,
+        model=model,
         contents=parts,
         config=genai_types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTIONS,
@@ -220,7 +231,7 @@ async def _scan_with_gemini(*, image_gcs_uri: str, mime_type: str) -> dict:
 
     text = _extract_text_from_genai_response(response)
     if not text:
-        raise RuntimeError("Gemini returned no text content")
+        raise RuntimeError(f"Gemini ({model}) returned no text content")
     return _parse_provider_json(text, provider="gemini")
 
 
@@ -545,6 +556,7 @@ async def scan_image(
         gcs_uri=image_gcs_uri,
         mime_type=mime_type,
         bytes=len(image_bytes),
+        gemini_model=settings.gemini_scan_model,
         openai=openai_available,
         anthropic=anthropic_available,
     )

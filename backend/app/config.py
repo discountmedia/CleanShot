@@ -26,9 +26,24 @@ class Settings(BaseSettings):
     gcp_location: str = Field(default="us-central1")
 
     # --- Gemini ---
-    # GA model ID; the -preview suffix was retired Jan 2026
+    # gemini_model is kept for back-compat with v2.4 callers but is no longer
+    # used by the enhance or scan paths. v2.4.1 introduced separate settings
+    # for each lane below; remove gemini_model in a follow-up after confirming
+    # nothing else in the codebase reads it.
     gemini_model: str = Field(default="gemini-2.5-flash-image")
     use_vertex_ai: bool = Field(default=True)
+
+    # --- v2.4.1: Gemini 3 model selection ---
+    # Enhance lane uses Pro Image (Nano Banana Pro). On NotFound /
+    # PermissionDenied (preview-model decommissioning, project not allowlisted),
+    # the worker falls back to gemini-2.5-flash-image and tags the job with
+    # model_used='flash-2.5' so the result UI can show which model produced it.
+    gemini_enhance_model: str = Field(default="gemini-3-pro-image-preview")
+    gemini_enhance_fallback_model: str = Field(default="gemini-2.5-flash-image")
+
+    # Scan lane: Gemini's text/JSON model used in the triple-provider voting
+    # (alongside OpenAI gpt-4o and Anthropic claude-sonnet-4-5).
+    gemini_scan_model: str = Field(default="gemini-3-flash-preview")
 
     # --- Storage buckets ---
     # Must match the buckets created in Phase 4 setup.

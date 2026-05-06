@@ -7,6 +7,10 @@ No SSE, no WebSocket, no Redis pub/sub on this path.
 v2.4: Adds `scan_result` to the response — structured triple-provider scan output,
 JSON-decoded server-side so the frontend gets an object, not a stringified blob.
 Only populated when operation="scan" and status="done".
+
+v2.4.1: Adds `model_used` to the response — "pro" or "flash-2.5" depending on
+which Gemini Enhance model produced the output. Set by the worker after a
+successful enhance call. Only populated when operation="enhance" and status="done".
 """
 import json
 from typing import Any, Optional
@@ -27,6 +31,7 @@ class JobStatusResponse(BaseModel):
     asset_id_in: Optional[str] = None
     result_uri: Optional[str] = None
     download_url: Optional[str] = None  # signed GET URL for the result, when done
+    model_used: Optional[str] = None    # v2.4.1: "pro" | "flash-2.5" (enhance only)
     scan_result: Optional[dict] = None  # parsed scan output (operation="scan" only)
 
 
@@ -49,6 +54,20 @@ def _parse_scan_result(raw: Any) -> Optional[dict]:
     except (json.JSONDecodeError, TypeError):
         return None
     return decoded if isinstance(decoded, dict) else None
+
+
+def _decode_str(raw: Any) -> Optional[str]:
+    """Coerce a Redis hash value (bytes or str) into Optional[str]."""
+    if raw is None:
+        return None
+    if isinstance(raw, bytes):
+        try:
+            return raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return None
+    if isinstance(raw, str):
+        return raw
+    return str(raw)
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
@@ -85,5 +104,6 @@ async def get_job_status(request: Request, job_id: str) -> JobStatusResponse:
         asset_id_in=job.get("asset_id_in"),
         result_uri=job.get("result_uri"),
         download_url=download_url,
+        model_used=_decode_str(job.get("model_used")),
         scan_result=scan_result,
     )

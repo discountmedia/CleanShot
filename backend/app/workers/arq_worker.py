@@ -3,6 +3,9 @@ Arq Worker — single image queue for v1.
 
 v2.3: Toggleable brand rules in enhance.
 v2.4: Adds 'scan' operation for multi-provider artifact detection.
+v2.4.1: Enhance unpacks (image_bytes, model_used) tuple from gemini.enhance_image
+        and records model_used on the job hash so the result UI can show
+        whether Pro Image or the Flash 2.5 fallback produced the output.
 
 Job lifecycle:
   1. API enqueues 'process_image' with stable _job_id (idempotency)
@@ -82,7 +85,10 @@ async def process_image(
         if operation == "enhance":
             await _progress(15, "Calling Gemini (enhance)")
 
-            image_bytes = await gemini.enhance_image(
+            # v2.4.1: enhance_image returns (bytes, model_label) where
+            # model_label is "pro" (gemini-3-pro-image-preview succeeded) or
+            # "flash-2.5" (Pro Image was unavailable, fell back to GA Flash).
+            image_bytes, model_used = await gemini.enhance_image(
                 image_gcs_uri=gcs_uri,
                 mime_type=mime_type,
                 enhancement_level=enhancement_level,
@@ -107,11 +113,14 @@ async def process_image(
                     "progress": 100,
                     "message": "Complete",
                     "result_uri": derivative_uri,
+                    "model_used": model_used,
                     "updated_at": time.time(),
                 },
             )
             await redis.expire(f"job:{job_id}", settings.job_ttl_seconds)
-            log.info("Enhance job complete", derivative_uri=derivative_uri)
+            log.info("Enhance job complete",
+                     derivative_uri=derivative_uri,
+                     model_used=model_used)
             return derivative_uri
 
         elif operation == "scan":

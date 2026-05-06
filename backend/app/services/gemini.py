@@ -12,14 +12,12 @@ v2.3 additions:
     rust removal, realism guardrail to avoid over-restoration
   - Per-photo extra_instructions for edge cases
 
-v2.5 hardening (after rear-→-front fabrication failure mode in production):
-  - PRESERVATION RULES moved to TOP of prompt (LLMs weight early instructions
-    more heavily; brand rules previously dominated)
-  - Anti-fabrication clause added explicitly: do not invent missing parts
-  - Every brand rule gated with "if visible in the source photo" — a rear-view
-    photo with no forks no longer triggers fork-paint hallucination
-  - Explicit perspective-lock: forbids rotation, mirror, angle change
-  - Temperature dropped from 0.3 to 0.1 for stricter source adherence
+v2.4.1 additions:
+  - Gemini 3 cutover: Enhance defaults to gemini-3-pro-image-preview
+  - On NotFound / PermissionDenied (preview model decommissioned, project not
+    allowlisted), automatically falls back to gemini-2.5-flash-image
+  - enhance_image() now returns (bytes, model_label) so the worker can
+    record model_used on the job hash for UI display
 
 Auth: Application Default Credentials. On Cloud Run this is the attached SA.
 Locally, run `gcloud auth application-default login` once and mount the creds
@@ -27,7 +25,7 @@ into the docker-compose container.
 """
 
 import structlog
-from typing import Optional, List
+from typing import Optional, List, Tuple
 
 from google import genai
 from google.genai import types as genai_types
@@ -65,7 +63,9 @@ def get_client() -> genai.Client:
             "Gemini client initialized",
             project=settings.gcp_project_id,
             location=settings.gcp_location,
-            model=settings.gemini_model,
+            enhance_model=settings.gemini_enhance_model,
+            enhance_fallback_model=settings.gemini_enhance_fallback_model,
+            scan_model=settings.gemini_scan_model,
         )
     return _client
 
@@ -74,63 +74,41 @@ def get_client() -> genai.Client:
 # Prompt construction (modular — brand rules are toggleable per-request)
 # -----------------------------------------------------------------------------
 
-# v2.5: Preservation comes FIRST. LLMs weight early instructions more heavily,
-# and the previous prompt order (brand rules first, preservation last) caused
-# the fork-paint rule to override perspective preservation, producing
-# rear-view-→-front-view fabrications.
-
-PRESERVATION_RULES = (
-    "PRIMARY DIRECTIVE — Preserve the source photograph exactly:\n"
-    "- Do NOT change the viewing angle, perspective, or orientation. "
-    "If the source shows the REAR of the forklift, the output must show the rear. "
-    "If the source shows a SIDE, the output must show that same side. "
-    "Do not rotate, flip, mirror, or reconstruct the unit from a different angle.\n"
-    "- Do NOT add, remove, or replace parts that are not visible in the source. "
-    "If the source has no forks visible, do not draw forks. "
-    "If the source has no operator cage visible, do not draw one. "
-    "Restore only what is already in the photo.\n"
-    "- Preserve the exact forklift model, attachments, decals, manufacturer "
-    "branding, and proportions. Do not substitute the unit for a different model.\n"
-    "- Keep the background, lighting direction, and shadows consistent with the "
-    "source photo."
-)
+# Always-on rules. These keep the AI from generating a fake-looking forklift
+# or fundamentally changing the unit. Not exposed to end-users.
 
 REALISM_GUARDRAIL = (
     "Realism guardrail: the forklift must still look like a realistic used unit "
-    "the customer will receive. Do NOT make it appear factory-new unless the "
-    "source photo already shows a near-new unit. Some honest patina and age is "
-    "acceptable and preferred over a fake-looking pristine result."
+    "the customer will receive. Do NOT make it appear factory-new unless the source "
+    "photo already shows a near-new unit. Some honest patina and age is acceptable "
+    "and preferred over a fake-looking pristine result."
+)
+
+PRESERVATION_RULES = (
+    "Preserve the exact forklift model, attachments, decals, and overall proportions. "
+    "Match the original perspective and lighting. Keep the background unchanged."
 )
 
 
-# Toggleable Discount Forklift brand rules.
-# v2.5: Every rule is gated with "if visible in the source." This is the
-# critical change that prevents the fork-paint rule from forcing a perspective
-# flip when no forks are visible in the source.
+# Toggleable Discount Forklift brand rules. Default on, end-user can disable
+# any individual rule per-photo if Gemini repeatedly produces bad output.
 
 FORK_PAINT_RULE = (
-    "If — and only if — the lifting forks are clearly visible in the source "
-    "photo, paint them red with bright yellow tips. The paint should look "
-    "freshly applied but not unrealistically perfect. "
-    "If the forks are not visible (e.g., the photo shows the rear or a side "
-    "view that does not show the forks), do NOT add or fabricate them — "
-    "leave the photo as-is."
+    "Forks must be painted red with yellow tips. If the forks are unpainted, rusted, "
+    "scratched, or a different color, repaint them red with bright yellow tips. "
+    "The paint should look freshly applied but not unrealistically perfect."
 )
 
 TIRE_SHINE_RULE = (
-    "If tires are clearly visible in the source photo, give them a slight "
-    "wet/shiny sheen as if recently tire-dressed. "
-    "EXCEPTION: if the visible tires are cushion-style (solid rubber, no tread "
-    "pattern) or marked non-marking (typically white or grey), keep them matte. "
-    "Do NOT add shine to cushion or non-marking tires. "
-    "If no tires are visible in the source photo, do not modify or add any."
+    "Tires should look freshly cleaned with a slight wet/shiny sheen, as if recently "
+    "tire-dressed. IMPORTANT EXCEPTION: if the tires are cushion-style (solid rubber, "
+    "no tread pattern) or marked non-marking (typically white or grey), keep them matte. "
+    "Do NOT add shine to cushion or non-marking tires."
 )
 
 RUST_REMOVAL_RULE = (
-    "Clean up rust, corrosion, scratches, chipped paint, and minor dents that "
-    "are visible on body panels in the source photo. "
-    "Do not over-restore — the realism guardrail above takes priority. "
-    "Do not invent surfaces or panels that are not visible in the source."
+    "Clean up rust, corrosion, scratches, chipped paint, and minor dents on body panels. "
+    "Do not over-restore — the realism guardrail above takes priority over this rule."
 )
 
 
@@ -138,21 +116,18 @@ RUST_REMOVAL_RULE = (
 
 LEVEL_INSTRUCTIONS = {
     "light": (
-        "Light cleanup pass: remove surface dust, dirt, and minor scuffs that "
-        "are visible in the source. Leave honest wear visible — the unit "
-        "should still look used."
+        "Light cleanup pass: remove surface dust, dirt, and minor scuffs. "
+        "Leave honest wear visible — the unit should still look used."
     ),
     "moderate": (
-        "Moderate restoration: clean, repaint where needed (only on visible "
-        "surfaces), and polish to a presentable dealer-lot condition. The unit "
-        "should look well-maintained but clearly used."
+        "Moderate restoration: clean, repaint where needed, and polish to a "
+        "presentable dealer-lot condition. The unit should look well-maintained "
+        "but clearly used."
     ),
     "heavy": (
         "Heavy restoration: bring the unit close to showroom condition while "
-        "respecting the realism guardrail and preservation directive above. "
-        "Remove most visible wear, but the result must still look like a "
-        "real used forklift photographed from the same angle, not a "
-        "factory-new replacement."
+        "respecting the realism guardrail. Remove most visible wear, but the "
+        "result should still look like a real used forklift, not factory-new."
     ),
 }
 
@@ -164,22 +139,9 @@ def build_prompt(
     apply_rust_removal: bool = True,
     extra_instructions: Optional[str] = None,
 ) -> str:
-    """
-    Assemble a Gemini prompt from level + brand toggles + per-photo extras.
-
-    v2.5 ordering:
-      1. Role + preservation directive (highest weight)
-      2. Realism guardrail
-      3. Intensity level
-      4. Toggleable brand styling rules (each gated 'if visible')
-      5. Optional per-photo extras
-    """
+    """Assemble a Gemini prompt from level + brand toggles + per-photo extras."""
     parts = [
-        "You are restoring a forklift photograph for a dealership listing. "
-        "The goal is to make the EXISTING photo look more presentable, "
-        "NOT to generate an idealized replacement image.",
-        PRESERVATION_RULES,
-        REALISM_GUARDRAIL,
+        "You are restoring a forklift photograph for a dealership listing.",
         LEVEL_INSTRUCTIONS.get(enhancement_level, LEVEL_INSTRUCTIONS["moderate"]),
     ]
 
@@ -194,10 +156,12 @@ def build_prompt(
 
     if rules:
         parts.append(
-            "Brand styling rules — each applies only if the relevant feature is "
-            "actually visible in the source photo:\n"
-            + "\n".join(f"- {r}" for r in rules)
+            "Brand styling rules:\n" + "\n".join(f"- {r}" for r in rules)
         )
+
+    # Always-on rules (cannot be disabled by end-users)
+    parts.append(REALISM_GUARDRAIL)
+    parts.append(PRESERVATION_RULES)
 
     # Optional per-photo additions
     if extra_instructions:
@@ -213,6 +177,36 @@ def build_prompt(
 # Public API
 # -----------------------------------------------------------------------------
 
+# Heuristic: the SDK doesn't expose a clean "model unavailable" exception class
+# distinct from transient errors, so we match on the error text. These are the
+# substrings that indicate the model itself is the problem (vs network/quota).
+# Transient errors are already handled by SDK retry; if we see them here it's
+# a real failure and we shouldn't silently downgrade to the fallback model.
+_FALLBACK_TRIGGERS = (
+    "not found",
+    "404",
+    "permission",
+    "permission_denied",
+    "permissiondenied",
+    "403",
+    "not allowed",
+    "is not available",
+    "does not exist",
+    "is not supported",
+)
+
+
+def _model_label(model_id: str) -> str:
+    """Compact label for the job-result UI: 'pro' | 'flash-2.5' | <model_id>."""
+    if "pro-image" in model_id:
+        return "pro"
+    if "flash-image" in model_id:
+        return "flash-2.5"
+    # Future-proofing: if the model name changes, just return it as-is so the
+    # frontend at least shows something accurate.
+    return model_id
+
+
 async def enhance_image(
     image_gcs_uri: str,
     mime_type: str,
@@ -222,9 +216,13 @@ async def enhance_image(
     apply_tire_shine: bool = True,
     apply_rust_removal: bool = True,
     extra_instructions: Optional[str] = None,
-) -> bytes:
+) -> Tuple[bytes, str]:
     """
-    Run Gemini 2.5 Flash Image enhance on a forklift image.
+    Run Gemini enhance on a forklift image.
+
+    v2.4.1: tries settings.gemini_enhance_model (Pro Image) first; on
+    NotFound / PermissionDenied (typically preview-model decommissioning or
+    project not allowlisted), falls back to settings.gemini_enhance_fallback_model.
 
     Args:
         image_gcs_uri: gs://bucket/path of the source image
@@ -232,19 +230,18 @@ async def enhance_image(
         enhancement_level: "light" | "moderate" | "heavy"
         reference_uris: optional list of reference image GCS URIs (max 2 used)
         apply_fork_paint: include the red-forks-with-yellow-tips brand rule
-        apply_tire_shine: include the wet-look-tire brand rule (auto-skips
-            cushion/non-marking tires regardless)
+        apply_tire_shine: include the wet-look-tire brand rule
         apply_rust_removal: include the rust/scratch cleanup rule
-        extra_instructions: optional per-photo prompt addition (max 1000 chars,
-            length-validated upstream in the API layer)
+        extra_instructions: optional per-photo prompt addition
 
     Returns:
-        Raw bytes of the generated image (caller decides where to write).
+        (image_bytes, model_label) — model_label is "pro" or "flash-2.5".
+        The worker writes model_label onto the job hash so the result UI can
+        show which model produced the output.
 
     Raises:
-        ValueError if Gemini returns no image (e.g. content filter, prompt issue).
+        ValueError if both primary and fallback models fail to return an image.
     """
-    client = get_client()
     prompt = build_prompt(
         enhancement_level=enhancement_level,
         apply_fork_paint=apply_fork_paint,
@@ -253,7 +250,68 @@ async def enhance_image(
         extra_instructions=extra_instructions,
     )
 
-    # Build the contents list using the typed SDK helpers (cleaner than dicts).
+    primary = settings.gemini_enhance_model
+    fallback = settings.gemini_enhance_fallback_model
+
+    try:
+        image_bytes = await _generate_with_model(
+            model=primary,
+            image_gcs_uri=image_gcs_uri,
+            mime_type=mime_type,
+            prompt=prompt,
+            reference_uris=reference_uris,
+            level=enhancement_level,
+            apply_fork_paint=apply_fork_paint,
+            apply_tire_shine=apply_tire_shine,
+            apply_rust_removal=apply_rust_removal,
+            has_extras=bool(extra_instructions),
+        )
+        return image_bytes, _model_label(primary)
+    except Exception as exc:
+        msg = str(exc).lower()
+        is_unavailable = any(s in msg for s in _FALLBACK_TRIGGERS)
+        if not is_unavailable or primary == fallback:
+            # Either it's a transient/real error (re-raise so the worker fails
+            # loudly), or the fallback IS the primary (no point retrying).
+            raise
+
+        logger.warning(
+            "Primary enhance model unavailable; falling back",
+            primary=primary,
+            fallback=fallback,
+            error=str(exc),
+        )
+        image_bytes = await _generate_with_model(
+            model=fallback,
+            image_gcs_uri=image_gcs_uri,
+            mime_type=mime_type,
+            prompt=prompt,
+            reference_uris=reference_uris,
+            level=enhancement_level,
+            apply_fork_paint=apply_fork_paint,
+            apply_tire_shine=apply_tire_shine,
+            apply_rust_removal=apply_rust_removal,
+            has_extras=bool(extra_instructions),
+        )
+        return image_bytes, _model_label(fallback)
+
+
+async def _generate_with_model(
+    *,
+    model: str,
+    image_gcs_uri: str,
+    mime_type: str,
+    prompt: str,
+    reference_uris: Optional[List[str]],
+    level: str,
+    apply_fork_paint: bool,
+    apply_tire_shine: bool,
+    apply_rust_removal: bool,
+    has_extras: bool,
+) -> bytes:
+    """The actual generate_content call. Extracted so the fallback path can reuse it."""
+    client = get_client()
+
     parts: list = [
         genai_types.Part.from_uri(file_uri=image_gcs_uri, mime_type=mime_type),
     ]
@@ -266,25 +324,23 @@ async def enhance_image(
 
     logger.info(
         "Calling Gemini",
-        model=settings.gemini_model,
-        level=enhancement_level,
+        model=model,
+        level=level,
         image_uri=image_gcs_uri,
         reference_count=len(reference_uris) if reference_uris else 0,
         fork_paint=apply_fork_paint,
         tire_shine=apply_tire_shine,
         rust_removal=apply_rust_removal,
-        has_extras=bool(extra_instructions),
+        has_extras=has_extras,
     )
 
     response = await client.aio.models.generate_content(
-        model=settings.gemini_model,
+        model=model,
         contents=parts,
         config=genai_types.GenerateContentConfig(
             # Image-only response; no text. Use the Modality enum, not strings.
             response_modalities=[genai_types.Modality.IMAGE],
-            # v2.5: Dropped from 0.3 → 0.1. Stricter adherence to the
-            # preservation directive; less creative drift.
-            temperature=0.1,
+            temperature=0.3,  # lower = more deterministic, less drift
         ),
     )
 
@@ -297,10 +353,10 @@ async def enhance_image(
                 str(c.finish_reason) for c in response.candidates if c.finish_reason
             ]
         raise ValueError(
-            f"Gemini returned no image. finish_reasons={finish_reasons}"
+            f"Gemini ({model}) returned no image. finish_reasons={finish_reasons}"
         )
 
-    logger.info("Gemini returned image", bytes=len(image_bytes))
+    logger.info("Gemini returned image", model=model, bytes=len(image_bytes))
     return image_bytes
 
 
@@ -312,7 +368,7 @@ def _extract_first_image(response) -> Optional[bytes]:
     """
     Pull raw image bytes out of a generate_content response.
 
-    Response shape (Gemini 2.5 Flash Image):
+    Response shape (Gemini 2.5 Flash Image / Gemini 3 Pro Image):
       response.candidates[0].content.parts[*].inline_data.data    # bytes
     """
     if not response.candidates:
