@@ -31,8 +31,12 @@ export default function JobPage({
         {job && (
           <p className="text-[11px] uppercase tracking-label text-ink-dim">
             Operation: <span className="text-ink">{job.operation}</span>
-            <span className="mx-2 text-ink-faint">·</span>
-            Created: <span className="text-ink">{new Date(job.created_at).toLocaleString()}</span>
+            {job.created_at && (
+              <>
+                <span className="mx-2 text-ink-faint">·</span>
+                Created: <span className="text-ink">{new Date(job.created_at).toLocaleString()}</span>
+              </>
+            )}
           </p>
         )}
       </header>
@@ -43,11 +47,11 @@ export default function JobPage({
         isPolling={polling.isPolling}
       />
 
-      {job?.status === "succeeded" && job.operation === "enhance" && (
+      {job?.status === "done" && job.operation === "enhance" && (
         <EnhanceResult job={job} />
       )}
 
-      {job?.status === "succeeded" && job.operation === "scan" && (
+      {job?.status === "done" && job.operation === "scan" && (
         <div className="rounded border border-line bg-surface-card p-4">
           <p className="text-sm text-ink">
             Scan result available — open the Scan tab to see the full panel.
@@ -61,7 +65,7 @@ export default function JobPage({
         </div>
       )}
 
-      {job?.status === "succeeded" && job.operation === "resize" && (
+      {job?.status === "done" && job.operation === "resize" && (
         <div className="rounded border border-line bg-surface-card p-4">
           <p className="text-[11px] uppercase tracking-label text-ink-muted">
             Resize complete · result URI:

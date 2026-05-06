@@ -80,5 +80,5 @@ export function useJobPolling(job_id: string | null): PollingState {
 }
 
 function isTerminal(status: Job["status"]): boolean {
-  return status === "succeeded" || status === "failed";
+  return status === "done" || status === "failed";
 }

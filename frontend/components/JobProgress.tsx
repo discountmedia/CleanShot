@@ -47,9 +47,9 @@ export function JobProgress({ job, error, isPolling }: Props) {
 
 function statusLabel(status: Job["status"]): string {
   switch (status) {
-    case "queued":    return "Queued";
-    case "running":   return "Running";
-    case "succeeded": return "Done";
-    case "failed":    return "Failed";
+    case "queued":  return "Queued";
+    case "running": return "Running";
+    case "done":    return "Done";
+    case "failed":  return "Failed";
   }
 }

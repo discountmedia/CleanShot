@@ -151,14 +151,26 @@ export default function ResizePage() {
           error={polling.error}
           isPolling={polling.isPolling}
         />
-        {polling.job?.status === "succeeded" && polling.job.result_uri && (
-          <div className="rounded border border-line bg-surface-card p-4">
+        {polling.job?.status === "done" && polling.job.download_url && (
+          <div className="space-y-3 rounded border border-line bg-surface-card p-4">
             <p className="text-[11px] uppercase tracking-label text-ink-muted">
-              Done — preview at:
+              Done — preview:
             </p>
-            <code className="mt-2 block break-all rounded border border-line-subtle bg-surface-raised px-2 py-1 text-[11px] text-ink">
-              {polling.job.result_uri}
-            </code>
+            <div className="overflow-hidden rounded border border-line-subtle bg-surface-raised">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={polling.job.download_url}
+                alt="Resized output"
+                className="h-auto w-full"
+              />
+            </div>
+            <a
+              href={polling.job.download_url}
+              download
+              className="inline-block rounded bg-df-red px-4 py-2 text-[11px] font-semibold uppercase tracking-label-loose text-white hover:bg-df-red-700"
+            >
+              Download
+            </a>
           </div>
         )}
       </div>

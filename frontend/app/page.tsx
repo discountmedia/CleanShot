@@ -40,7 +40,7 @@ export default function EnhancePage() {
           isPolling={polling.isPolling}
         />
 
-        {job && job.status === "succeeded" && job.operation === "enhance" && (
+        {job && job.status === "done" && job.operation === "enhance" && (
           <EnhanceResult job={job} />
         )}
       </div>

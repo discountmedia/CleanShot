@@ -15,9 +15,9 @@ export type Session = {
 
 export type UploadUrlResponse = {
   asset_id: string;
-  signed_put_url: string;
-  gcs_uri: string;
-  mime_type: string;
+  signed_put_url: string;     // V4 signed PUT URL with SignedHeaders=content-type;host
+  gcs_uri: string;            // gs://bucket/path/to/asset.bin
+  mime_type: string;          // canonical Content-Type the URL was signed with
   expires_in_seconds: number;
 };
 
@@ -121,7 +121,7 @@ export type ResizeRequest = {
 export type JobStatus =
   | "queued"
   | "running"
-  | "succeeded"
+  | "done"
   | "failed";
 
 export type JobOperation = "enhance" | "scan" | "resize";
@@ -130,11 +130,16 @@ export type JobOperation = "enhance" | "scan" | "resize";
  * Job hash as returned by GET /api/v1/jobs/{id}.
  *
  * Polymorphic on `operation`:
- *  - enhance jobs carry result_uri (gs:// path) and model_used
+ *  - enhance jobs carry result_uri (gs:// path), download_url (signed HTTP),
+ *    and (when set) model_used
  *  - scan jobs carry scan_result (parsed ScanResult)
- *  - resize jobs carry result_uri only
+ *  - resize jobs carry result_uri + download_url
  *
- * The frontend reads whichever field is present for the job type.
+ * The frontend reads whichever field is present for the job type. For image
+ * display, ALWAYS prefer download_url over result_uri — download_url is a
+ * pre-signed HTTPS URL (15 min TTL) that the browser can use directly,
+ * whereas result_uri is the gs:// path and would need a separate
+ * /api/v1/assets/{id}/preview-url call to become usable.
  */
 export type Job = {
   job_id: string;
@@ -143,12 +148,13 @@ export type Job = {
   progress: number;               // 0-100
   message: string;
   asset_id_in: string;
-  created_at: string;             // ISO 8601
-  updated_at: string;
+  created_at?: string;            // ISO 8601 (not always present in response)
+  updated_at?: string;
   // operation-specific:
-  result_uri?: string;            // enhance, resize
+  result_uri?: string | null;     // enhance, resize: gs:// path
+  download_url?: string | null;   // enhance, resize: pre-signed HTTPS GET URL
   model_used?: EnhanceModelUsed;  // enhance only
-  scan_result?: ScanResult;       // scan only
+  scan_result?: ScanResult | null;// scan only
   error?: string;
 };
 
