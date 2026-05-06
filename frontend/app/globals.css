@@ -1,0 +1,40 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  @apply bg-surface-base text-ink antialiased;
+  font-family: theme("fontFamily.sans");
+  font-feature-settings: "ss01", "ss02", "cv01", "cv11"; /* JetBrains Mono stylistic sets */
+}
+
+/* Focus rings in DF red — replaces Tailwind's blue default */
+:focus-visible {
+  @apply outline-none ring-2 ring-df-red ring-offset-2;
+  --tw-ring-offset-color: #000000;
+}
+
+/* Hide spinner buttons on number inputs (Resize tab) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+}
+
+/* Selection color — subtle red tint to match brand */
+::selection {
+  background: rgba(225, 29, 44, 0.35);
+  color: #ffffff;
+}
