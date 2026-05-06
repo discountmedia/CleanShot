@@ -151,10 +151,14 @@ export type Job = {
   created_at?: string;            // ISO 8601 (not always present in response)
   updated_at?: string;
   // operation-specific:
-  result_uri?: string | null;     // enhance, resize: gs:// path
-  download_url?: string | null;   // enhance, resize: pre-signed HTTPS GET URL
-  model_used?: EnhanceModelUsed;  // enhance only
-  scan_result?: ScanResult | null;// scan only
+  result_uri?: string | null;        // enhance, resize: gs:// path
+  download_url?: string | null;      // enhance, resize: pre-signed HTTPS GET URL
+  result_asset_id?: string | null;   // enhance, resize: NEW in v2.4.3 — derivative
+                                     //   registered as a first-class asset for
+                                     //   downstream operations (scan, further resize)
+                                     //   without re-upload. Absent on pre-2.4.3 jobs.
+  model_used?: EnhanceModelUsed;     // enhance only
+  scan_result?: ScanResult | null;   // scan only
   error?: string;
 };
 

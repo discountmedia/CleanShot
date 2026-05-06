@@ -12,19 +12,22 @@ type Props = {
  * Renders the final Enhance output.
  *
  * Backend's job hash carries `download_url` as a pre-signed HTTPS GET URL
- * (15-min TTL, content-disposition=attachment baked in for the download
- * button). We use it directly as the <img src> and as the download <a href>.
+ * (15-min TTL, content-disposition=attachment). We use it directly as the
+ * <img src> and as the download <a href> — no preview-url roundtrip needed.
  *
- * If the URL expires while the user is still on the page (sat idle 15+ min),
- * the cached image stays visible but the download button will fail. The
- * escape hatch is the Permalink — navigating to /jobs/[id] re-polls the
- * backend and gets a fresh download_url.
+ * "Scan Result" handoff (after Phase 2 v2.4.3):
+ *   The worker now registers each derivative as a first-class asset and
+ *   returns its asset_id on the job hash as `result_asset_id`. We just
+ *   navigate to /scan with that id and the auto-submit flag — the Scan
+ *   page picks both up on mount and kicks off the job. No re-upload, no
+ *   client-side byte shuffling.
  *
- * Note: there's no "Scan this image" button here. The backend's enhance
- * derivative is a file in the bucket, NOT a registered asset (no separate
- * asset_id is minted). To scan the result, the user would re-upload it on
- * the Scan tab. Add a "scan derivative" feature when the backend registers
- * derivative assets with their own asset_id.
+ *   If `result_asset_id` is absent (running against a pre-2.4.3 backend),
+ *   the button is hidden — the rest of the result UI works fine. This
+ *   means the frontend can deploy ahead of the backend without breaking.
+ *
+ * Permalink: /jobs/[id] re-polls the backend, so an expired download_url
+ * can be refreshed by navigating there.
  */
 export function EnhanceResult({ job }: Props) {
   if (job.status === "failed") {
@@ -37,6 +40,7 @@ export function EnhanceResult({ job }: Props) {
   if (job.status !== "done") return null;
 
   const previewUrl = job.download_url ?? null;
+  const resultAssetId = job.result_asset_id ?? null;
 
   return (
     <section className="space-y-4 rounded border border-line bg-surface-card p-5">
@@ -71,6 +75,14 @@ export function EnhanceResult({ job }: Props) {
           >
             Download
           </a>
+        )}
+        {resultAssetId && (
+          <Link
+            href={`/scan?asset=${encodeURIComponent(resultAssetId)}&auto=1`}
+            className="rounded border border-line bg-surface-raised px-4 py-2 text-[11px] font-semibold uppercase tracking-label-loose text-ink hover:border-df-red hover:text-df-red"
+          >
+            Scan Result
+          </Link>
         )}
         <Link
           href={`/jobs/${job.job_id}`}
