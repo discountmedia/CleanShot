@@ -1,0 +1,57 @@
+name: Deploy Image Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/worker-image/**'
+      - '.github/workflows/deploy-worker-image.yml'
+
+permissions:
+  id-token: write
+  contents: read
+
+env:
+  PROJECT_ID: cleanshot-493512
+  REGION: us-central1
+  REGISTRY: us-central1-docker.pkg.dev
+  IMAGE: us-central1-docker.pkg.dev/cleanshot-493512/cleanshot/worker-image
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Authenticate to GCP via WIF
+        uses: google-github-actions/auth@v3
+        with:
+          workload_identity_provider: 'projects/387208973244/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+
+      - uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker $REGISTRY --quiet
+
+      - name: Build and push
+        run: |
+          docker build \
+            -t $IMAGE:${{ github.sha }} \
+            -t $IMAGE:latest \
+            -f apps/worker-image/Dockerfile \
+            .
+          docker push $IMAGE:${{ github.sha }}
+          docker push $IMAGE:latest
+
+      - name: Deploy Worker Pool
+        run: |
+          gcloud run worker-pools deploy forklift-worker-image \
+            --image=$IMAGE:${{ github.sha }} \
+            --region=$REGION \
+            --network=default \
+            --subnet=cloud-run-subnet \
+            --service-account=forklift-worker-image@$PROJECT_ID.iam.gserviceaccount.com \
+            --set-env-vars=GCP_PROJECT_ID=$PROJECT_ID \
+            --cpu=2 \
+            --memory=1Gi \
+            --quiet

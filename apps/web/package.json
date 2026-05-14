@@ -1,0 +1,30 @@
+{
+  "name": "web",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev":   "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint":  "next lint",
+    "test":  "vitest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "next":      "16.2.6",
+    "react":     "19.2.5",
+    "react-dom": "19.2.5",
+    "better-auth": "1.x"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss":   "4.1.x",
+    "tailwindcss":            "4.1.x",
+    "typescript":             "5.9.x",
+    "@types/node":            "24.x",
+    "@types/react":           "19.x",
+    "@types/react-dom":       "19.x",
+    "vitest":                 "4.1.x",
+    "@testing-library/react": "16.x",
+    "@playwright/test":       "1.59.x"
+  }
+}

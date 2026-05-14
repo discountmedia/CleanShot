@@ -1,0 +1,27 @@
+[project]
+name = "cleanshot-api"
+version = "0.1.0"
+description = "CleanShot FastAPI backend"
+requires-python = ">=3.12"
+
+dependencies = [
+  "fastapi==0.136.1",
+  "pydantic>=2.9",
+  "uvicorn[standard]>=0.34",
+  "google-genai[aiohttp]==1.75.0",
+  "google-cloud-tasks>=2.16",
+  "google-cloud-storage>=2.18",
+  "google-auth>=2.38",
+  "openai>=1.68",
+  "anthropic>=0.51",
+  "pyvips>=2.2",
+  "asyncpg>=0.30",
+  "python-jose[cryptography]>=3.3",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP"]

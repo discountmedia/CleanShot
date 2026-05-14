@@ -1,0 +1,14 @@
+[project]
+name = "cleanshot-worker-image"
+version = "0.1.0"
+description = "CleanShot image processing worker (Arq + Cloud Run Worker Pool)"
+requires-python = ">=3.12"
+
+dependencies = [
+  "arq>=0.26",
+  "google-genai[aiohttp]==1.75.0",
+  "google-cloud-storage>=2.18",
+  "google-auth>=2.38",
+  "pyvips>=2.2",
+  "asyncpg>=0.30",
+]

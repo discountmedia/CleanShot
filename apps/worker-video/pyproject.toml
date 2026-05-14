@@ -1,0 +1,13 @@
+[project]
+name = "cleanshot-worker-video"
+version = "0.1.0"
+description = "CleanShot video worker — Veo 3.1 (Phase 4.5)"
+requires-python = ">=3.12"
+
+dependencies = [
+  "arq>=0.26",
+  "google-genai[aiohttp]==1.75.0",
+  "google-cloud-storage>=2.18",
+  "google-auth>=2.38",
+  "asyncpg>=0.30",
+]

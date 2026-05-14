@@ -1,0 +1,33 @@
+/* Tailwind v4: single @import replaces @tailwind base/components/utilities */
+@import "tailwindcss";
+
+/* All design tokens — no tailwind.config.js in v4 */
+@theme {
+  --color-brand-900:   #1A2F5E;
+  --color-brand-700:   #1F4E9B;
+  --color-brand-500:   #2E75B6;
+  --color-brand-100:   #EBF3FB;
+
+  --color-success-900: #1E4620;
+  --color-success-100: #D6EFD8;
+
+  --color-warn-900:    #7F4F00;
+  --color-warn-100:    #FFF3CD;
+
+  --color-error-900:   #6B1A1A;
+  --color-error-100:   #FDECEA;
+
+  --color-surface:     #F8FAFC;
+  --color-border:      #E2E8F0;
+
+  --font-sans:   'Inter', system-ui, sans-serif;
+  --font-mono:   'JetBrains Mono', monospace;
+
+  --radius-card: 0.75rem;
+  --radius-pill: 9999px;
+}
+
+@utility focus-ring {
+  outline: 2px solid var(--color-brand-500);
+  outline-offset: 2px;
+}

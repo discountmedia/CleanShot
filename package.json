@@ -1,0 +1,19 @@
+{
+  "name": "cleanshot",
+  "private": true,
+  "version": "0.1.0",
+  "description": "CleanShot — AI-powered forklift image processing platform",
+  "engines": {
+    "node": ">=24.0.0",
+    "pnpm": ">=11.0.0"
+  },
+  "packageManager": "pnpm@11.0.8",
+  "scripts": {
+    "dev:web": "pnpm --filter web dev",
+    "build:web": "pnpm --filter web build",
+    "typecheck": "pnpm --filter web exec tsc --noEmit",
+    "test": "pnpm --filter web test --run",
+    "lint": "pnpm --filter web lint",
+    "audit": "pnpm audit --audit-level=high"
+  }
+}
