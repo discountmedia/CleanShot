@@ -1,0 +1,33 @@
+# apps/api/docker-compose.dev.yml
+# Local development services: Postgres 17 + Valkey 9.0
+# Usage: docker compose -f docker-compose.dev.yml up -d
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: cleanshot
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: cleanshot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cleanshot"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  valkey:
+    image: valkey/valkey:9.0-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:

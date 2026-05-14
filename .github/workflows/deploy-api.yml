@@ -1,66 +1,119 @@
+# .github/workflows/deploy-api.yml
+# Deploys apps/api to Cloud Run on push to main when api/** changes.
+# Auth: Workload Identity Federation — no JSON service account keys anywhere.
+
 name: Deploy API
 
 on:
   push:
     branches: [main]
     paths:
-      - 'apps/api/**'
-      - 'packages/**'
-      - '.github/workflows/deploy-api.yml'
+      - "apps/api/**"
+      - ".github/workflows/deploy-api.yml"
+  workflow_dispatch:
 
 permissions:
-  id-token: write
+  id-token: write   # Required for WIF OIDC token exchange
   contents: read
 
 env:
   PROJECT_ID: cleanshot-493512
   REGION: us-central1
   REGISTRY: us-central1-docker.pkg.dev
-  IMAGE: us-central1-docker.pkg.dev/cleanshot-493512/cleanshot/api
+  REPO: cleanshot-493512/cleanshot
+  SERVICE: cleanshot-api
 
 jobs:
   deploy:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
+    name: Build & Deploy API
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
 
-      - name: Authenticate to GCP via WIF
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Exchange GitHub OIDC token for GCP credentials — no JSON keys
+      - name: Authenticate to GCP (WIF)
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: 'projects/387208973244/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          workload_identity_provider: >-
+            projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
+          service_account: gh-deployer@cleanshot-493512.iam.gserviceaccount.com
 
-      - uses: google-github-actions/setup-gcloud@v2
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
 
       - name: Configure Docker for Artifact Registry
-        run: gcloud auth configure-docker $REGISTRY --quiet
+        run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
+
+      # Pin image tag to the git SHA — never use 'latest'
+      - name: Set image tag
+        id: tag
+        run: echo "IMAGE=${{ env.REGISTRY }}/${{ env.REPO }}/api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
 
       - name: Build Docker image
+        working-directory: apps/api
         run: |
           docker build \
-            -t $IMAGE:${{ github.sha }} \
-            -t $IMAGE:latest \
-            -f apps/api/Dockerfile \
+            --tag "${{ steps.tag.outputs.IMAGE }}" \
+            --cache-from "${{ env.REGISTRY }}/${{ env.REPO }}/api:cache" \
+            --build-arg BUILDKIT_INLINE_CACHE=1 \
             .
 
       - name: Push Docker image
-        run: |
-          docker push $IMAGE:${{ github.sha }}
-          docker push $IMAGE:latest
+        run: docker push "${{ steps.tag.outputs.IMAGE }}"
 
       - name: Deploy to Cloud Run
         run: |
-          gcloud run deploy forklift-api \
-            --image=$IMAGE:${{ github.sha }} \
-            --region=$REGION \
-            --network=default \
-            --subnet=cloud-run-subnet \
-            --vpc-egress=private-ranges-only \
-            --service-account=forklift-api@$PROJECT_ID.iam.gserviceaccount.com \
-            --set-secrets=API_KEY=frontend-api-key:latest,API_KEY_PREV=frontend-api-key-prev:latest \
-            --set-env-vars=GCP_PROJECT_ID=$PROJECT_ID \
+          gcloud run deploy ${{ env.SERVICE }} \
+            --image="${{ steps.tag.outputs.IMAGE }}" \
+            --region="${{ env.REGION }}" \
+            --platform=managed \
+            --execution-environment=gen2 \
+            --cpu=1 \
+            --memory=1Gi \
+            --concurrency=80 \
             --min-instances=1 \
             --max-instances=20 \
-            --concurrency=80 \
-            --cpu-boost \
             --timeout=900 \
-            --quiet
+            --cpu-boost \
+            --no-allow-unauthenticated \
+            --ingress=all \
+            --service-account=forklift-api@cleanshot-493512.iam.gserviceaccount.com \
+            --set-secrets="\
+              DATABASE_URL=cleanshot-database-url:latest,\
+              API_KEY=cleanshot-api-key:latest,\
+              API_KEY_PREV=cleanshot-api-key-prev:latest,\
+              OPENAI_API_KEY=cleanshot-openai-key:latest,\
+              ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,\
+              TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,\
+              WORKER_URL=cleanshot-worker-url:latest" \
+            --set-env-vars="\
+              GCP_PROJECT=cleanshot-493512,\
+              GCP_REGION=us-central1,\
+              GCS_BUCKET_ORIGINALS=cleanshot-originals-493512,\
+              GCS_BUCKET_DERIVATIVES=cleanshot-derivatives-493512,\
+              VALKEY_URL=valkey://10.0.0.10:6379,\
+              TASKS_QUEUE_GEN=cleanshot-image-gen,\
+              TASKS_QUEUE_SCAN=cleanshot-image-scan,\
+              TASKS_LOCATION=us-central1,\
+              ENVIRONMENT=development,\
+              LOG_LEVEL=DEBUG" \
+            --vpc-egress=all-traffic \
+            --network=cleanshot-vpc \
+            --subnet=cleanshot-subnet-us-central1
+
+      - name: Verify deployment
+        run: |
+          URL=$(gcloud run services describe ${{ env.SERVICE }} \
+                  --region="${{ env.REGION }}" \
+                  --format="value(status.url)")
+          echo "Service URL: $URL"
+          # Health check (Cloud Run requires IAM auth — use identity token)
+          TOKEN=$(gcloud auth print-identity-token)
+          STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
+                    -H "Authorization: Bearer $TOKEN" \
+                    "$URL/health")
+          echo "Health status: $STATUS"
+          [ "$STATUS" = "200" ] || exit 1
