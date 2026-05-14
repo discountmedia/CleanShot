@@ -94,7 +94,7 @@ jobs:
               GCP_REGION=us-central1,\
               GCS_BUCKET_ORIGINALS=cleanshot-originals-493512,\
               GCS_BUCKET_DERIVATIVES=cleanshot-derivatives-493512,\
-              VALKEY_URL=valkey://10.0.0.10:6379,\
+              VALKEY_URL=valkey://10.122.45.83:6379,\
               TASKS_QUEUE_GEN=cleanshot-image-gen,\
               TASKS_QUEUE_SCAN=cleanshot-image-scan,\
               TASKS_LOCATION=us-central1,\
