@@ -23,10 +23,11 @@ export async function proxy(request: NextRequest) {
 
     if (!isPublic) {
       // Dynamic import avoids loading better-auth when AUTH_ENABLED=false
-      const { auth } = await import('@/lib/auth/auth')
-      const session = await auth.api.getSession({ headers: request.headers })
-
-      if (!session) {
+     // TODO: replace with real auth check once better-auth is configured
+    // const { auth } = await import('@/lib/auth/auth')
+// const session = await auth.api.getSession({ headers: request.headers })
+      const session = null // placeholder — always redirects when AUTH_ENABLED=true
+        if (!session) {
         const loginUrl = new URL('/login', request.url)
         loginUrl.searchParams.set('callbackUrl', pathname)
         return NextResponse.redirect(loginUrl)
