@@ -10,26 +10,25 @@
 // Allowlist resolution order:
 //   1. ALLOWED_DOMAINS env var  (comma-separated, e.g. "acme.com,partner.org")
 //   2. ALLOWED_EMAILS env var   (comma-separated individual addresses)
-//   3. Postgres `authorization` table (runtime additions without redeploy)
+//   3. Postgres `authorizations` table (runtime additions without redeploy)
 
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
 
-// Use a raw pg Pool — Better Auth's built-in pg adapter.
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is required for Better Auth");
+}
+
+// Use a raw pg Pool — Better Auth autodetects it as a pg adapter.
 // We reuse the same DATABASE_URL as the FastAPI backend for the user/session tables.
 const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL!,
+  connectionString: process.env.DATABASE_URL,
   max: 3, // small pool — auth calls are infrequent
 });
 
 export const auth = betterAuth({
-  // ── Database ──────────────────────────────────────────────────────────────
-  database: {
-    provider: "pg",
-    pool: pgPool,
-  },
+  database: pgPool,
 
-  // ── Session ───────────────────────────────────────────────────────────────
   session: {
     expiresIn: 60 * 60 * 24 * 7,          // 7 days
     updateAge: 60 * 60 * 24,               // refresh cookie if >1 day old
@@ -39,37 +38,34 @@ export const auth = betterAuth({
     },
   },
 
-  // ── Microsoft OAuth ───────────────────────────────────────────────────────
   socialProviders: {
     microsoft: {
       clientId:     process.env.MICROSOFT_CLIENT_ID!,
       clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
       // "common" tenant = any Microsoft account (personal + org).
-      // Restrict to a specific tenant ID here if needed:
-      //   tenantId: process.env.MICROSOFT_TENANT_ID
+      // Set MICROSOFT_TENANT_ID to a specific tenant GUID to restrict.
       tenantId: process.env.MICROSOFT_TENANT_ID ?? "common",
     },
   },
 
-  // ── Authorization gate ────────────────────────────────────────────────────
-  // Called after OAuth succeeds but before session cookie is set.
-  // Return false → user is redirected to /unauthorized.
-  callbacks: {
-    async signIn({ user }) {
-      const email = user.email?.toLowerCase() ?? "";
-
-      // AUTH_ENABLED=false → skip gate entirely
-      if (process.env.AUTH_ENABLED === "false") return true;
-
-      return checkAuthorization(email);
+  // Authorization gate: runs before the user row is created on first sign-in.
+  // Throwing aborts the OAuth flow; the client surfaces this as an error and
+  // can redirect to /unauthorized via the signIn callbackURL.
+  // Note: existing users are NOT re-checked on subsequent sign-ins — to revoke
+  // access, delete the user's row from the `user` table.
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          if (process.env.AUTH_ENABLED === "false") return { data: user };
+          const email = (user.email ?? "").toLowerCase();
+          if (!(await checkAuthorization(email))) {
+            throw new Error("Email not authorized to access CleanShot");
+          }
+          return { data: user };
+        },
+      },
     },
-  },
-
-  // ── Redirect paths ────────────────────────────────────────────────────────
-  pages: {
-    signIn:      "/login",
-    error:       "/unauthorized",
-    signOut:     "/login",
   },
 });
 
