@@ -11,7 +11,7 @@
     "build": "next build",
     "start": "next start",
     "typecheck": "tsc --noEmit",
-    "lint": "next lint"
+    "lint": "eslint ."
   },
   "dependencies": {
     "better-auth": "1.6.11",
@@ -29,6 +29,8 @@
     "@types/react-dom": "19.x",
     "@types/uuid": "10.x",
     "babel-plugin-react-compiler": "1.0.0",
+    "eslint": "9.39.4",
+    "eslint-config-next": "16.2.6",
     "tailwindcss": "4.3.0",
     "typescript": "6.0.3"
   }
