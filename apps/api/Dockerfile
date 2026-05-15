@@ -60,6 +60,7 @@ USER appuser
 
 # Cloud Run: PORT env var is set automatically. Default 8080.
 ENV PORT=8080 \
+    PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     LOG_LEVEL=INFO
