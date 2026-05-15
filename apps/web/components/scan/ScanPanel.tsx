@@ -55,7 +55,7 @@
 // This component only reads the results from the BFF polling endpoint.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import {
@@ -448,8 +448,15 @@ export interface ScanPanelProps {
 export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPanelProps) {
   const [scanStates, setScanStates] = useState<ImageScanState[]>([]);
   const [batchJobIds, setBatchJobIds] = useState<string[]>([]);
-  const [isScanning, setIsScanning]   = useState(false);
   const [scanError, setScanError]     = useState<string | null>(null);
+
+  // isScanning is derived: a scan is active iff we have states and at least
+  // one of them hasn't received any provider results yet (and we haven't
+  // errored out trying to start the batch).
+  const isScanning =
+    !scanError &&
+    scanStates.length > 0 &&
+    scanStates.some((s) => s.providerResults.length === 0);
 
   // ─── Poll each scan job and merge results ─────────────────────────────────
 
@@ -493,7 +500,6 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPan
   const handleStartScan = async () => {
     if (enhancedAssets.length === 0) return;
     setScanError(null);
-    setIsScanning(true);
 
     // Initialise scan states
     const initial: ImageScanState[] = enhancedAssets.map((a) => ({
@@ -516,7 +522,6 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPan
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Failed to start scan";
       setScanError(msg);
-      setIsScanning(false);
     }
   };
 
@@ -554,16 +559,21 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPan
     []
   );
 
-  // ─── Notify parent when all scans have results ────────────────────────────
+  // ─── Notify parent when all scans have results (once per batch) ───────────
+
+  const completedRef = useRef(false);
+  const allDone =
+    scanStates.length > 0 &&
+    scanStates.every((s) => s.providerResults.length > 0);
 
   useEffect(() => {
-    if (!isScanning) return;
-    const allDone = scanStates.every((s) => s.providerResults.length > 0);
-    if (allDone && scanStates.length > 0) {
-      setIsScanning(false);
+    if (allDone && !completedRef.current) {
+      completedRef.current = true;
       onScanComplete?.(scanStates);
+    } else if (!allDone) {
+      completedRef.current = false;
     }
-  }, [scanStates, isScanning, onScanComplete]);
+  }, [allDone, scanStates, onScanComplete]);
 
   const passCount = scanStates.filter((s) =>
     s.providerResults.some((r) => r.verdict === "pass") &&
@@ -631,7 +641,7 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPan
             )}
           </div>
           <button
-            onClick={() => { setScanStates([]); setBatchJobIds([]); setIsScanning(false); }}
+            onClick={() => { setScanStates([]); setBatchJobIds([]); }}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             Reset scan

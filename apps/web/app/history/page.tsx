@@ -3,6 +3,7 @@
 // Lists all approval sets created by the authenticated user in the last 30 days.
 // Each set shows: date, make/model, image count, thumbnails, download link.
 
+import Link from "next/link";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getSessionEmail } from "@/lib/auth";
@@ -32,12 +33,12 @@ export default async function HistoryPage() {
               Last 30 days · {userEmail}
             </p>
           </div>
-          <a
+          <Link
             href="/"
             className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
           >
             ← Back to workspace
-          </a>
+          </Link>
         </div>
 
         <HistoryList userEmail={userEmail} />
