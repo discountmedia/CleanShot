@@ -15,59 +15,76 @@
 import { betterAuth } from "better-auth";
 import { Pool } from "pg";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is required for Better Auth");
+// Lazy init: env vars aren't available at build-time during Next.js page-data
+// collection. Anything that touches DATABASE_URL must run on first request,
+// not at module load.
+
+let _pool: Pool | null = null;
+function getPool(): Pool {
+  if (_pool) return _pool;
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is required for Better Auth");
+  }
+  _pool = new Pool({
+    connectionString: process.env.DATABASE_URL,
+    max: 3, // small pool — auth calls are infrequent
+  });
+  return _pool;
 }
 
-// Use a raw pg Pool — Better Auth autodetects it as a pg adapter.
-// We reuse the same DATABASE_URL as the FastAPI backend for the user/session tables.
-const pgPool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  max: 3, // small pool — auth calls are infrequent
-});
+// Factory + lazy cache. Inferring AuthInstance from createAuth gives us the
+// specific instance type (not the generic Auth<BetterAuthOptions>), which is
+// what callers actually need for type-safe access to .handler, .api, etc.
+const createAuth = () =>
+  betterAuth({
+    database: getPool(),
 
-export const auth = betterAuth({
-  database: pgPool,
-
-  session: {
-    expiresIn: 60 * 60 * 24 * 7,          // 7 days
-    updateAge: 60 * 60 * 24,               // refresh cookie if >1 day old
-    cookieCache: {
-      enabled: true,
-      maxAge: 60 * 5,                      // 5-minute client-side cache
+    session: {
+      expiresIn: 60 * 60 * 24 * 7,          // 7 days
+      updateAge: 60 * 60 * 24,               // refresh cookie if >1 day old
+      cookieCache: {
+        enabled: true,
+        maxAge: 60 * 5,                      // 5-minute client-side cache
+      },
     },
-  },
 
-  socialProviders: {
-    microsoft: {
-      clientId:     process.env.MICROSOFT_CLIENT_ID!,
-      clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
-      // "common" tenant = any Microsoft account (personal + org).
-      // Set MICROSOFT_TENANT_ID to a specific tenant GUID to restrict.
-      tenantId: process.env.MICROSOFT_TENANT_ID ?? "common",
+    socialProviders: {
+      microsoft: {
+        clientId:     process.env.MICROSOFT_CLIENT_ID!,
+        clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+        // "common" tenant = any Microsoft account (personal + org).
+        // Set MICROSOFT_TENANT_ID to a specific tenant GUID to restrict.
+        tenantId: process.env.MICROSOFT_TENANT_ID ?? "common",
+      },
     },
-  },
 
-  // Authorization gate: runs before the user row is created on first sign-in.
-  // Throwing aborts the OAuth flow; the client surfaces this as an error and
-  // can redirect to /unauthorized via the signIn callbackURL.
-  // Note: existing users are NOT re-checked on subsequent sign-ins — to revoke
-  // access, delete the user's row from the `user` table.
-  databaseHooks: {
-    user: {
-      create: {
-        before: async (user) => {
-          if (process.env.AUTH_ENABLED === "false") return { data: user };
-          const email = (user.email ?? "").toLowerCase();
-          if (!(await checkAuthorization(email))) {
-            throw new Error("Email not authorized to access CleanShot");
-          }
-          return { data: user };
+    // Authorization gate: runs before the user row is created on first sign-in.
+    // Throwing aborts the OAuth flow; the client surfaces this as an error and
+    // can redirect to /unauthorized via the signIn callbackURL.
+    // Note: existing users are NOT re-checked on subsequent sign-ins — to revoke
+    // access, delete the user's row from the `user` table.
+    databaseHooks: {
+      user: {
+        create: {
+          before: async (user) => {
+            if (process.env.AUTH_ENABLED === "false") return { data: user };
+            const email = (user.email ?? "").toLowerCase();
+            if (!(await checkAuthorization(email))) {
+              throw new Error("Email not authorized to access CleanShot");
+            }
+            return { data: user };
+          },
         },
       },
     },
-  },
-});
+  });
+
+type AuthInstance = ReturnType<typeof createAuth>;
+let _auth: AuthInstance | null = null;
+export function getAuth(): AuthInstance {
+  if (!_auth) _auth = createAuth();
+  return _auth;
+}
 
 // ─── Authorization check ──────────────────────────────────────────────────────
 
@@ -97,7 +114,7 @@ export async function checkAuthorization(email: string): Promise<boolean> {
 
   // 3. Postgres authorization table (runtime additions)
   try {
-    const client = await pgPool.connect();
+    const client = await getPool().connect();
     try {
       const { rows } = await client.query<{ value: string }>(
         `SELECT value FROM authorizations
@@ -118,11 +135,11 @@ export async function checkAuthorization(email: string): Promise<boolean> {
   return false;
 }
 
-// ─── Session helper (server-side) ────────────────────────────────────────────
+// ─── Session helpers (server-side) ───────────────────────────────────────────
 
 /** Get the current session from request headers. Returns null if not authed. */
 export async function getSession(headers: Headers) {
-  return auth.api.getSession({ headers });
+  return getAuth().api.getSession({ headers });
 }
 
 /** Get just the email from the current session, or null. */
