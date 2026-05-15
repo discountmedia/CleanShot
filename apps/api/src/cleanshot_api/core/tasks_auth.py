@@ -34,16 +34,22 @@ async def require_tasks_auth(request: Request) -> None:
         )
 
     token = auth_header.removeprefix("Bearer ")
+
+    # The audience in the OIDC token must match the full URL the task was
+    # dispatched to (base URL + path). We reconstruct it from the incoming
+    # request so it always stays in sync with whatever tasks.py enqueued.
+    audience = str(request.url)
+
     try:
         # Verify against Google's public keys
         transport = google.auth.transport.requests.Request()
         claims = google.oauth2.id_token.verify_oauth2_token(
             token,
             transport,
-            audience=settings.worker_url,
+            audience=audience,
         )
     except Exception as exc:
-        logger.warning("OIDC token verification failed: %s", exc)
+        logger.warning("OIDC token verification failed (audience=%s): %s", audience, exc)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid OIDC token",

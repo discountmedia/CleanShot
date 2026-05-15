@@ -49,7 +49,11 @@ def _make_task(
             body=body,
             oidc_token=tasks_v2.OidcToken(
                 service_account_email=settings.tasks_oidc_sa,
-                audience=settings.worker_url,
+                # Audience must be the full target URL (including path), not
+                # just the base URL. Google mints the OIDC token with `aud`
+                # set to whatever is provided here, and the verifier in
+                # tasks_auth.py must check against the same value.
+                audience=url,
             ),
         ),
         # Dispatch deadline: 30 minutes (Cloud Tasks max). Quick-acknowledge
