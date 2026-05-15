@@ -1,7 +1,4 @@
 # .github/workflows/deploy-api.yml
-# Deploys apps/api to Cloud Run on push to main when api/** changes.
-# Auth: Workload Identity Federation — no JSON service account keys anywhere.
-
 name: Deploy API
 
 on:
@@ -13,7 +10,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write   # Required for WIF OIDC token exchange
+  id-token: write
   contents: read
 
 env:
@@ -33,9 +30,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      # Exchange GitHub OIDC token for GCP credentials — no JSON keys
       - name: Authenticate to GCP (WIF)
-        uses: google-github-actions/setup-gcloud@v2
+        uses: google-github-actions/auth@v3
         with:
           workload_identity_provider: >-
             projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
@@ -47,7 +43,6 @@ jobs:
       - name: Configure Docker for Artifact Registry
         run: gcloud auth configure-docker ${{ env.REGISTRY }} --quiet
 
-      # Pin image tag to the git SHA — never use 'latest'
       - name: Set image tag
         id: tag
         run: echo "IMAGE=${{ env.REGISTRY }}/${{ env.REPO }}/api:${{ github.sha }}" >> "$GITHUB_OUTPUT"
@@ -110,11 +105,9 @@ jobs:
                   --region="${{ env.REGION }}" \
                   --format="value(status.url)")
           echo "Service URL: $URL"
-          # Health check (Cloud Run requires IAM auth — use identity token)
           TOKEN=$(gcloud auth print-identity-token)
           STATUS=$(curl -sf -o /dev/null -w "%{http_code}" \
                     -H "Authorization: Bearer $TOKEN" \
                     "$URL/health")
           echo "Health status: $STATUS"
           [ "$STATUS" = "200" ] || exit 1
-
