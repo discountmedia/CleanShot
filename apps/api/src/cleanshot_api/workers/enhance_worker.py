@@ -129,19 +129,17 @@ async def _run_enhance(
             # Gemini file_data requires mime_type. Derive from filename in URI;
             # fall back to JPEG (matches SignedUploadUrlRequest default).
             mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
-            file_part = {"file_data": {"file_uri": payload.input_gcs_uri, "mime_type": mime_type}}
+            file_part = types.Part.from_uri(
+                file_uri=payload.input_gcs_uri,
+                mime_type=mime_type,
+            )
+            text_part = types.Part.from_text(text=prompt)
 
             try:
                 response = await genai_client.aio.models.generate_content(
                     model=ENHANCE_MODEL,
                     contents=[
-                        {
-                            "role": "user",
-                            "parts": [
-                                file_part,
-                                {"text": prompt},
-                            ],
-                        }
+                        types.Content(role="user", parts=[file_part, text_part])
                     ],
                     config=types.GenerateContentConfig(
                         response_modalities=["IMAGE", "TEXT"],
@@ -152,13 +150,7 @@ async def _run_enhance(
                 response = await genai_client.aio.models.generate_content(
                     model=ENHANCE_MODEL_FALLBACK,
                     contents=[
-                        {
-                            "role": "user",
-                            "parts": [
-                                file_part,
-                                {"text": prompt},
-                            ],
-                        }
+                        types.Content(role="user", parts=[file_part, text_part])
                     ],
                     config=types.GenerateContentConfig(
                         response_modalities=["IMAGE", "TEXT"],

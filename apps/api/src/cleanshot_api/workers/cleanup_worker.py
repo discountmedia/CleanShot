@@ -86,17 +86,16 @@ async def _run_cleanup(
 
             # Gemini file_data requires mime_type. Derive from filename in URI.
             mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
+            file_part = types.Part.from_uri(
+                file_uri=payload.input_gcs_uri,
+                mime_type=mime_type,
+            )
+            text_part = types.Part.from_text(text=prompt)
 
             response = await genai_client.aio.models.generate_content(
                 model=CLEANUP_MODEL,
                 contents=[
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"file_data": {"file_uri": payload.input_gcs_uri, "mime_type": mime_type}},
-                            {"text": prompt},
-                        ],
-                    }
+                    types.Content(role="user", parts=[file_part, text_part])
                 ],
                 config=types.GenerateContentConfig(
                     response_modalities=["IMAGE", "TEXT"],
