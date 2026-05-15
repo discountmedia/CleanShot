@@ -54,6 +54,10 @@ infra/terraform/terraform.tfvars
 .DS_Store
 Thumbs.db
 
+# Local tooling binaries
+cloud-sql-proxy
+cloud-sql-proxy.exe
+
 # Logs
 *.log
 npm-debug.log*
