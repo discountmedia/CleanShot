@@ -28,6 +28,7 @@
     "@types/react": "19.x",
     "@types/react-dom": "19.x",
     "@types/uuid": "10.x",
+    "babel-plugin-react-compiler": "1.0.0",
     "tailwindcss": "4.3.0",
     "typescript": "6.0.3"
   }
