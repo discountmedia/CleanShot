@@ -1,3 +1,4 @@
+cat > .github/workflows/deploy-api.yml << 'WORKFLOW'
 name: Deploy API
 
 on:
@@ -9,7 +10,6 @@ on:
   workflow_dispatch:
 
 permissions:
-  id-token: write
   contents: read
 
 env:
@@ -28,12 +28,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Authenticate to GCP (WIF)
+      - name: Authenticate to GCP
         uses: google-github-actions/auth@v3
         with:
-          workload_identity_provider: >-
-            projects/${{ secrets.GCP_PROJECT_NUMBER }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider
-          service_account: gh-deployer@cleanshot-493512.iam.gserviceaccount.com
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
 
       - name: Set up Cloud SDK
         uses: google-github-actions/setup-gcloud@v3
@@ -77,7 +75,7 @@ jobs:
             --no-allow-unauthenticated \
             --ingress=all \
             --service-account=forklift-api@cleanshot-493512.iam.gserviceaccount.com \
-            --set-secrets="DATABASE_URL=cleanshot-database-url:latest,API_KEY=cleanshot-api-key:latest,OPENAI_API_KEY=cleanshot-openai-key:latest,ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,WORKER_URL=cleanshot-worker-url:latest" \
+            --set-secrets="DATABASE_URL=cleanshot-database-url:latest,API_KEY=cleanshot-api-key:latest,API_KEY_PREV=cleanshot-api-key-prev:latest,OPENAI_API_KEY=cleanshot-openai-key:latest,ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,WORKER_URL=cleanshot-worker-url:latest" \
             --set-env-vars="GCP_PROJECT=cleanshot-493512,GCP_REGION=us-central1,GCS_BUCKET_ORIGINALS=cleanshot-originals-493512,GCS_BUCKET_DERIVATIVES=cleanshot-derivatives-493512,VALKEY_URL=valkey://10.122.45.83:6379,TASKS_QUEUE_GEN=cleanshot-image-gen,TASKS_QUEUE_SCAN=cleanshot-image-scan,TASKS_LOCATION=us-central1,ENVIRONMENT=development,LOG_LEVEL=DEBUG" \
             --vpc-egress=all-traffic \
             --network=default \
@@ -95,3 +93,4 @@ jobs:
                     "$URL/health")
           echo "Health status: $STATUS"
           [ "$STATUS" = "200" ] || exit 1
+WORKFLOW
