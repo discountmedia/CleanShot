@@ -24,6 +24,7 @@ import asyncio
 import base64
 import json
 import logging
+import mimetypes
 import time
 import uuid
 from typing import Any
@@ -67,13 +68,15 @@ async def _scan_gemini(
 ) -> tuple[ScanResult, int]:
     """Gemini scan — uses GCS URI directly (no base64 transfer)."""
     t0 = time.monotonic()
+    # Gemini file_data requires mime_type. Derive from filename in URI.
+    mime_type = mimetypes.guess_type(gcs_uri)[0] or "image/jpeg"
     response = await genai_client.aio.models.generate_content(
         model=SCAN_MODEL_GEMINI,
         contents=[
             {
                 "role": "user",
                 "parts": [
-                    {"file_data": {"file_uri": gcs_uri}},
+                    {"file_data": {"file_uri": gcs_uri, "mime_type": mime_type}},
                     {"text": SCAN_SYSTEM_PROMPT},
                 ],
             }

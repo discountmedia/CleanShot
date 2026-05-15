@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import mimetypes
 import time
 import uuid
 from typing import Any
@@ -83,13 +84,16 @@ async def _run_cleanup(
         async with semaphore:
             prompt = _build_cleanup_prompt(payload.anomaly_context)
 
+            # Gemini file_data requires mime_type. Derive from filename in URI.
+            mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
+
             response = await genai_client.aio.models.generate_content(
                 model=CLEANUP_MODEL,
                 contents=[
                     {
                         "role": "user",
                         "parts": [
-                            {"file_data": {"file_uri": payload.input_gcs_uri}},
+                            {"file_data": {"file_uri": payload.input_gcs_uri, "mime_type": mime_type}},
                             {"text": prompt},
                         ],
                     }

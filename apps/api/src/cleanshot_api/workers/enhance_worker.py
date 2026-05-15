@@ -18,6 +18,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import mimetypes
 import time
 import uuid
 from typing import Any
@@ -125,6 +126,11 @@ async def _run_enhance(
             else:
                 prompt = _build_enhance_prompt(payload.toggles)
 
+            # Gemini file_data requires mime_type. Derive from filename in URI;
+            # fall back to JPEG (matches SignedUploadUrlRequest default).
+            mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
+            file_part = {"file_data": {"file_uri": payload.input_gcs_uri, "mime_type": mime_type}}
+
             try:
                 response = await genai_client.aio.models.generate_content(
                     model=ENHANCE_MODEL,
@@ -132,7 +138,7 @@ async def _run_enhance(
                         {
                             "role": "user",
                             "parts": [
-                                {"file_data": {"file_uri": payload.input_gcs_uri}},
+                                file_part,
                                 {"text": prompt},
                             ],
                         }
@@ -149,7 +155,7 @@ async def _run_enhance(
                         {
                             "role": "user",
                             "parts": [
-                                {"file_data": {"file_uri": payload.input_gcs_uri}},
+                                file_part,
                                 {"text": prompt},
                             ],
                         }
