@@ -1,0 +1,689 @@
+"use client";
+// apps/web/components/scan/ScanPanel.tsx
+//
+// Scan tab — Phase 2 v2.5
+//
+// Displays per-image scan results from up to 3 AI providers:
+//   • gemini-3.1-flash-image-preview  — primary, always active
+//   • gpt-5.4 (OpenAI Responses API)  — optional, SCAN_PROVIDER_OPENAI=true
+//   • claude-sonnet-4-6 / opus-4.7   — optional, SCAN_PROVIDER_ANTHROPIC=true
+//
+// ─── CRITICAL API FORMAT DIFFERENCES (DO NOT MIX UP) ───────────────────────
+//
+//  Gemini (backend):
+//    client.aio.models.generate_content(
+//      model='gemini-3.1-flash-image-preview',
+//      contents=[{'role':'user','parts':[
+//        {'inline_data': {'mime_type': media_type, 'data': image_b64}},  ← raw base64
+//        {'text': SCAN_SYSTEM_PROMPT}
+//      ]}],
+//      config=types.GenerateContentConfig(
+//        response_mime_type='application/json',
+//        response_schema=ScanResult,
+//      ),
+//    )
+//
+//  OpenAI gpt-5.4 (backend):
+//    client.responses.parse(                        ← Responses API, NOT chat.completions
+//      model='gpt-5.4',
+//      input=[{'role':'user','content':[
+//        {'type':'input_image',
+//         'image_url': f'data:{media_type};base64,{b64}',  ← WITH "data:…;base64," PREFIX
+//         'detail': 'high'},
+//        {'type':'input_text', 'text': SCAN_SYSTEM_PROMPT}
+//      ]}],
+//      text={'format': {'type':'json_schema', 'name':'ScanResult',
+//                       'schema': ScanResult.model_json_schema(), 'strict': True}},
+//    )
+//
+//  Anthropic claude-sonnet-4-6 (backend):
+//    client.messages.create(
+//      model='claude-sonnet-4-6',    ← or 'claude-opus-4-7' for hard scans
+//      messages=[{'role':'user','content':[
+//        {'type':'image','source':{
+//          'type':'base64',
+//          'media_type': media_type,
+//          'data': image_b64,         ← raw base64, NO "data:…;base64," PREFIX
+//        }},
+//        {'type':'text','text': SCAN_SYSTEM_PROMPT}
+//      ]}],
+//      output_config={'format': {'type':'json_schema',   ← GA structured output (NOT legacy messages.parse)
+//                                'schema': ScanResult.model_json_schema()}},
+//    )
+//
+// These format differences are handled entirely on the FastAPI side.
+// This component only reads the results from the BFF polling endpoint.
+// ──────────────────────────────────────────────────────────────────────────────
+
+import { useCallback, useEffect, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
+
+import {
+  getAssetUrl,
+  enqueueScanBatch,
+  enqueueRegen,
+  pollJob,
+} from "../../lib/api";
+import { useJobPoller } from "../../lib/polling";
+import type {
+  AnomalyItem,
+  ImageScanState,
+  JobRecord,
+  ProviderScanResult,
+  ScanProvider,
+  ScanVerdict,
+} from "../../lib/types";
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const PROVIDER_LABELS: Record<ScanProvider, string> = {
+  gemini:    "Gemini",
+  openai:    "OpenAI",
+  anthropic: "Anthropic",
+};
+
+const PROVIDER_COLORS: Record<ScanProvider, string> = {
+  gemini:    "text-blue-400 bg-blue-950/60 border-blue-800",
+  openai:    "text-green-400 bg-green-950/60 border-green-800",
+  anthropic: "text-orange-400 bg-orange-950/60 border-orange-800",
+};
+
+const SEVERITY_COLORS: Record<string, string> = {
+  high:   "text-red-400 bg-red-950/60 border-red-800",
+  medium: "text-yellow-400 bg-yellow-950/60 border-yellow-800",
+  low:    "text-zinc-400 bg-zinc-900/60 border-zinc-700",
+};
+
+// ─── Auto-prompt builder ─────────────────────────────────────────────────────
+
+function buildRegenPrompt(results: ProviderScanResult[]): string {
+  // Collect all anomalies across providers, deduplicated by type+location
+  const seen = new Set<string>();
+  const anomalies: AnomalyItem[] = [];
+
+  for (const r of results) {
+    for (const a of r.anomalies) {
+      const key = `${a.type}:${a.location}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        anomalies.push(a);
+      }
+    }
+  }
+
+  if (anomalies.length === 0) {
+    return "Improve overall image quality, lighting, and presentation for commercial use.";
+  }
+
+  const lines = anomalies
+    .sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2 };
+      return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
+    })
+    .map((a) => `Fix [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.description}`);
+
+  return [
+    "Address the following quality issues detected by AI scan:",
+    ...lines,
+    "",
+    "Preserve all OEM decals, data plates, VIN numbers, and machine proportions exactly.",
+  ].join("\n");
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function VerdictBadge({ verdict, confidence }: { verdict: ScanVerdict; confidence: number }) {
+  const isPassed = verdict === "pass";
+  return (
+    <span
+      className={`
+        inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border
+        ${isPassed
+          ? "text-green-400 bg-green-950/60 border-green-800"
+          : "text-red-400 bg-red-950/60 border-red-800"}
+      `}
+      aria-label={`${isPassed ? "Pass" : "Fail"} — ${Math.round(confidence * 100)}% confidence`}
+    >
+      {isPassed ? "✓ PASS" : "✗ FAIL"}
+      <span className="text-[10px] opacity-75">{Math.round(confidence * 100)}%</span>
+    </span>
+  );
+}
+
+function ConfidenceMeter({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
+  const color =
+    pct >= 80 ? "bg-green-500" :
+    pct >= 50 ? "bg-yellow-500" :
+                "bg-red-500";
+  return (
+    <div className="flex items-center gap-2" aria-label={`Confidence: ${pct}%`}>
+      <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
+        <div
+          className={`h-1.5 rounded-full transition-all ${color}`}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+      <span className="text-[10px] text-zinc-500 w-7 text-right">{pct}%</span>
+    </div>
+  );
+}
+
+function AnomalyList({ anomalies }: { anomalies: AnomalyItem[] }) {
+  if (anomalies.length === 0) {
+    return <p className="text-xs text-zinc-600 italic">No anomalies detected</p>;
+  }
+  return (
+    <ul className="space-y-1.5" role="list" aria-label="Detected anomalies">
+      {anomalies.map((a, i) => (
+        <li
+          key={i}
+          className={`text-xs px-2.5 py-1.5 rounded border ${SEVERITY_COLORS[a.severity] ?? SEVERITY_COLORS.low}`}
+        >
+          <span className="font-medium capitalize">{a.type}</span>
+          {" — "}
+          <span className="opacity-75">{a.location}</span>
+          {": "}
+          {a.description}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function ProviderResultCard({
+  result,
+  provider,
+}: {
+  result: ProviderScanResult;
+  provider: ScanProvider;
+}) {
+  const [expanded, setExpanded] = useState(result.verdict === "fail");
+
+  return (
+    <div className={`rounded-lg border overflow-hidden ${PROVIDER_COLORS[provider]}`}>
+      <button
+        className="w-full flex items-center justify-between px-3 py-2 text-left hover:opacity-80 transition-opacity"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-semibold">{PROVIDER_LABELS[provider]}</span>
+          <VerdictBadge verdict={result.verdict} confidence={result.confidence} />
+        </div>
+        <svg
+          className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
+          fill="none" viewBox="0 0 24 24" stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+        </svg>
+      </button>
+
+      {expanded && (
+        <div className="px-3 pb-3 space-y-2 border-t border-current border-opacity-20">
+          <ConfidenceMeter value={result.confidence} />
+          <p className="text-xs opacity-80 italic">{result.summary}</p>
+          <AnomalyList anomalies={result.anomalies} />
+          <p className="text-[10px] opacity-40 text-right">{result.latencyMs}ms</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Per-image card with regen ────────────────────────────────────────────────
+
+function ImageScanCard({
+  scan,
+  sessionId,
+  onRegenComplete,
+}: {
+  scan: ImageScanState;
+  sessionId: string;
+  onRegenComplete: (scan: ImageScanState, outputAssetId: string) => void;
+}) {
+  const [regenJobId, setRegenJobId]   = useState<string | null>(scan.regenJobId ?? null);
+  const [regenStatus, setRegenStatus] = useState<string>(scan.regenStatus ?? "idle");
+  const [regenUrl, setRegenUrl]       = useState<string | null>(null);
+  const [promptText, setPromptText]   = useState<string>(
+    scan.regenPrompt ?? buildRegenPrompt(scan.providerResults)
+  );
+  const [showPrompt, setShowPrompt]   = useState(false);
+  const [regenError, setRegenError]   = useState<string | null>(null);
+
+  // Poll regen job
+  useJobPoller(
+    regenJobId,
+    (job) => setRegenStatus(job.status),
+    async (job) => {
+      setRegenStatus("complete");
+      if (job.outputAssetId) {
+        try {
+          const { url } = await getAssetUrl(job.outputAssetId);
+          setRegenUrl(url);
+          onRegenComplete(scan, job.outputAssetId);
+        } catch {
+          setRegenError("Could not fetch regenerated image URL");
+        }
+      }
+    },
+    (job) => {
+      setRegenStatus("failed");
+      setRegenError(job.error ?? "Regeneration failed");
+    }
+  );
+
+  const handleRegen = async () => {
+    setRegenError(null);
+    setRegenStatus("enqueuing");
+    try {
+      const { jobId } = await enqueueRegen({
+        sessionId,
+        assetId: scan.assetId,
+        regenPrompt: promptText,
+        idempotencyKey: `regen-${scan.assetId}-${uuidv4()}`,
+      });
+      setRegenJobId(jobId);
+      setRegenStatus("queued");
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to start regeneration";
+      setRegenError(msg);
+      setRegenStatus("idle");
+    }
+  };
+
+  const hasFailedProvider = scan.providerResults.some((r) => r.verdict === "fail");
+  const isRegening = ["enqueuing", "queued", "processing"].includes(regenStatus);
+
+  // Consensus display
+  const consensus = scan.consensusVerdict;
+  const consensusColor =
+    consensus === "pass"  ? "text-green-400 border-green-800 bg-green-950/30" :
+    consensus === "fail"  ? "text-red-400 border-red-800 bg-red-950/30" :
+    consensus === "split" ? "text-yellow-400 border-yellow-800 bg-yellow-950/30" :
+                            "text-zinc-400 border-zinc-700 bg-zinc-900/30";
+
+  return (
+    <article
+      className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden"
+      aria-label={`Scan result for ${scan.filename}`}
+    >
+      {/* Header row */}
+      <div className="flex items-start gap-3 p-3">
+        {/* Before/after thumbnails */}
+        <div className="flex gap-1.5 shrink-0">
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={scan.thumbnailUrl}
+              alt={`Original: ${scan.filename}`}
+              className="w-20 h-20 object-cover rounded-lg border border-zinc-700"
+            />
+            <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/70 text-zinc-400 px-1 rounded">
+              Original
+            </span>
+          </div>
+          {(regenUrl ?? scan.outputUrl) && (
+            <div className="relative">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={regenUrl ?? scan.outputUrl}
+                alt={`Enhanced: ${scan.filename}`}
+                className="w-20 h-20 object-cover rounded-lg border border-zinc-600"
+              />
+              <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/70 text-blue-400 px-1 rounded">
+                {regenUrl ? "Regen" : "Enhanced"}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-zinc-200 truncate">{scan.filename}</p>
+
+          {/* Consensus verdict */}
+          {consensus && (
+            <div className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${consensusColor}`}>
+              Consensus:{" "}
+              {consensus === "pass"  ? "✓ PASS" :
+               consensus === "fail"  ? "✗ FAIL" :
+                                       "⚡ SPLIT"}
+              {scan.consensusConfidence !== undefined && (
+                <span className="opacity-60 text-[10px]">
+                  {Math.round(scan.consensusConfidence * 100)}%
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* Per-provider results */}
+          <div className="mt-2 space-y-1.5">
+            {scan.providerResults.map((r) => (
+              <ProviderResultCard key={r.provider} result={r} provider={r.provider} />
+            ))}
+            {scan.providerResults.length === 0 && (
+              <div className="flex items-center gap-2 text-xs text-zinc-500">
+                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                Scanning with{" "}
+                <code className="font-mono text-[10px]">gemini-3.1-flash-image-preview</code>…
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Regenerate section — shown when at least one provider failed */}
+      {hasFailedProvider && (
+        <div className="border-t border-zinc-800 bg-zinc-900/50 p-3 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-medium text-zinc-400">Regenerate this image</span>
+            <button
+              onClick={() => setShowPrompt((v) => !v)}
+              className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
+            >
+              {showPrompt ? "Hide prompt" : "Edit prompt"}
+            </button>
+          </div>
+
+          {/* Auto-generated prompt (editable) */}
+          {showPrompt && (
+            <textarea
+              value={promptText}
+              onChange={(e) => setPromptText(e.target.value)}
+              rows={4}
+              className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-500"
+              aria-label="Regeneration prompt"
+            />
+          )}
+
+          {regenError && (
+            <p className="text-xs text-red-400" role="alert">{regenError}</p>
+          )}
+
+          {regenStatus === "complete" && (
+            <p className="text-xs text-green-400">✓ Regeneration complete — see updated preview above</p>
+          )}
+
+          <button
+            onClick={handleRegen}
+            disabled={isRegening}
+            className={`
+              w-full py-2 px-4 rounded-lg text-xs font-semibold transition-all
+              ${isRegening
+                ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                : "bg-amber-600 hover:bg-amber-500 text-white"}
+            `}
+            aria-busy={isRegening}
+          >
+            {isRegening ? (
+              <span className="flex items-center justify-center gap-2">
+                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                </svg>
+                {regenStatus === "enqueuing" ? "Enqueuing…" : "Regenerating…"}
+              </span>
+            ) : (
+              "↻ Regenerate Image"
+            )}
+          </button>
+        </div>
+      )}
+    </article>
+  );
+}
+
+// ─── Main Scan Panel ─────────────────────────────────────────────────────────
+
+export interface ScanPanelProps {
+  sessionId: string;
+  enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }>;
+  onScanComplete?: (scans: ImageScanState[]) => void;
+}
+
+export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPanelProps) {
+  const [scanStates, setScanStates] = useState<ImageScanState[]>([]);
+  const [batchJobIds, setBatchJobIds] = useState<string[]>([]);
+  const [isScanning, setIsScanning]   = useState(false);
+  const [scanError, setScanError]     = useState<string | null>(null);
+
+  // ─── Poll each scan job and merge results ─────────────────────────────────
+
+  const updateScanState = useCallback((assetId: string, patch: Partial<ImageScanState>) => {
+    setScanStates((prev) =>
+      prev.map((s) => (s.assetId === assetId ? { ...s, ...patch } : s))
+    );
+  }, []);
+
+  // ─── Fetch scan results for a completed job ───────────────────────────────
+
+  const fetchScanResults = useCallback(async (job: JobRecord) => {
+    // The BFF /api/jobs/:id returns the job record.
+    // Scan results are fetched from /api/sessions/:id (full state)
+    // or from a dedicated /api/scan-results/:jobId endpoint.
+    // For now we pull them via the session state which includes all scan_results.
+    // A dedicated endpoint is cleaner — wire up when backend route is confirmed.
+    // TODO: replace with /api/scan/results/:jobId once backend route is added.
+    try {
+      const res = await fetch(`/api/scan/results/${job.id}`, { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json() as {
+        providerResults: ProviderScanResult[];
+        consensusVerdict?: string;
+        consensusConfidence?: number;
+      };
+      const assetId = job.inputAssetId;
+      updateScanState(assetId, {
+        providerResults: data.providerResults,
+        consensusVerdict: data.consensusVerdict as ImageScanState["consensusVerdict"],
+        consensusConfidence: data.consensusConfidence,
+        regenPrompt: buildRegenPrompt(data.providerResults),
+      });
+    } catch {
+      // Non-fatal: state stays with empty providerResults
+    }
+  }, [updateScanState]);
+
+  // ─── Start scan batch ─────────────────────────────────────────────────────
+
+  const handleStartScan = async () => {
+    if (enhancedAssets.length === 0) return;
+    setScanError(null);
+    setIsScanning(true);
+
+    // Initialise scan states
+    const initial: ImageScanState[] = enhancedAssets.map((a) => ({
+      assetId: a.assetId,
+      inputJobId: "",
+      filename: a.filename,
+      thumbnailUrl: a.thumbnailUrl,
+      outputUrl: a.outputUrl,
+      providerResults: [],
+    }));
+    setScanStates(initial);
+
+    try {
+      const { jobIds } = await enqueueScanBatch({
+        sessionId,
+        assetIds: enhancedAssets.map((a) => a.assetId),
+        idempotencyKey: `scan-batch-${uuidv4()}`,
+      });
+      setBatchJobIds(jobIds);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Failed to start scan";
+      setScanError(msg);
+      setIsScanning(false);
+    }
+  };
+
+  // ─── One poller per job ───────────────────────────────────────────────────
+  // We spawn individual pollers via a child component to keep hook rules clean.
+
+  const handleJobComplete = useCallback(
+    (job: JobRecord) => fetchScanResults(job),
+    [fetchScanResults]
+  );
+
+  const handleJobError = useCallback((job: JobRecord) => {
+    const assetId = job.inputAssetId;
+    updateScanState(assetId, {
+      providerResults: [
+        {
+          provider: "gemini",
+          verdict: "fail",
+          confidence: 0,
+          anomalies: [],
+          summary: job.error ?? "Scan failed",
+          latencyMs: 0,
+        },
+      ],
+    });
+  }, [updateScanState]);
+
+  // ─── Regen complete ───────────────────────────────────────────────────────
+
+  const handleRegenComplete = useCallback(
+    (_scan: ImageScanState, outputAssetId: string) => {
+      // Caller can re-scan the new asset; for now just note it
+      console.info("Regen complete for", outputAssetId);
+    },
+    []
+  );
+
+  // ─── Notify parent when all scans have results ────────────────────────────
+
+  useEffect(() => {
+    if (!isScanning) return;
+    const allDone = scanStates.every((s) => s.providerResults.length > 0);
+    if (allDone && scanStates.length > 0) {
+      setIsScanning(false);
+      onScanComplete?.(scanStates);
+    }
+  }, [scanStates, isScanning, onScanComplete]);
+
+  const passCount = scanStates.filter((s) =>
+    s.providerResults.some((r) => r.verdict === "pass") &&
+    s.providerResults.every((r) => r.verdict === "pass")
+  ).length;
+  const failCount = scanStates.filter((s) =>
+    s.providerResults.some((r) => r.verdict === "fail")
+  ).length;
+
+  return (
+    <div className="space-y-6">
+
+      {/* ── Scan trigger ── */}
+      {scanStates.length === 0 && (
+        <div className="text-center space-y-4 py-8">
+          <div className="text-zinc-500 space-y-1">
+            <p className="text-sm">
+              {enhancedAssets.length > 0
+                ? `${enhancedAssets.length} enhanced image${enhancedAssets.length !== 1 ? "s" : ""} ready to scan`
+                : "No enhanced images yet — complete the Enhance step first"}
+            </p>
+            <p className="text-xs text-zinc-700">
+              Scans with{" "}
+              <code className="font-mono">gemini-3.1-flash-image-preview</code>
+              {" "}· OpenAI{" "}
+              <code className="font-mono">gpt-5.4</code>
+              {" "}· Anthropic{" "}
+              <code className="font-mono">claude-sonnet-4-6</code>
+            </p>
+          </div>
+
+          {scanError && (
+            <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3" role="alert">
+              {scanError}
+            </p>
+          )}
+
+          <button
+            onClick={handleStartScan}
+            disabled={enhancedAssets.length === 0 || isScanning}
+            className={`
+              px-8 py-3 rounded-xl font-semibold text-sm transition-all
+              ${enhancedAssets.length > 0 && !isScanning
+                ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
+                : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+            `}
+          >
+            {isScanning ? "Scanning…" : `Scan ${enhancedAssets.length} Image${enhancedAssets.length !== 1 ? "s" : ""}`}
+          </button>
+        </div>
+      )}
+
+      {/* ── Results header ── */}
+      {scanStates.length > 0 && (
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <h3 className="text-sm font-semibold text-zinc-200">
+              {scanStates.length} image{scanStates.length !== 1 ? "s" : ""} scanned
+            </h3>
+            {passCount > 0 && (
+              <span className="text-xs text-green-400 font-medium">✓ {passCount} passed</span>
+            )}
+            {failCount > 0 && (
+              <span className="text-xs text-red-400 font-medium">✗ {failCount} failed</span>
+            )}
+          </div>
+          <button
+            onClick={() => { setScanStates([]); setBatchJobIds([]); setIsScanning(false); }}
+            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+          >
+            Reset scan
+          </button>
+        </div>
+      )}
+
+      {/* ── Per-image cards ── */}
+      <div className="space-y-4">
+        {scanStates.map((scan, i) => (
+          <div key={scan.assetId}>
+            {/* Mount a hidden poller for each job */}
+            {batchJobIds[i] && (
+              <ScanJobPoller
+                jobId={batchJobIds[i]}
+                onComplete={handleJobComplete}
+                onError={handleJobError}
+              />
+            )}
+            <ImageScanCard
+              scan={scan}
+              sessionId={sessionId}
+              onRegenComplete={handleRegenComplete}
+            />
+          </div>
+        ))}
+      </div>
+
+      {/* ── Model attribution ── */}
+      {scanStates.length > 0 && (
+        <p className="text-[11px] text-zinc-700 text-center">
+          Primary scan:{" "}
+          <code className="font-mono">gemini-3.1-flash-image-preview</code>
+          {" "}· Additional providers active when enabled on backend
+        </p>
+      )}
+    </div>
+  );
+}
+
+// ─── Headless poller component ────────────────────────────────────────────────
+// Mounts a useJobPoller per scan job without violating hook rules.
+
+function ScanJobPoller({
+  jobId,
+  onComplete,
+  onError,
+}: {
+  jobId: string;
+  onComplete: (job: JobRecord) => void;
+  onError: (job: JobRecord) => void;
+}) {
+  useJobPoller(jobId, () => {}, onComplete, onError);
+  return null;
+}

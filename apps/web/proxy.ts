@@ -1,60 +1,64 @@
-// proxy.ts — Next.js 16 (renamed from middleware.ts)
-// v3.5: AUTH_ENABLED gate + Better Auth session check
-// v3.4: CSP nonce per-request (XSS mitigation — GHSA-ffhc-5mcf-pf4q)
+// apps/web/proxy.ts
+// Next.js 16 proxy (was middleware.ts in Next.js ≤15).
+// Named export must be `proxy` — default export also works but named is explicit.
 //
-// SECURITY NOTE: proxy.ts is a UX redirect layer only.
-// The real authz boundary is isAuthorized() inside every Route Handler.
-// Never rely on this file as the sole security gate.
+// Auth flow:
+//   AUTH_ENABLED=false  → pass all requests through (dev/test mode)
+//   AUTH_ENABLED=true   → check Better Auth session cookie
+//                         no session → redirect /login
+//                         session present → allow through
+//                         (domain/email gate happens at signIn callback, not here)
+//
+// We intentionally keep the proxy LEAN — just cookie presence check.
+// Full session validation (DB lookup) happens in Server Components and Route Handlers.
+// Reason: proxy runs at the edge before Node.js runtime is available.
 
-import { NextRequest, NextResponse } from 'next/server'
+import { type NextRequest, NextResponse } from "next/server";
+import { getSessionCookie } from "better-auth/cookies";
 
-export async function proxy(request: NextRequest) {
-  const { pathname } = request.nextUrl
+// Routes that are always public (never redirected)
+const PUBLIC_PATHS = [
+  "/login",
+  "/unauthorized",
+  "/api/auth",        // Better Auth callback routes
+];
 
-  // --- AUTH GATE (v3.5) ---
-  // AUTH_ENABLED=false during development and testing (default)
-  // AUTH_ENABLED=true only in Vercel Production after testing complete
-  if (process.env.AUTH_ENABLED === 'true') {
-    const isPublic =
-      pathname.startsWith('/login') ||
-      pathname.startsWith('/unauthorized') ||
-      pathname.startsWith('/api/auth') ||
-      pathname.startsWith('/_next')
+export function proxy(request: NextRequest) {
+  const { pathname } = request.nextUrl;
 
-    if (!isPublic) {
-      // Dynamic import avoids loading better-auth when AUTH_ENABLED=false
-     // TODO: replace with real auth check once better-auth is configured
-    // const { auth } = await import('@/lib/auth/auth')
-// const session = await auth.api.getSession({ headers: request.headers })
-      const session = null // placeholder — always redirects when AUTH_ENABLED=true
-        if (!session) {
-        const loginUrl = new URL('/login', request.url)
-        loginUrl.searchParams.set('callbackUrl', pathname)
-        return NextResponse.redirect(loginUrl)
-      }
-    }
+  // AUTH_ENABLED=false → bypass entirely (testing mode)
+  if (process.env.AUTH_ENABLED === "false") {
+    return NextResponse.next();
   }
 
-  // --- CSP NONCE (v3.4 — unchanged) ---
-  const nonce = Buffer.from(crypto.randomUUID()).toString('base64')
-  const response = NextResponse.next({
-    request: { headers: new Headers({ 'x-nonce': nonce }) },
-  })
+  // Always allow public paths
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return NextResponse.next();
+  }
 
-  const csp = [
-    `default-src 'self'`,
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic'`,
-    `style-src 'self' 'unsafe-inline'`,
-    `img-src 'self' data: https://storage.googleapis.com`,
-    `connect-src 'self'`,
-    `frame-ancestors 'none'`,
-  ].join('; ')
+  // Allow static assets
+  if (
+    pathname.startsWith("/_next") ||
+    pathname.startsWith("/favicon") ||
+    pathname.match(/\.(ico|png|jpg|jpeg|svg|css|js|woff2?)$/)
+  ) {
+    return NextResponse.next();
+  }
 
-  response.headers.set('Content-Security-Policy', csp)
-  response.headers.set('x-nonce', nonce)
-  return response
+  // Check for Better Auth session cookie (edge-safe — no DB call)
+  const sessionCookie = getSessionCookie(request);
+  if (!sessionCookie) {
+    const loginUrl = new URL("/login", request.url);
+    loginUrl.searchParams.set("callbackUrl", pathname);
+    return NextResponse.redirect(loginUrl);
+  }
+
+  return NextResponse.next();
 }
 
 export const config = {
-  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
-}
+  // Match all routes except Next.js internals
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico).*)",
+  ],
+};
