@@ -9,11 +9,11 @@
   },
   "packageManager": "pnpm@11.0.8",
   "scripts": {
-    "dev:web": "pnpm --filter web dev",
-    "build:web": "pnpm --filter web build",
-    "typecheck": "pnpm --filter web exec tsc --noEmit",
-    "test": "pnpm --filter web test --run",
-    "lint": "pnpm --filter web lint",
+    "dev:web": "pnpm --filter cleanshot-web dev",
+    "build:web": "pnpm --filter cleanshot-web build",
+    "typecheck": "pnpm --filter cleanshot-web exec tsc --noEmit",
+    "test": "pnpm --filter cleanshot-web test --run",
+    "lint": "pnpm --filter cleanshot-web lint",
     "audit": "pnpm audit --audit-level=high"
   }
 }
