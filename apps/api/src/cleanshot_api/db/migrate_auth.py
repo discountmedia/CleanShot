@@ -19,7 +19,7 @@ DDL = """
 -- ─── Authorization allowlist ─────────────────────────────────────────────────
 -- type: 'domain'  value: 'acme.com'
 -- type: 'email'   value: 'alice@partner.org'
-CREATE TABLE IF NOT EXISTS authorization (
+CREATE TABLE IF NOT EXISTS authorizations (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type        TEXT NOT NULL CHECK (type IN ('domain', 'email')),
     value       TEXT NOT NULL,
@@ -27,7 +27,7 @@ CREATE TABLE IF NOT EXISTS authorization (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (type, value)
 );
-CREATE INDEX IF NOT EXISTS idx_authorization_value ON authorization(value);
+CREATE INDEX IF NOT EXISTS idx_authorization_value ON authorizations(value);
 
 -- ─── Approval sets ────────────────────────────────────────────────────────────
 -- One row per "Approve All" click.

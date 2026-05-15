@@ -548,18 +548,18 @@ Update `ALLOWED_DOMAINS` or `ALLOWED_EMAILS` in Vercel project settings and trig
 
 ```sql
 -- Add a whole domain
-INSERT INTO authorization (type, value, note)
+INSERT INTO authorizations (type, value, note)
 VALUES ('domain', 'newclient.com', 'Added 2026-05-14 by admin');
 
 -- Add a specific personal email (e.g. freelancer with @gmail.com)
-INSERT INTO authorization (type, value, note)
+INSERT INTO authorizations (type, value, note)
 VALUES ('email', 'photographer@gmail.com', 'Freelance contractor');
 
 -- Remove access
-DELETE FROM authorization WHERE value = 'expartner.com';
+DELETE FROM authorizations WHERE value = 'expartner.com';
 
 -- View current allowlist
-SELECT type, value, note, created_at FROM authorization ORDER BY created_at DESC;
+SELECT type, value, note, created_at FROM authorizations ORDER BY created_at DESC;
 ```
 
 **3. Rotate out a user**

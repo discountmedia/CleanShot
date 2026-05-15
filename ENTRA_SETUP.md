@@ -100,15 +100,15 @@ psql $DATABASE_URL -f db/migrate_auth.sql
 
 ```sql
 -- Add a domain
-INSERT INTO authorization (type, value, note)
+INSERT INTO authorizations (type, value, note)
 VALUES ('domain', 'newpartner.com', 'Added by admin 2026-05-15');
 
 -- Add an individual email
-INSERT INTO authorization (type, value, note)
+INSERT INTO authorizations (type, value, note)
 VALUES ('email', 'contractor@personal.com', 'Freelance photographer');
 
 -- Remove
-DELETE FROM authorization WHERE value = 'oldpartner.com';
+DELETE FROM authorizations WHERE value = 'oldpartner.com';
 ```
 
 ## Auth flow recap (matches your diagram)

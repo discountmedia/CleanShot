@@ -104,7 +104,7 @@ export async function checkAuthorization(email: string): Promise<boolean> {
     const client = await pgPool.connect();
     try {
       const { rows } = await client.query<{ value: string }>(
-        `SELECT value FROM authorization
+        `SELECT value FROM authorizations
          WHERE (type = 'domain' AND $1 LIKE '%@' || value)
             OR (type = 'email'  AND value = $1)
          LIMIT 1`,
