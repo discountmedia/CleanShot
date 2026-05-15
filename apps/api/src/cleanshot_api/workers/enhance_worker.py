@@ -19,11 +19,9 @@ import asyncio
 import base64
 import logging
 import mimetypes
-import time
 import uuid
-from typing import Any
 
-from fastapi import BackgroundTasks, HTTPException, Request, status
+from fastapi import BackgroundTasks, Request
 from google.genai import types
 
 from cleanshot_api.core.config import get_settings
@@ -35,7 +33,6 @@ from cleanshot_api.models.schemas import (
     OperationEnum,
     ScanTaskPayload,
 )
-from cleanshot_api.services import gcs as gcs_service
 from cleanshot_api.services.tasks import enqueue_scan
 
 logger = logging.getLogger(__name__)
@@ -112,7 +109,6 @@ async def _run_enhance(
     pool = request.app.state.pool
     genai_client = request.app.state.genai
     semaphore: asyncio.Semaphore = request.app.state.gemini_semaphore
-    settings = get_settings()
 
     async with pool.acquire() as conn:
         await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
@@ -129,17 +125,19 @@ async def _run_enhance(
             # Gemini file_data requires mime_type. Derive from filename in URI;
             # fall back to JPEG (matches SignedUploadUrlRequest default).
             mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
-            file_part = types.Part.from_uri(
-                file_uri=payload.input_gcs_uri,
-                mime_type=mime_type,
-            )
-            text_part = types.Part.from_text(text=prompt)
+            file_part = {"file_data": {"file_uri": payload.input_gcs_uri, "mime_type": mime_type}}
 
             try:
                 response = await genai_client.aio.models.generate_content(
                     model=ENHANCE_MODEL,
                     contents=[
-                        types.Content(role="user", parts=[file_part, text_part])
+                        {
+                            "role": "user",
+                            "parts": [
+                                file_part,
+                                {"text": prompt},
+                            ],
+                        }
                     ],
                     config=types.GenerateContentConfig(
                         response_modalities=["IMAGE", "TEXT"],
@@ -150,7 +148,13 @@ async def _run_enhance(
                 response = await genai_client.aio.models.generate_content(
                     model=ENHANCE_MODEL_FALLBACK,
                     contents=[
-                        types.Content(role="user", parts=[file_part, text_part])
+                        {
+                            "role": "user",
+                            "parts": [
+                                file_part,
+                                {"text": prompt},
+                            ],
+                        }
                     ],
                     config=types.GenerateContentConfig(
                         response_modalities=["IMAGE", "TEXT"],
