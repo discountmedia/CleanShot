@@ -25,6 +25,11 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     gcp_project: str = Field("cleanshot-493512", alias="GCP_PROJECT")
     gcp_region: str = Field("us-central1", alias="GCP_REGION")
+    # Service account email — used for IAM-based GCS signed URL generation on Cloud Run
+    service_account_email: str = Field(
+        "forklift-api@cleanshot-493512.iam.gserviceaccount.com",
+        alias="SERVICE_ACCOUNT_EMAIL",
+    )
 
     # -------------------------------------------------------------------------
     # Cloud SQL (Postgres 17)
