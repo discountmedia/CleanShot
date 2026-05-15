@@ -1,4 +1,3 @@
-cat > .github/workflows/deploy-api.yml << 'WORKFLOW'
 name: Deploy API
 
 on:
@@ -93,4 +92,3 @@ jobs:
                     "$URL/health")
           echo "Health status: $STATUS"
           [ "$STATUS" = "200" ] || exit 1
-WORKFLOW
