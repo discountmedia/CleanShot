@@ -123,6 +123,11 @@ async def _scan_openai(
     data_url = f"data:{ct};base64,{b64}"
 
     t0 = time.monotonic()
+    # Pass the Pydantic model as text_format — the SDK converts it to a
+    # strict-mode-compliant JSON schema (adds additionalProperties:false,
+    # marks all fields required, etc.). Hand-rolling .model_json_schema()
+    # produces a schema OpenAI rejects with 'additionalProperties is
+    # required to be supplied and to be false'.
     response = await openai_client.responses.parse(
         model=SCAN_MODEL_OPENAI,
         input=[
@@ -138,14 +143,7 @@ async def _scan_openai(
                 ],
             }
         ],
-        text={
-            "format": {
-                "type": "json_schema",
-                "name": "ScanResult",
-                "schema": ScanResult.model_json_schema(),
-                "strict": True,
-            }
-        },
+        text_format=ScanResult,
     )
     latency_ms = int((time.monotonic() - t0) * 1000)
     result: ScanResult = response.output_parsed
