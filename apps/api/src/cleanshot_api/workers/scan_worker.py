@@ -158,7 +158,7 @@ async def _scan_anthropic(
     difficulty: str,
 ) -> tuple[ScanResult, int]:
     """
-    Anthropic scan — GA structured output, raw base64 WITHOUT prefix.
+    Anthropic scan — tool-forced JSON via tool_choice. Raw base64 WITHOUT prefix.
     Routes to claude-opus-4-7 for hard scans (3× vision resolution).
     """
     image_bytes, ct = await _load_image_bytes(gcs_uri)
@@ -173,7 +173,15 @@ async def _scan_anthropic(
     t0 = time.monotonic()
     response = await anthropic_client.messages.create(
         model=model_id,
-        max_tokens=1024,
+        max_tokens=3048,
+        tools=[
+            {
+                "name": "report_scan",
+                "description": "Submit the structured forklift QC scan assessment.",
+                "input_schema": ScanResult.model_json_schema(),
+            }
+        ],
+        tool_choice={"type": "tool", "name": "report_scan"},
         messages=[
             {
                 "role": "user",
@@ -190,10 +198,11 @@ async def _scan_anthropic(
                 ],
             }
         ],
-        output_config={"format": {"type": "json", "schema": ScanResult.model_json_schema()}},
     )
     latency_ms = int((time.monotonic() - t0) * 1000)
-    result = ScanResult.model_validate_json(response.content[0].text)
+    # tool_choice forces a tool_use block; model's args land in .input as a dict.
+    tool_block = next(b for b in response.content if b.type == "tool_use")
+    result = ScanResult.model_validate(tool_block.input)
     return result, latency_ms
 
 
