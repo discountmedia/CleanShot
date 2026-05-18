@@ -11,8 +11,8 @@ Startup sequence (lifespan):
   7. asyncio.Semaphore(2) for Gemini Pro Image concurrency
 
 Models per v2.5 spec:
-  Generation / Cleanup:  gemini-3-pro-image-preview
-  Scan (Gemini):         gemini-3-pro-image-preview
+  Generation / Cleanup:  gemini-3-flash-image
+  Scan (Gemini):         gemini-3-flash-image
   Scan (OpenAI):         gpt-5.4
   Scan (Anthropic std):  claude-sonnet-4-6
   Scan (Anthropic hard): claude-opus-4-7

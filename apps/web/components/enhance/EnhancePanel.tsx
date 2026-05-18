@@ -11,7 +11,7 @@
 //  • Direct-to-GCS upload via V4 signed PUT URL (API pod never receives bytes)
 //  • Enqueues enhance job per uploaded asset, shows per-job polling
 //
-// Model: gemini-3-pro-image-preview (confirmed in FastAPI lifespan)
+// Model: gemini-3-flash-image (confirmed in FastAPI lifespan)
 
 import { useCallback, useId, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
@@ -566,7 +566,7 @@ export function EnhancePanel({ sessionId, onEnhanceComplete }: EnhancePanelProps
       {/* ── Model attribution ── */}
       <p className="text-[11px] text-zinc-700 text-center">
         Enhancement powered by{" "}
-        <code className="font-mono">gemini-3-pro-image-preview</code>
+        <code className="font-mono">gemini-3-flash-image</code>
       </p>
     </div>
   );

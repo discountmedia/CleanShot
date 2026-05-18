@@ -4,7 +4,7 @@
 // Scan tab — Phase 2 v2.5
 //
 // Displays per-image scan results from up to 3 AI providers:
-//   • gemini-3-pro-image-preview  — primary, always active
+//   • gemini-3-flash-image  — primary, always active
 //   • gpt-5.4 (OpenAI Responses API)  — optional, SCAN_PROVIDER_OPENAI=true
 //   • claude-sonnet-4-6 / opus-4.7   — optional, SCAN_PROVIDER_ANTHROPIC=true
 //
@@ -12,7 +12,7 @@
 //
 //  Gemini (backend):
 //    client.aio.models.generate_content(
-//      model='gemini-3-pro-image-preview',
+//      model='gemini-3-flash-image',
 //      contents=[{'role':'user','parts':[
 //        {'inline_data': {'mime_type': media_type, 'data': image_b64}},  ← raw base64
 //        {'text': SCAN_SYSTEM_PROMPT}
@@ -369,7 +369,7 @@ function ImageScanCard({
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
                 Scanning with{" "}
-                <code className="font-mono text-[10px]">gemini-3-pro-image-preview</code>…
+                <code className="font-mono text-[10px]">gemini-3-flash-image</code>…
               </div>
             )}
           </div>
@@ -597,7 +597,7 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPan
             </p>
             <p className="text-xs text-zinc-700">
               Scans with{" "}
-              <code className="font-mono">gemini-3-pro-image-preview</code>
+              <code className="font-mono">gemini-3-flash-image</code>
               {" "}· OpenAI{" "}
               <code className="font-mono">gpt-5.4</code>
               {" "}· Anthropic{" "}
@@ -674,7 +674,7 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPan
       {scanStates.length > 0 && (
         <p className="text-[11px] text-zinc-700 text-center">
           Primary scan:{" "}
-          <code className="font-mono">gemini-3-pro-image-preview</code>
+          <code className="font-mono">gemini-3-flash-image</code>
           {" "}· Additional providers active when enabled on backend
         </p>
       )}

@@ -9,7 +9,7 @@ Pattern (Phase 2 v2.5):
      Global cap is enforced by Cloud Tasks max_concurrent_dispatches=10.
   4. On completion: write output asset to GCS, update job row, auto-enqueue scan.
 
-Model: gemini-3-pro-image-preview (generation/cleanup)
+Model: gemini-3-flash-image (generation/cleanup)
 Fallback: ENHANCE_MODEL_FALLBACK env var (default: gemini-2.5-flash-image)
 """
 
@@ -37,7 +37,7 @@ from cleanshot_api.services.tasks import enqueue_scan
 
 logger = logging.getLogger(__name__)
 
-ENHANCE_MODEL = "gemini-3-pro-image-preview"
+ENHANCE_MODEL = "gemini-3-flash-image"
 ENHANCE_MODEL_FALLBACK = "gemini-2.5-flash-image"
 REGEN_PROMPT_KEY = "__regen_prompt_override__"  # sentinel — not a real toggle
 

@@ -174,13 +174,13 @@ cleanshot/
 
 | Operation | Model | Provider | Notes |
 |---|---|---|---|
-| Enhance | `gemini-3-pro-image-preview` | Vertex AI (ADC) | No API key — IAM auth |
+| Enhance | `gemini-3-flash-image` | Vertex AI (ADC) | No API key — IAM auth |
 | Enhance fallback | `gemini-2.5-flash-image` | Vertex AI | Activated if primary fails |
-| Scan — primary | `gemini-3-pro-image-preview` | Vertex AI (ADC) | Always active |
+| Scan — primary | `gemini-3-flash-image` | Vertex AI (ADC) | Always active |
 | Scan — optional | `gpt-5.4` | OpenAI | Enable: `SCAN_PROVIDER_OPENAI=true` |
 | Scan — optional | `claude-sonnet-4-6` | Anthropic | Enable: `SCAN_PROVIDER_ANTHROPIC=true` |
 | Scan — hard cases | `claude-opus-4-7` | Anthropic | Auto-routed when confidence < 0.6 |
-| Cleanup / Regen | `gemini-3-pro-image-preview` | Vertex AI (ADC) | Same model as enhance |
+| Cleanup / Regen | `gemini-3-flash-image` | Vertex AI (ADC) | Same model as enhance |
 
 **Critical API format differences** (do not mix up — each provider requires a different image input format):
 
@@ -580,7 +580,7 @@ The browser needs a `<canvas>` element to compress images. This fails in some he
 
 **Enhance job stuck at "queued" for more than 2 minutes**
 
-At Tier 1 IPM, Cloud Tasks dispatches one enhance job every 10 seconds. A batch of 22 images takes approximately 3–4 minutes to fully dispatch. The QueueStatusBar shows estimated time remaining. If a job is stuck for more than 10 minutes, check Cloud Run logs for `gemini-3-pro-image-preview` quota errors (429s). The Dynamic Shared Quota on this model is subject to global congestion.
+At Tier 1 IPM, Cloud Tasks dispatches one enhance job every 10 seconds. A batch of 22 images takes approximately 3–4 minutes to fully dispatch. The QueueStatusBar shows estimated time remaining. If a job is stuck for more than 10 minutes, check Cloud Run logs for `gemini-3-flash-image` quota errors (429s). The Dynamic Shared Quota on this model is subject to global congestion.
 
 **Scan shows no results after job completes**
 
