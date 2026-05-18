@@ -1,22 +1,30 @@
--- Migration 001: auth_allowlist table
--- Phase 3 v3.5 — Microsoft Entra ID SSO authorization
--- Does NOT modify any existing Phase 2 tables
+-- Migration 001: authorizations table
+-- Phase 3 — Microsoft Entra ID SSO authorization gate.
+-- Schema matches the query in apps/web/lib/auth.ts:checkAuthorization().
+-- Does NOT modify any existing Phase 2 tables.
 
-CREATE TABLE IF NOT EXISTS auth_allowlist (
+CREATE TABLE IF NOT EXISTS authorizations (
   id          uuid        PRIMARY KEY DEFAULT gen_random_uuid(),
-  email       text        UNIQUE NOT NULL,
-  label       text,                         -- e.g. "Bob Smith - ABC Auctions"
-  created_by  text        NOT NULL,
+  type        text        NOT NULL CHECK (type IN ('domain', 'email')),
+  value       text        NOT NULL CHECK (value = lower(value)),
+  note        text,
+  created_by  text        NOT NULL DEFAULT 'system',
   created_at  timestamptz NOT NULL DEFAULT NOW(),
-  expires_at  timestamptz               -- NULL = permanent; set for temp third-party access
+  expires_at  timestamptz,  -- NULL = permanent; set for temp third-party access
+  UNIQUE (type, value)
 );
 
-CREATE INDEX IF NOT EXISTS idx_auth_allowlist_email
-  ON auth_allowlist (email);
+-- Fast lookups for the OR'd query in checkAuthorization():
+--   WHERE (type='domain' AND $1 LIKE '%@' || value) OR (type='email' AND value=$1)
+-- Two separate indexes outperform a composite for an OR query.
+CREATE INDEX IF NOT EXISTS idx_authorizations_domain
+  ON authorizations (value) WHERE type = 'domain';
 
-CREATE INDEX IF NOT EXISTS idx_auth_allowlist_expires
-  ON auth_allowlist (expires_at)
-  WHERE expires_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_authorizations_email
+  ON authorizations (value) WHERE type = 'email';
 
--- Better Auth tables are created automatically via: npx better-auth migrate
--- Tables created: ba_user, ba_session, ba_account, ba_verification
+CREATE INDEX IF NOT EXISTS idx_authorizations_expires
+  ON authorizations (expires_at) WHERE expires_at IS NOT NULL;
+
+-- Better Auth tables (user, session, account, verification) are created
+-- separately via: pnpm dlx @better-auth/cli migrate (run from apps/web).
