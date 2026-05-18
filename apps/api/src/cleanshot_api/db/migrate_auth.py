@@ -88,6 +88,14 @@ CREATE INDEX IF NOT EXISTS idx_ba_verification_identifier ON ba_verification(ide
 -- ─── Authorization allowlist ─────────────────────────────────────────────────
 -- type: 'domain'  value: 'acme.com'
 -- type: 'email'   value: 'alice@partner.org'
+--
+-- The CREATE TABLE here only fires for fresh installs. In prod the table was
+-- created by an older revision of migrate_auth.py that lacked the `created_by`
+-- and `expires_at` columns. The ALTER TABLE ... ADD COLUMN IF NOT EXISTS lines
+-- below bring an old-schema table forward without touching a fresh one.
+-- Note: the lowercase CHECK constraint only applies to fresh installs. Existing
+-- old-schema tables won't have it — auth.ts always lowercases values before
+-- INSERT and lookup, so app-level invariant holds either way.
 CREATE TABLE IF NOT EXISTS authorizations (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     type        TEXT NOT NULL CHECK (type IN ('domain', 'email')),
@@ -98,6 +106,11 @@ CREATE TABLE IF NOT EXISTS authorizations (
     expires_at  TIMESTAMPTZ,
     UNIQUE (type, value)
 );
+ALTER TABLE authorizations
+    ADD COLUMN IF NOT EXISTS created_by TEXT NOT NULL DEFAULT 'system';
+ALTER TABLE authorizations
+    ADD COLUMN IF NOT EXISTS expires_at TIMESTAMPTZ;
+
 CREATE INDEX IF NOT EXISTS idx_authorizations_domain
     ON authorizations(value) WHERE type = 'domain';
 CREATE INDEX IF NOT EXISTS idx_authorizations_email
@@ -131,6 +144,12 @@ CREATE TABLE IF NOT EXISTS approval_sets (
     expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '60 days'),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Update the default for old-schema tables created with the 30-day default.
+-- Existing rows are unchanged; only future inserts that omit expires_at use
+-- the new default. The API at approvals.py always sets expires_at explicitly,
+-- so this is a cosmetic alignment.
+ALTER TABLE approval_sets
+    ALTER COLUMN expires_at SET DEFAULT (now() + INTERVAL '60 days');
 CREATE INDEX IF NOT EXISTS idx_approval_sets_user_email ON approval_sets(user_email);
 CREATE INDEX IF NOT EXISTS idx_approval_sets_expires_at ON approval_sets(expires_at);
 
