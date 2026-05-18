@@ -2,7 +2,7 @@
 Scan worker — multi-model fan-out with asyncio.TaskGroup.
 
 Provider routing (Phase 2 v2.5):
-  Primary:           gemini-2.5-flash-image  (always active)
+  Primary:           gemini-2.5-flash  (always active)
   Optional OpenAI:   gpt-5.4                         (SCAN_PROVIDER_OPENAI=true)
   Optional Anthropic: claude-sonnet-4-6              (SCAN_PROVIDER_ANTHROPIC=true)
                     → claude-opus-4-7 for hard scans
@@ -44,7 +44,7 @@ from cleanshot_api.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
-SCAN_MODEL_GEMINI = "gemini-2.5-flash-image"
+SCAN_MODEL_GEMINI = "gemini-2.5-flash"
 SCAN_MODEL_OPENAI = "gpt-5.4"
 SCAN_MODEL_ANTHROPIC_STD = "claude-sonnet-4-6"
 SCAN_MODEL_ANTHROPIC_HARD = "claude-opus-4-7"  # 3× vision resolution
