@@ -31,69 +31,72 @@ On the app overview page, copy:
 4. Click **Add** → copy the **Value** immediately (it won't be shown again)
    → `MICROSOFT_CLIENT_SECRET`
 
-## 4. Store in GCP Secret Manager
+## 4. Add to Vercel environment variables
 
-```bash
-# Store each secret individually
-echo -n "YOUR_CLIENT_ID"     | gcloud secrets create cleanshot-ms-client-id     --data-file=-
-echo -n "YOUR_CLIENT_SECRET" | gcloud secrets create cleanshot-ms-client-secret  --data-file=-
-echo -n "YOUR_BETTER_AUTH_SECRET" | gcloud secrets create cleanshot-better-auth-secret --data-file=-
+The web app runs on Vercel, not Cloud Run, so the Microsoft secrets live in
+the Vercel project's env vars (not GCP Secret Manager).
 
-# Grant Cloud Run service account access
-gcloud secrets add-iam-policy-binding cleanshot-ms-client-id \
-  --member="serviceAccount:forklift-api@cleanshot-493512.iam.gserviceaccount.com" \
-  --role="roles/secretmanager.secretAccessor"
-# Repeat for each secret
-```
+In your Vercel project dashboard → Settings → Environment Variables, add (set
+for **Production** and **Preview**; mark the two `*_SECRET` vars as Sensitive):
 
-## 5. Add to Cloud Run deploy command
-
-In `.github/workflows/deploy-web.yml`, add to `--set-secrets`:
-```
-MICROSOFT_CLIENT_ID=cleanshot-ms-client-id:latest,
-MICROSOFT_CLIENT_SECRET=cleanshot-ms-client-secret:latest,
-BETTER_AUTH_SECRET=cleanshot-better-auth-secret:latest
-```
-
-## 6. Add to Vercel environment variables
-
-In your Vercel project dashboard → Settings → Environment Variables, add:
 ```
 AUTH_ENABLED            = true
-MICROSOFT_CLIENT_ID     = [from Secret Manager or direct]
-MICROSOFT_CLIENT_SECRET = [from Secret Manager or direct]
+MICROSOFT_CLIENT_ID     = <client id from step 2>
+MICROSOFT_CLIENT_SECRET = <client secret value from step 3>
 MICROSOFT_TENANT_ID     = common
-BETTER_AUTH_SECRET      = [generate: openssl rand -hex 32]
-ALLOWED_DOMAINS         = yourdomain.com
-ALLOWED_EMAILS          = specific@outlook.com
+BETTER_AUTH_SECRET      = <generate: openssl rand -hex 32>
+BETTER_AUTH_URL         = https://<your-vercel-domain>
+ALLOWED_DOMAINS         = yourdomain.com,otherdomain.com
+ALLOWED_EMAILS          = specific@outlook.com           # optional, comma-separated
 ```
 
-## 7. Apply GCS lifecycle rule
+For the Development environment, Vercel blocks sensitive vars by default — set
+`AUTH_ENABLED=false` there so `next dev` skips SSO entirely.
+
+After saving, trigger a redeploy from the Vercel dashboard so the new env
+vars are picked up.
+
+## 5. (Removed — Cloud Run deploy doesn't carry MS secrets)
+
+The Microsoft OAuth flow runs entirely in the Next.js BFF on Vercel. Cloud
+Run only sees the authenticated `X-User-Email` header that the BFF injects.
+
+## 6. Apply GCS lifecycle rule
 
 ```bash
-gcloud storage buckets update gs://cleanshot-derivatives-493512 \
+gcloud storage buckets update gs://cleanshot-derivatives-prod \
   --lifecycle-file=infra/gcs-lifecycle-approved.json
 ```
 
 Verify:
 ```bash
-gcloud storage buckets describe gs://cleanshot-derivatives-493512 \
+gcloud storage buckets describe gs://cleanshot-derivatives-prod \
   --format="value(lifecycle_config)"
 ```
 
-## 8. Run Better Auth DB migration
-
-```bash
-# From apps/web directory
-pnpm dlx @better-auth/cli migrate
+Expected output:
+```
+rule=[{'action': {'type': 'Delete'}, 'condition': {'age': 60, 'matchesPrefix': ['approved/']}}]
 ```
 
-This creates: `user`, `session`, `account`, `verification` tables in Postgres.
-Then run CleanShot's own migration for `authorization`, `approval_sets`, `approval_set_assets`:
+## 7. (Was: Vercel env vars — now covered in step 4)
 
+## 8. DB schema (automatic)
+
+You don't run anything manually. The FastAPI service applies the full auth +
+approval schema on startup via `apps/api/src/cleanshot_api/db/migrate_auth.py`:
+
+- Better Auth tables: `ba_user`, `ba_session`, `ba_account`, `ba_verification`
+- CleanShot tables: `authorizations`, `approval_sets`, `approval_set_assets`
+- Seed: the 4 `discountforklift*` domains are inserted into `authorizations`
+
+The migration is idempotent (CREATE TABLE IF NOT EXISTS / ON CONFLICT DO
+NOTHING) and serialized across replicas via `pg_advisory_xact_lock`. So
+deploying the API is what creates the schema — no separate migration step.
+
+If you ever need to inspect or hand-edit the schema, use Cloud Shell:
 ```bash
-# In FastAPI startup (local) or via psql in production
-psql $DATABASE_URL -f db/migrate_auth.sql
+gcloud sql connect cleanshot-postgres --user=postgres --database=cleanshot
 ```
 
 ## 9. Add allowlist entries at runtime (without redeploy)

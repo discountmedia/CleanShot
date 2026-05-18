@@ -35,6 +35,7 @@ import valkey.asyncio as valkey_client
 
 from cleanshot_api.core.config import get_settings
 from cleanshot_api.db.migrate import run_migrations
+from cleanshot_api.db.migrate_auth import run_auth_migrations
 from cleanshot_api.db.pool import create_pool
 from cleanshot_api.routers import (
     approvals,
@@ -61,10 +62,15 @@ async def lifespan(app: FastAPI):
     app.state.pool = await create_pool(settings.database_url)
     logger.info("asyncpg pool created")
 
-    # Run idempotent migrations on startup (local/dev only in prod use Alembic)
-    if settings.is_local:
-        await run_migrations(app.state.pool)
-        logger.info("Schema migrations applied")
+    # Idempotent migrations on every startup (additive only — CREATE TABLE
+    # IF NOT EXISTS / ON CONFLICT DO NOTHING). Auth migration takes a
+    # pg_advisory_xact_lock so concurrent cold-start replicas serialize
+    # against each other. Anything destructive (ALTER, DROP) must be
+    # applied manually via psql, not by adding to these files.
+    await run_migrations(app.state.pool)
+    logger.info("Core schema migrations applied")
+    await run_auth_migrations(app.state.pool)
+    logger.info("Auth schema migrations applied")
 
     # --- Gemini via Vertex AI IAM (ADC — no static key) ---
     app.state.genai = genai.Client(

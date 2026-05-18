@@ -39,7 +39,16 @@ const createAuth = () =>
   betterAuth({
     database: getPool(),
 
+    // Prefix all Better Auth tables with `ba_` to (a) avoid `user` being a
+    // Postgres reserved word that needs quoting in every query and (b) make
+    // it obvious in psql which tables belong to the auth layer vs. CleanShot.
+    // The schema is materialized by apps/api/.../db/migrate_auth.py on startup.
+    user:         { modelName: "ba_user" },
+    account:      { modelName: "ba_account" },
+    verification: { modelName: "ba_verification" },
+
     session: {
+      modelName: "ba_session",
       expiresIn: 60 * 60 * 24 * 7,          // 7 days
       updateAge: 60 * 60 * 24,               // refresh cookie if >1 day old
       cookieCache: {
