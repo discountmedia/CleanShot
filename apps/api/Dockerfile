@@ -71,6 +71,10 @@ EXPOSE 8080
 # --workers 1: Never use gunicorn-with-uvicorn-workers on Cloud Run —
 #   Cloud Run scales horizontally via instances, not vertically via workers.
 # --loop uvloop + --http httptools: maximum async throughput.
+# --forwarded-allow-ips=*: trust X-Forwarded-* headers from Cloud Run's proxy
+#   (which hits the container from 169.254.169.126, not 127.0.0.1). Without
+#   this, request.url returns http:// and OIDC audience verification fails
+#   because Cloud Tasks mints the token with the https:// target URL.
 CMD ["python", "-m", "uvicorn", \
      "cleanshot_api.main:app", \
      "--host", "0.0.0.0", \
@@ -78,4 +82,6 @@ CMD ["python", "-m", "uvicorn", \
      "--workers", "1", \
      "--loop", "uvloop", \
      "--http", "httptools", \
+     "--proxy-headers", \
+     "--forwarded-allow-ips", "*", \
      "--log-level", "info"]
