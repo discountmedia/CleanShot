@@ -176,7 +176,7 @@ cleanshot/
 |---|---|---|---|
 | Enhance | `gemini-3-pro-image-preview` | Vertex AI (ADC) | No API key — IAM auth |
 | Enhance fallback | `gemini-2.5-flash-image` | Vertex AI | Activated if primary fails |
-| Scan — primary | `gemini-3.1-flash-image-preview` | Vertex AI (ADC) | Always active |
+| Scan — primary | `gemini-3-pro-image-preview` | Vertex AI (ADC) | Always active |
 | Scan — optional | `gpt-5.4` | OpenAI | Enable: `SCAN_PROVIDER_OPENAI=true` |
 | Scan — optional | `claude-sonnet-4-6` | Anthropic | Enable: `SCAN_PROVIDER_ANTHROPIC=true` |
 | Scan — hard cases | `claude-opus-4-7` | Anthropic | Auto-routed when confidence < 0.6 |

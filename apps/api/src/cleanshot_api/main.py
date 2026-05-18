@@ -12,7 +12,7 @@ Startup sequence (lifespan):
 
 Models per v2.5 spec:
   Generation / Cleanup:  gemini-3-pro-image-preview
-  Scan (Gemini):         gemini-3.1-flash-image-preview
+  Scan (Gemini):         gemini-3-pro-image-preview
   Scan (OpenAI):         gpt-5.4
   Scan (Anthropic std):  claude-sonnet-4-6
   Scan (Anthropic hard): claude-opus-4-7
