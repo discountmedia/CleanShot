@@ -15,7 +15,6 @@ Model: gemini-2.5-flash-image (generation/cleanup)
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import mimetypes
 import uuid
@@ -141,11 +140,13 @@ async def _run_enhance(
                 ),
             )
 
-        # Extract image bytes from response
+        # Extract image bytes from response. google-genai already decodes the
+        # protobuf bytes field, so `data` is raw image bytes — do NOT b64-decode
+        # again (that silently drops non-base64 chars and produces garbage).
         output_bytes: bytes | None = None
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.data:
-                output_bytes = base64.b64decode(part.inline_data.data)
+                output_bytes = part.inline_data.data
                 break
 
         if not output_bytes:

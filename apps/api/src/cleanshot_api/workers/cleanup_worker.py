@@ -9,7 +9,6 @@ Gemini addresses specific issues rather than making general improvements.
 from __future__ import annotations
 
 import asyncio
-import base64
 import logging
 import mimetypes
 import time
@@ -102,10 +101,13 @@ async def _run_cleanup(
                 ),
             )
 
+        # google-genai already decodes the protobuf bytes field, so `data` is
+        # raw image bytes — do NOT b64-decode again (would silently drop
+        # non-base64 chars and produce garbage).
         output_bytes: bytes | None = None
         for part in response.candidates[0].content.parts:
             if part.inline_data and part.inline_data.data:
-                output_bytes = base64.b64decode(part.inline_data.data)
+                output_bytes = part.inline_data.data
                 break
 
         if not output_bytes:
