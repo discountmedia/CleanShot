@@ -172,6 +172,7 @@ async def _scan_anthropic(
     response = await anthropic_client.messages.create(
         model=model_id,
         max_tokens=3048,
+        system=SCAN_SYSTEM_PROMPT,
         tools=[
             {
                 "name": "report_scan",
@@ -191,8 +192,7 @@ async def _scan_anthropic(
                             "media_type": ct,
                             "data": b64,  # Raw base64, no prefix
                         },
-                    },
-                    {"type": "text", "text": SCAN_SYSTEM_PROMPT},
+                    }
                 ],
             }
         ],
