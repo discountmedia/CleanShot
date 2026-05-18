@@ -123,7 +123,7 @@ async def enqueue_regen(
 ) -> RegenResponse:
     """
     Single-image regen triggered from the Scan tab.
-    Uses the same enhance pipeline (gemini-3-flash-image) but with
+    Uses the same enhance pipeline (gemini-2.5-flash-image) but with
     an explicit regen_prompt instead of toggle-derived instructions.
     The backend stores the prompt in a special REGEN_PROMPT_OVERRIDE toggle field.
     """

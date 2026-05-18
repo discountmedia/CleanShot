@@ -9,8 +9,7 @@ Pattern (Phase 2 v2.5):
      Global cap is enforced by Cloud Tasks max_concurrent_dispatches=10.
   4. On completion: write output asset to GCS, update job row, auto-enqueue scan.
 
-Model: gemini-3-flash-image (generation/cleanup)
-Fallback: ENHANCE_MODEL_FALLBACK env var (default: gemini-2.5-flash-image)
+Model: gemini-2.5-flash-image (generation/cleanup)
 """
 
 from __future__ import annotations
@@ -37,8 +36,7 @@ from cleanshot_api.services.tasks import enqueue_scan
 
 logger = logging.getLogger(__name__)
 
-ENHANCE_MODEL = "gemini-3-flash-image"
-ENHANCE_MODEL_FALLBACK = "gemini-2.5-flash-image"
+ENHANCE_MODEL = "gemini-2.5-flash-image"
 REGEN_PROMPT_KEY = "__regen_prompt_override__"  # sentinel — not a real toggle
 
 
@@ -127,39 +125,21 @@ async def _run_enhance(
             mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
             file_part = {"file_data": {"file_uri": payload.input_gcs_uri, "mime_type": mime_type}}
 
-            try:
-                response = await genai_client.aio.models.generate_content(
-                    model=ENHANCE_MODEL,
-                    contents=[
-                        {
-                            "role": "user",
-                            "parts": [
-                                file_part,
-                                {"text": prompt},
-                            ],
-                        }
-                    ],
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
-                    ),
-                )
-            except Exception:
-                logger.warning("Primary enhance model failed, trying fallback")
-                response = await genai_client.aio.models.generate_content(
-                    model=ENHANCE_MODEL_FALLBACK,
-                    contents=[
-                        {
-                            "role": "user",
-                            "parts": [
-                                file_part,
-                                {"text": prompt},
-                            ],
-                        }
-                    ],
-                    config=types.GenerateContentConfig(
-                        response_modalities=["IMAGE", "TEXT"],
-                    ),
-                )
+            response = await genai_client.aio.models.generate_content(
+                model=ENHANCE_MODEL,
+                contents=[
+                    {
+                        "role": "user",
+                        "parts": [
+                            file_part,
+                            {"text": prompt},
+                        ],
+                    }
+                ],
+                config=types.GenerateContentConfig(
+                    response_modalities=["IMAGE", "TEXT"],
+                ),
+            )
 
         # Extract image bytes from response
         output_bytes: bytes | None = None

@@ -1,7 +1,7 @@
 """
 Cleanup worker — uses scan anomaly context to generate a targeted cleanup prompt.
 
-Model: gemini-3-flash-image (same as enhance)
+Model: gemini-2.5-flash-image (same as enhance)
 The anomaly_context list (from scan_results) is formatted into the prompt so
 Gemini addresses specific issues rather than making general improvements.
 """
@@ -29,7 +29,7 @@ from cleanshot_api.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
-CLEANUP_MODEL = "gemini-3-flash-image"
+CLEANUP_MODEL = "gemini-2.5-flash-image"
 
 
 def _build_cleanup_prompt(anomaly_context: list[dict[str, Any]] | None) -> str:
