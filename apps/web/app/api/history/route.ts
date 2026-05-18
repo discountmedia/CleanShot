@@ -1,6 +1,6 @@
 // apps/web/app/api/history/route.ts
 // BFF Route Handler — GET /api/history
-// Returns the authenticated user's approval sets from the last 30 days.
+// Returns the authenticated user's approval sets from the last 60 days.
 
 import { type NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";

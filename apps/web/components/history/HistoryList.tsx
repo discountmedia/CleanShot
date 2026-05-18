@@ -1,6 +1,6 @@
 "use client";
 // apps/web/components/history/HistoryList.tsx
-// Renders the user's last 30 days of approval sets.
+// Renders the user's last 60 days of approval sets.
 // Each ApprovalSet has a date, make/model label, image thumbnails, and download.
 
 import { useEffect, useState } from "react";
@@ -15,7 +15,7 @@ interface ApprovalSetAsset {
 interface ApprovalSet {
   id:           string;
   createdAt:    string;   // ISO 8601
-  expiresAt:    string;   // ISO 8601 — 30 days after createdAt
+  expiresAt:    string;   // ISO 8601 — 60 days after createdAt
   dirName:      string;   // YYYY-MM-DD_{make}_{model}
   make:         string;
   model:        string;
@@ -214,7 +214,7 @@ export function HistoryList({ userEmail }: { userEmail: string }) {
   if (!data || data.sets.length === 0) {
     return (
       <div className="text-center py-16 space-y-2">
-        <p className="text-zinc-500">No approved image sets in the last 30 days.</p>
+        <p className="text-zinc-500">No approved image sets in the last 60 days.</p>
         <p className="text-xs text-zinc-700">
           Approve images in the Scan tab to save them to your library.
         </p>
@@ -225,7 +225,7 @@ export function HistoryList({ userEmail }: { userEmail: string }) {
   return (
     <div className="space-y-4">
       <p className="text-xs text-zinc-600">
-        {data.totalSets} set{data.totalSets !== 1 ? "s" : ""} · Images stored 30 days from approval
+        {data.totalSets} set{data.totalSets !== 1 ? "s" : ""} · Images stored 60 days from approval
       </p>
       {data.sets.map((s) => (
         <ApprovalSetCard key={s.id} set={s} />

@@ -1,6 +1,6 @@
 // apps/web/app/history/page.tsx
-// User's 30-day image enhancement history — Server Component shell.
-// Lists all approval sets created by the authenticated user in the last 30 days.
+// User's 60-day image enhancement history — Server Component shell.
+// Lists all approval sets created by the authenticated user in the last 60 days.
 // Each set shows: date, make/model, image count, thumbnails, download link.
 
 import Link from "next/link";
@@ -30,7 +30,7 @@ export default async function HistoryPage() {
           <div>
             <h1 className="text-xl font-bold text-white">My Enhancement History</h1>
             <p className="text-sm text-zinc-500 mt-1">
-              Last 30 days · {userEmail}
+              Last 60 days · {userEmail}
             </p>
           </div>
           <Link

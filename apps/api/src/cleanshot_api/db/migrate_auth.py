@@ -33,17 +33,17 @@ CREATE INDEX IF NOT EXISTS idx_authorization_value ON authorizations(value);
 -- One row per "Approve All" click.
 -- user_email: authenticated Microsoft email (from Better Auth session).
 -- gcs_dir:    the GCS directory path for this set (human-readable).
--- expires_at: 30 days after created_at — enforced by GCS lifecycle + this column.
+-- expires_at: 60 days after created_at — enforced by GCS lifecycle + this column.
 CREATE TABLE IF NOT EXISTS approval_sets (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_email  TEXT NOT NULL,
     session_id  UUID REFERENCES sessions(id),
     project_id  UUID REFERENCES projects(id),
-    gcs_dir     TEXT NOT NULL,              -- approved/{email}/{YYYY-MM-DD}_{make}_{model}
+    gcs_dir     TEXT NOT NULL,              -- approved/{email}/{YYYY-MM-DD}_{make}_{model}_{session-short}
     make        TEXT NOT NULL DEFAULT '',
     model       TEXT NOT NULL DEFAULT '',
     image_count INT  NOT NULL DEFAULT 0,
-    expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '30 days'),
+    expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '60 days'),
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_approval_sets_user_email ON approval_sets(user_email);

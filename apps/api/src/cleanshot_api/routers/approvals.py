@@ -4,14 +4,17 @@ Approval routes — Phase 2 v2.5 extension.
 POST /api/v1/approvals
   Called when user clicks "Approve All" in the Scan tab.
   - Reads X-User-Email header (injected by BFF from Better Auth session).
-  - Copies each asset to GCS path: approved/{email}/{YYYY-MM-DD}_{make}_{model}/{filename}
+  - Copies each asset to GCS path:
+    approved/{email}/{YYYY-MM-DD}_{make}_{model}_{session-short}/{filename}
+  - The session-short suffix prevents collisions when a user approves multiple
+    sessions of the same make/model on the same day.
   - Creates approval_set + approval_set_assets rows in Postgres.
   - Returns { approvalSetId, gcsDir, assetCount }.
 
 GET /api/v1/history?user_email={email}
-  Returns the user's approval sets from the last 30 days,
+  Returns the user's approval sets from the last 60 days,
   with per-asset signed GET URLs for thumbnail display.
-  Expired sets (past 30 days) are excluded.
+  Expired sets (past 60 days) are excluded.
 """
 
 from __future__ import annotations
@@ -49,17 +52,27 @@ def _sanitize(s: str) -> str:
     return s[:40]
 
 
-def _build_gcs_dir(user_email: str, make: str, model: str) -> str:
+def _build_gcs_dir(
+    user_email: str,
+    make: str,
+    model: str,
+    session_id: uuid.UUID,
+) -> str:
     """
     Build the human-readable GCS directory path for an approval set.
-    Format: approved/{email}/{YYYY-MM-DD}_{make}_{model}
+    Format: approved/{email}/{YYYY-MM-DD}_{make}_{model}_{session-short}
+
+    The {session-short} suffix is the first hex segment of the session UUID
+    (8 chars) and guarantees uniqueness when the same user approves multiple
+    sessions of the same make/model on the same day.
     """
     today = datetime.date.today().strftime("%Y-%m-%d")
     safe_make  = _sanitize(make)  or "unknown"
     safe_model = _sanitize(model) or "unknown"
     # Email: replace @ and . with _ for path safety
     safe_email = re.sub(r"[^a-z0-9_\-]", "_", user_email.lower())
-    dir_name   = f"{today}_{safe_make}_{safe_model}"
+    session_short = str(session_id).split("-", 1)[0]  # first 8 hex chars
+    dir_name   = f"{today}_{safe_make}_{safe_model}_{session_short}"
     return f"{APPROVED_PREFIX}/{safe_email}/{dir_name}"
 
 
@@ -109,7 +122,7 @@ async def create_approval_set(
     make  = body.project_meta.get("make",  "")
     model = body.project_meta.get("model", "")
 
-    gcs_dir = _build_gcs_dir(user_email, make, model)
+    gcs_dir = _build_gcs_dir(user_email, make, model, body.session_id)
     settings = get_settings()
     gcs_client = gcs.Client(project=settings.gcp_project)
     dest_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
@@ -150,7 +163,7 @@ async def create_approval_set(
         )
 
     # Persist approval set
-    expires_at = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(days=30)
+    expires_at = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(days=60)
 
     async with pool.acquire() as conn:
         # Look up project for FK (optional — may not be saved yet)
@@ -209,7 +222,7 @@ async def get_history(
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> dict:
     """
-    Returns the user's approval sets from the last 30 days.
+    Returns the user's approval sets from the last 60 days.
     Expired sets are excluded. Assets get fresh signed GET URLs.
     """
     if x_user_email.lower() != user_email.lower():
