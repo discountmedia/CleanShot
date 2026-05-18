@@ -16,6 +16,9 @@ export function LoginButton({ callbackUrl }: { callbackUrl?: string }) {
       await signIn.social({
         provider: "microsoft",
         callbackURL: callbackUrl ?? "/",
+        // Failed auth (e.g. unauthorized email) lands on /unauthorized
+        // with the reason in ?error= rather than a broken redirect.
+        errorCallbackURL: "/unauthorized",
       });
     } catch {
       setError("Sign-in failed. Please try again.");
