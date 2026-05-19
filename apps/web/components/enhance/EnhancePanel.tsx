@@ -16,7 +16,7 @@
 import { useCallback, useId, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
 
-import { compressIfNeeded, formatBytes, MAX_BYTES } from "../../lib/compress";
+import { buildEnhanceFilename, convertToJpeg, formatBytes } from "../../lib/compress";
 import {
   DEFAULT_TOGGLES,
   TOGGLE_LABELS,
@@ -159,8 +159,13 @@ function ThumbnailCard({ file }: { file: UploadFile }) {
 
 // ─── Metadata form ────────────────────────────────────────────────────────────
 
-const META_FIELDS: Array<{ key: keyof ForkliftMeta; label: string; placeholder: string }> = [
-  { key: "make",      label: "Make",      placeholder: "e.g. Toyota" },
+const META_FIELDS: Array<{
+  key: keyof ForkliftMeta;
+  label: string;
+  placeholder: string;
+  required?: boolean;
+}> = [
+  { key: "make",      label: "Make",      placeholder: "e.g. Toyota",     required: true },
   { key: "model",     label: "Model",     placeholder: "e.g. 8FGU25" },
   { key: "year",      label: "Year",      placeholder: "e.g. 2019" },
   { key: "tireType",  label: "Tire Type", placeholder: "e.g. Pneumatic" },
@@ -177,18 +182,31 @@ function MetaFields({
 }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-      {META_FIELDS.map(({ key, label, placeholder }) => (
-        <div key={key}>
-          <label className="block text-xs font-medium text-zinc-400 mb-1">{label}</label>
-          <input
-            type="text"
-            value={meta[key] ?? ""}
-            onChange={(e) => onChange({ ...meta, [key]: e.target.value })}
-            placeholder={placeholder}
-            className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
-          />
-        </div>
-      ))}
+      {META_FIELDS.map(({ key, label, placeholder, required }) => {
+        const missing = required && !(meta[key] ?? "").trim();
+        return (
+          <div key={key}>
+            <label className="flex items-center gap-1 text-xs font-medium text-zinc-400 mb-1">
+              {label}
+              {required && <span className="text-red-500" aria-label="required">*</span>}
+            </label>
+            <input
+              type="text"
+              value={meta[key] ?? ""}
+              onChange={(e) => onChange({ ...meta, [key]: e.target.value })}
+              placeholder={placeholder}
+              required={required}
+              aria-required={required}
+              aria-invalid={missing || undefined}
+              className={`w-full bg-zinc-900 border rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:border-transparent transition ${
+                missing
+                  ? "border-red-800 focus:ring-red-500"
+                  : "border-zinc-700 focus:ring-blue-500"
+              }`}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -394,9 +412,10 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
   const [toggles, setToggles]       = useState<EnhanceToggles>(DEFAULT_TOGGLES);
   const [meta, setMeta]             = useState<Partial<ForkliftMeta>>({});
   const [enhanceJobs, setEnhanceJobs] = useState<Map<string, string>>(new Map()); // fileId → jobId
-  const [metaOpen, setMetaOpen]     = useState(false);
   const [isRunning, setIsRunning]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+
+  const makeValid = Boolean(meta.make?.trim());
 
   // Completed-but-not-yet-sent state for the explicit "Send to Scan" flow.
   // Keyed by jobId so a re-poll on remount won't duplicate.
@@ -476,30 +495,38 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
     setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   }, []);
 
-  const runUploadAndEnhance = async (uploadFile: UploadFile) => {
+  const runUploadAndEnhance = async (
+    uploadFile: UploadFile,
+    index: number,
+    total: number,
+  ) => {
     const { id, file } = uploadFile;
 
-    // Step 1: compress if needed
-    let toUpload = file;
-    if (file.size > MAX_BYTES) {
-      updateFile(id, { status: "compressing" });
-      try {
-        toUpload = await compressIfNeeded(file);
-        updateFile(id, { compressedSize: toUpload.size });
-      } catch (err) {
-        updateFile(id, { status: "error", error: "Compression failed" });
-        return;
-      }
+    // Step 1: convert to JPEG + rename to {make}_{model}_{year}_{NN}.jpg.
+    // This is unconditional — every upload runs through this step so the
+    // worker always receives a deterministic JPEG with the operator's chosen
+    // name. Strips problematic format metadata and decouples downstream
+    // filenames from whatever the source was called.
+    updateFile(id, { status: "compressing" });
+    const targetFilename = buildEnhanceFilename(meta, index, total);
+    let toUpload: File;
+    try {
+      toUpload = await convertToJpeg(file, targetFilename);
+      updateFile(id, { compressedSize: toUpload.size });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Conversion failed";
+      updateFile(id, { status: "error", error: msg });
+      return;
     }
 
-    // Step 2: get signed PUT URL
+    // Step 2: get signed PUT URL (always JPEG content type now)
     updateFile(id, { status: "uploading", progress: 0 });
     let signedResp: Awaited<ReturnType<typeof getSignedUploadUrl>>;
     try {
       signedResp = await getSignedUploadUrl({
         sessionId,
         filename: toUpload.name,
-        contentType: toUpload.type || "image/jpeg",
+        contentType: "image/jpeg",
       });
     } catch {
       updateFile(id, { status: "error", error: "Failed to get upload URL" });
@@ -535,6 +562,10 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
   const handleEnhanceAll = async () => {
     const pending = files.filter((f) => f.status === "pending");
     if (pending.length === 0) return;
+    if (!makeValid) {
+      setGlobalError("Enter the forklift Make before enhancing.");
+      return;
+    }
     if (!anyToggleOn) {
       setGlobalError("Enable at least one enhancement toggle before processing.");
       return;
@@ -542,8 +573,11 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
     setGlobalError(null);
     setIsRunning(true);
 
-    // Upload all in parallel (browser limits concurrent XHRs naturally)
-    await Promise.allSettled(pending.map(runUploadAndEnhance));
+    // Upload all in parallel (browser limits concurrent XHRs naturally).
+    // Index + total are used to assign sequential filename suffixes.
+    await Promise.allSettled(
+      pending.map((f, i) => runUploadAndEnhance(f, i, pending.length))
+    );
     setIsRunning(false);
   };
 
@@ -631,30 +665,38 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
         </div>
       )}
 
-      {/* ── Forklift metadata (collapsible) ── */}
-      <div className="border border-zinc-800 rounded-xl overflow-hidden">
-        <button
-          onClick={() => setMetaOpen((v) => !v)}
-          className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900/50 hover:bg-zinc-900 transition-colors"
-        >
+      {/* ── Forklift details (always open; Make required) ── */}
+      <section className="border border-zinc-800 rounded-xl overflow-hidden">
+        <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-zinc-300">Forklift Details</span>
-            <span className="text-xs text-zinc-600">(optional — helps AI cross-reference catalogue)</span>
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+              Forklift Details
+            </span>
+            <span className="text-xs text-zinc-600">
+              — Make is required; used to name the uploaded files
+            </span>
           </div>
-          <svg
-            className={`w-4 h-4 text-zinc-500 transition-transform ${metaOpen ? "rotate-180" : ""}`}
-            fill="none" viewBox="0 0 24 24" stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-          </svg>
-        </button>
-
-        {metaOpen && (
-          <div className="p-4 bg-zinc-950 border-t border-zinc-800">
-            <MetaFields meta={meta} onChange={setMeta} />
-          </div>
-        )}
-      </div>
+          {!makeValid && (
+            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-red-400">
+              Make required
+            </span>
+          )}
+        </header>
+        <div className="p-4 bg-zinc-950">
+          <MetaFields meta={meta} onChange={setMeta} />
+          {makeValid && (
+            <p className="mt-3 text-[11px] text-zinc-500 font-mono">
+              Files will be uploaded as{" "}
+              <span className="text-zinc-300">
+                {buildEnhanceFilename(meta, 0, Math.max(files.length, 1))}
+              </span>
+              {files.length > 1 && <> through <span className="text-zinc-300">
+                {buildEnhanceFilename(meta, files.length - 1, files.length)}
+              </span></>}
+            </p>
+          )}
+        </div>
+      </section>
 
       {/* ── Enhancement toggles ── */}
       <div>
@@ -698,18 +740,22 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       {/* ── Enhance button ── */}
       <button
         onClick={handleEnhanceAll}
-        disabled={pendingCount === 0 || !anyToggleOn || isRunning}
+        disabled={pendingCount === 0 || !anyToggleOn || !makeValid || isRunning}
         className={`
           w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
-          ${pendingCount > 0 && anyToggleOn && !isRunning
+          ${pendingCount > 0 && anyToggleOn && makeValid && !isRunning
             ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
             : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
         `}
       >
         {isRunning
-          ? "Uploading & Enhancing…"
+          ? "Converting, uploading & enhancing…"
           : pendingCount > 0
-            ? `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""}`
+            ? !makeValid
+              ? "Enter forklift Make to continue"
+              : !anyToggleOn
+                ? "Enable at least one enhancement toggle"
+                : `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""}`
             : doneCount > 0
               ? "All images processing"
               : "Add images above"}
