@@ -71,7 +71,7 @@ jobs:
             --max-instances=20 \
             --timeout=900 \
             --cpu-boost \
-            --no-allow-unauthenticated \
+            --allow-unauthenticated \
             --ingress=all \
             --service-account=forklift-api@cleanshot-493512.iam.gserviceaccount.com \
             --set-secrets="DATABASE_URL=cleanshot-database-url:latest,API_KEY=cleanshot-api-key:latest,API_KEY_PREV=cleanshot-api-key-prev:latest,OPENAI_API_KEY=cleanshot-openai-key:latest,ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,WORKER_URL=cleanshot-worker-url:latest" \
