@@ -219,6 +219,7 @@ function JobStatusRow({
   sent,
   onComplete,
   onSend,
+  onRegenerate,
 }: {
   file: UploadFile;
   jobId: string;
@@ -229,6 +230,13 @@ function JobStatusRow({
   onComplete: (job: JobRecord, outputUrl: string) => void;
   /** Per-row "Send to Scan" click handler. */
   onSend: () => void;
+  /**
+   * Re-runs enhance on this file's original GCS asset with the CURRENT
+   * toggle / provider / custom-prompt state. Only enabled once the
+   * existing job has reached a terminal state — re-enqueueing while a
+   * job is mid-flight would just double-up the Cloud Tasks queue.
+   */
+  onRegenerate: () => void;
 }) {
   const [job, setJob] = useState<JobRecord | null>(null);
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
@@ -363,28 +371,42 @@ function JobStatusRow({
           </p>
         )}
 
-        {/* Action row */}
-        {outputUrl && (
-          <div className="mt-4 flex items-center justify-end gap-2">
-            <a
-              href={outputUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white transition-colors px-3 py-2 border border-zinc-800 hover:border-zinc-600 rounded"
+        {/* Action row — shown once the job reaches a terminal state.
+            Regenerate is always available (re-run with current toggles /
+            prompt / provider, no re-upload). Open + Send only appear
+            when we actually have an output URL. */}
+        {(outputUrl || isFailed) && (
+          <div className="mt-4 flex items-center justify-end gap-2 flex-wrap">
+            <button
+              onClick={onRegenerate}
+              className="text-xs uppercase tracking-[0.18em] font-semibold text-amber-300 hover:text-white bg-amber-950/40 hover:bg-amber-700 border border-amber-800 hover:border-amber-600 transition-colors px-3 py-2 rounded"
+              title="Re-run enhance on this image with the current toggles / custom prompt / provider"
             >
-              Open full size
-            </a>
-            {sent ? (
-              <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-600 px-3 py-2">
-                ✓ Sent
-              </span>
-            ) : (
-              <button
-                onClick={onSend}
-                className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-red-600 hover:bg-red-500 border border-red-500 transition-colors px-3 py-2 rounded"
+              ↻ Regenerate
+            </button>
+            {outputUrl && (
+              <a
+                href={outputUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white transition-colors px-3 py-2 border border-zinc-800 hover:border-zinc-600 rounded"
               >
-                Send to Scan →
-              </button>
+                Open full size
+              </a>
+            )}
+            {outputUrl && (
+              sent ? (
+                <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-600 px-3 py-2">
+                  ✓ Sent
+                </span>
+              ) : (
+                <button
+                  onClick={onSend}
+                  className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-red-600 hover:bg-red-500 border border-red-500 transition-colors px-3 py-2 rounded"
+                >
+                  Send to Scan →
+                </button>
+              )
             )}
           </div>
         )}
@@ -588,6 +610,44 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
       setEnhanceJobs((prev) => new Map(prev).set(id, jobId));
     } catch {
       updateFile(id, { status: "error", error: "Failed to enqueue enhance job" });
+    }
+  };
+
+  /**
+   * Re-run enhance on an already-uploaded image with the CURRENT toggle /
+   * provider / custom-prompt state. No re-upload — we reuse the asset id
+   * that the original upload created. Lets the operator iterate by
+   * tweaking toggles without losing their workspace.
+   *
+   * Side-effects:
+   *   • Replaces enhanceJobs[fileId] with the new jobId — JobStatusRow's
+   *     React key uses this so the row remounts with fresh poller state.
+   *   • Leaves `completed` and `sentJobIds` keyed by the OLD jobId; the
+   *     new row gets fresh entries when its job completes. Old entries
+   *     become orphaned but are bounded by the file count so we skip GC.
+   */
+  const regenerateEnhance = async (file: UploadFile) => {
+    if (!file.assetId) {
+      setGlobalError("Can't regenerate — original upload didn't complete.");
+      return;
+    }
+    setGlobalError(null);
+    try {
+      const { jobId } = await enqueueEnhance({
+        sessionId,
+        assetId:        file.assetId,
+        toggles,
+        forkliftMeta:   meta,
+        provider:       useOpenAI ? "openai" : "gemini",
+        customPrompt:   customPromptActive ? customPrompt : undefined,
+        // New idempotency key per regen so the backend doesn't dedupe
+        // against the prior job.
+        idempotencyKey: `enhance-${file.id}-regen-${Date.now()}`,
+      });
+      setEnhanceJobs((prev) => new Map(prev).set(file.id, jobId));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Failed to regenerate";
+      setGlobalError(msg);
     }
   };
 
@@ -937,7 +997,12 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
             .filter((f) => enhanceJobs.has(f.id))
             .map((f) => (
               <JobStatusRow
-                key={f.id}
+                // Including jobId in the key forces a remount when the
+                // user clicks Regenerate (new jobId is swapped in via
+                // setEnhanceJobs). Fresh useJobPoller, fresh internal
+                // state — no leftover "after" thumbnail or status from
+                // the prior run.
+                key={`${f.id}-${enhanceJobs.get(f.id)!}`}
                 file={f}
                 jobId={enhanceJobs.get(f.id)!}
                 sent={sentJobIds.has(enhanceJobs.get(f.id)!)}
@@ -955,6 +1020,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
                   const item = completed.get(enhanceJobs.get(f.id)!);
                   if (item) sendOne(item);
                 }}
+                onRegenerate={() => regenerateEnhance(f)}
               />
             ))}
         </div>
