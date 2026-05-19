@@ -9,7 +9,7 @@ Pattern (Phase 2 v2.5):
      Global cap is enforced by Cloud Tasks max_concurrent_dispatches=10.
   4. On completion: write output asset to GCS, update job row, auto-enqueue scan.
 
-Model: gemini-2.5-flash-image (generation/cleanup)
+Models: gemini-flash-latest (default) | gpt-image-2-2026-04-21 (OpenAI opt-in)
 """
 
 from __future__ import annotations
@@ -37,8 +37,15 @@ from cleanshot_api.services.tasks import enqueue_scan
 
 logger = logging.getLogger(__name__)
 
-ENHANCE_MODEL_GEMINI = "gemini-2.5-flash-image"
-ENHANCE_MODEL_OPENAI = "gpt-image-1"
+# Model IDs are pinned here. Update via this single source of truth.
+# gemini-flash-latest is a Google moving-target alias — it auto-tracks the
+# newest Gemini Flash release. Pin to a dated snapshot (e.g.,
+# "gemini-2.5-flash-image") if you want reproducibility across deploys.
+ENHANCE_MODEL_GEMINI = "gemini-flash-latest"
+# gpt-image-2 dated snapshot (2026-04-21 release). Switch back to a
+# moving alias like "gpt-image-2-latest" if/when one exists and you
+# prefer auto-tracked updates.
+ENHANCE_MODEL_OPENAI = "gpt-image-2-2026-04-21"
 
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
@@ -280,7 +287,7 @@ async def _enhance_with_openai(
     prompt: str,
 ) -> bytes:
     """
-    Call OpenAI gpt-image-1's image-edit endpoint. Slower + costlier than
+    Call OpenAI gpt-image-2's image-edit endpoint. Slower + costlier than
     Gemini (~$0.04–0.19 per image, ~8–15s typical) but sometimes recovers
     images that Gemini refuses or under-edits.
 

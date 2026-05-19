@@ -10,12 +10,14 @@ Startup sequence (lifespan):
   6. Valkey client (Memorystore for Valkey 9.0)
   7. asyncio.Semaphore(2) for Gemini Pro Image concurrency
 
-Models per v2.5 spec:
-  Generation / Cleanup:  gemini-2.5-flash-image
-  Scan (Gemini):         gemini-2.5-flash
-  Scan (OpenAI):         gpt-5.4
-  Scan (Anthropic std):  claude-sonnet-4-6
-  Scan (Anthropic hard): claude-opus-4-7
+Models in use:
+  Generation / Cleanup (default):  gemini-flash-latest
+  Generation (OpenAI opt-in):      gpt-image-2-2026-04-21
+  Scan (Gemini):                   gemini-2.5-flash
+  Scan (OpenAI):                   gpt-5.4
+  Scan (Anthropic std):            claude-sonnet-4-6
+  Scan (Anthropic hard):           claude-opus-4-7
+Pinned in apps/api/src/cleanshot_api/workers/enhance_worker.py + cleanup_worker.py.
 """
 
 from __future__ import annotations

@@ -168,10 +168,11 @@ class EnhanceRequest(BaseModel):
     session_id: uuid.UUID
     asset_id: uuid.UUID
     toggles: EnhanceToggles
-    # Image generation provider. Default = gemini (fast, cheap). "openai"
-    # routes through gpt-image-1 (slower + costlier but sometimes better
-    # on photorealism / awkward shots). Frontend exposes this as a single
-    # "Use ChatGPT instead" checkbox.
+    # Image generation provider. Default = gemini (fast, cheap; uses
+    # gemini-flash-latest). "openai" routes through gpt-image-2 (slower
+    # + costlier but sometimes better on photorealism / awkward shots).
+    # Frontend exposes this as a single "Use ChatGPT instead" checkbox.
+    # Model IDs pinned in apps/api/.../workers/enhance_worker.py.
     provider: Literal["gemini", "openai"] = "gemini"
     # Optional custom prompt — when present, overrides the toggle-derived
     # prompt and is passed to the model verbatim. The frontend's

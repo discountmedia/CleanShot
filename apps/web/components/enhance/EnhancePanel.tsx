@@ -11,7 +11,8 @@
 //  • Direct-to-GCS upload via V4 signed PUT URL (API pod never receives bytes)
 //  • Enqueues enhance job per uploaded asset, shows per-job polling
 //
-// Model: gemini-2.5-flash-image (confirmed in FastAPI lifespan)
+// Models: gemini-flash-latest (default) | gpt-image-2-2026-04-21 (opt-in via
+// "Use ChatGPT instead" checkbox). Pinned server-side in enhance_worker.py.
 
 import { useCallback, useId, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
@@ -1048,7 +1049,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
       <p className="text-[11px] text-zinc-700 text-center">
         Enhancement powered by{" "}
         <code className="font-mono">
-          {useOpenAI ? "gpt-image-1" : "gemini-2.5-flash-image"}
+          {useOpenAI ? "gpt-image-2-2026-04-21" : "gemini-flash-latest"}
         </code>
       </p>
     </div>
