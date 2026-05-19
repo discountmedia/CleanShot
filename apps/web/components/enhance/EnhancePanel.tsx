@@ -427,7 +427,12 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
   /** Provider for image generation. Single checkbox in UI: "Use ChatGPT instead". */
   const [useOpenAI, setUseOpenAI]   = useState(false);
 
-  const makeValid = Boolean(meta.make?.trim());
+  /** "Custom prompt (advanced)" disclosure state + textarea contents. */
+  const [customPromptOpen, setCustomPromptOpen] = useState(false);
+  const [customPrompt, setCustomPrompt]         = useState("");
+
+  const makeValid          = Boolean(meta.make?.trim());
+  const customPromptActive = customPrompt.trim().length > 0;
 
   // Completed-but-not-yet-sent state for the explicit "Send to Scan" flow.
   // Keyed by jobId so a re-poll on remount won't duplicate.
@@ -567,6 +572,9 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
         toggles,
         forkliftMeta: meta,
         provider: useOpenAI ? "openai" : "gemini",
+        // Custom prompt (when active) takes precedence over toggles on the
+        // backend. We still send toggles for telemetry/job-row context.
+        customPrompt: customPromptActive ? customPrompt : undefined,
         idempotencyKey: `enhance-${id}`,
       });
       setEnhanceJobs((prev) => new Map(prev).set(id, jobId));
@@ -582,8 +590,10 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       setGlobalError("Enter the forklift Make before enhancing.");
       return;
     }
-    if (!anyToggleOn) {
-      setGlobalError("Enable at least one enhancement toggle before processing.");
+    if (!customPromptActive && !anyToggleOn) {
+      setGlobalError(
+        "Enable at least one enhancement toggle, or enter a custom prompt below."
+      );
       return;
     }
     setGlobalError(null);
@@ -715,9 +725,19 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       </section>
 
       {/* ── Enhancement toggles ── */}
-      <div>
+      <div
+        aria-disabled={customPromptActive || undefined}
+        className={customPromptActive ? "opacity-40 pointer-events-none" : ""}
+      >
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-zinc-200">Enhancements</h3>
+          <h3 className="text-sm font-semibold text-zinc-200">
+            Enhancements
+            {customPromptActive && (
+              <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-amber-500">
+                disabled — custom prompt active
+              </span>
+            )}
+          </h3>
           <button
             onClick={() => setToggles(DEFAULT_TOGGLES)}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -739,12 +759,73 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
           ))}
         </div>
 
-        {!anyToggleOn && (
+        {!anyToggleOn && !customPromptActive && (
           <p className="mt-2 text-xs text-amber-500" role="alert">
             Enable at least one toggle to apply enhancements.
           </p>
         )}
       </div>
+
+      {/* ── Custom prompt (advanced) ── */}
+      <section className="border border-zinc-800 rounded-xl overflow-hidden">
+        <button
+          type="button"
+          onClick={() => setCustomPromptOpen((v) => !v)}
+          aria-expanded={customPromptOpen}
+          className="w-full flex items-center justify-between px-4 py-3 bg-zinc-900/50 hover:bg-zinc-900 transition-colors text-left"
+        >
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+              Custom prompt
+            </span>
+            <span className="text-xs text-zinc-600">— advanced; overrides toggles above</span>
+            {customPromptActive && (
+              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-amber-400 bg-amber-950/40 border border-amber-900 rounded px-1.5 py-0.5">
+                Active
+              </span>
+            )}
+          </div>
+          <svg
+            className={`w-4 h-4 text-zinc-500 transition-transform ${customPromptOpen ? "rotate-180" : ""}`}
+            fill="none" viewBox="0 0 24 24" stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+
+        {customPromptOpen && (
+          <div className="p-4 bg-zinc-950 border-t border-zinc-800 space-y-3">
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-lg border border-amber-900 bg-amber-950/30 px-3 py-2"
+            >
+              <svg
+                className="w-4 h-4 text-amber-500 mt-0.5 shrink-0"
+                fill="none" viewBox="0 0 24 24" stroke="currentColor"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
+                  d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+              </svg>
+              <p className="text-xs text-amber-200 leading-relaxed">
+                A custom prompt bypasses every toggle above and is sent to the model verbatim.
+                Results can be unpredictable — the safety / invariant clauses (preserve make,
+                model, decals, proportions) are NOT auto-added. Write them in yourself if
+                they matter.
+              </p>
+            </div>
+            <textarea
+              value={customPrompt}
+              onChange={(e) => setCustomPrompt(e.target.value)}
+              placeholder="Example: Repaint this forklift in matte black with red OSHA forks, keep all decals intact, soft studio lighting."
+              rows={5}
+              className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition font-mono leading-relaxed"
+            />
+            <p className="text-[11px] text-zinc-500">
+              Clear the textarea to re-enable the toggles above.
+            </p>
+          </div>
+        )}
+      </section>
 
       {/* ── Provider selector ── */}
       <label
@@ -786,10 +867,15 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       {/* ── Enhance button ── */}
       <button
         onClick={handleEnhanceAll}
-        disabled={pendingCount === 0 || !anyToggleOn || !makeValid || isRunning}
+        disabled={
+          pendingCount === 0 ||
+          !makeValid ||
+          (!anyToggleOn && !customPromptActive) ||
+          isRunning
+        }
         className={`
           w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
-          ${pendingCount > 0 && anyToggleOn && makeValid && !isRunning
+          ${pendingCount > 0 && makeValid && (anyToggleOn || customPromptActive) && !isRunning
             ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
             : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
         `}
@@ -799,9 +885,11 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
           : pendingCount > 0
             ? !makeValid
               ? "Enter forklift Make to continue"
-              : !anyToggleOn
-                ? "Enable at least one enhancement toggle"
-                : `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""}`
+              : (!anyToggleOn && !customPromptActive)
+                ? "Enable a toggle or enter a custom prompt"
+                : customPromptActive
+                  ? `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""} (custom prompt)`
+                  : `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""}`
             : doneCount > 0
               ? "All images processing"
               : "Add images above"}

@@ -143,14 +143,13 @@ async def enqueue_regen(
     # Encode the regen prompt in the toggles field using a sentinel pattern.
     # The enhance worker detects this and uses the prompt verbatim.
     # All toggles are False — the prompt IS the instruction.
-    from cleanshot_api.workers.enhance_worker import REGEN_PROMPT_KEY
     task_payload = EnhanceTaskPayload(
         job_id=job.id,
         session_id=body.session_id,
         input_asset_id=body.asset_id,
         input_gcs_uri=asset.gcs_uri,
         toggles=EnhanceToggles(),           # all False
-        regen_prompt_override=body.regen_prompt,
+        custom_prompt=body.regen_prompt,
     )
     tasks_name = enqueue_enhance(task_payload)
 

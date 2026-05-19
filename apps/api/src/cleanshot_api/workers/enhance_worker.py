@@ -39,7 +39,6 @@ logger = logging.getLogger(__name__)
 
 ENHANCE_MODEL_GEMINI = "gemini-2.5-flash-image"
 ENHANCE_MODEL_OPENAI = "gpt-image-1"
-REGEN_PROMPT_KEY = "__regen_prompt_override__"  # sentinel — not a real toggle
 
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
@@ -261,10 +260,12 @@ async def _run_enhance(
         await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
 
     try:
-        # Regen from Scan tab: use the auto-generated anomaly prompt verbatim.
-        # Toggle-derived prompt is used for normal Enhance flow.
-        if payload.regen_prompt_override:
-            prompt = payload.regen_prompt_override
+        # Custom prompt overrides — either from the Scan tab's "Regenerate"
+        # auto-prompt or the Enhance tab's "Custom prompt (advanced)" textarea.
+        # When set, the model receives this text verbatim and toggles are
+        # ignored. Otherwise the toggle-derived prompt is used.
+        if payload.custom_prompt:
+            prompt = payload.custom_prompt
         else:
             prompt = _build_enhance_prompt(payload.toggles)
 

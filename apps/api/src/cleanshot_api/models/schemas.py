@@ -173,6 +173,11 @@ class EnhanceRequest(BaseModel):
     # on photorealism / awkward shots). Frontend exposes this as a single
     # "Use ChatGPT instead" checkbox.
     provider: Literal["gemini", "openai"] = "gemini"
+    # Optional custom prompt — when present, overrides the toggle-derived
+    # prompt and is passed to the model verbatim. The frontend's
+    # "Custom prompt (advanced)" section produces this; the toggles
+    # are disabled in the UI when it's in use.
+    custom_prompt: str | None = None
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -300,10 +305,15 @@ class EnhanceTaskPayload(BaseModel):
     # always uses Gemini regardless of caller preference (the scan-derived
     # prompt was tuned for Gemini's behaviour).
     provider: Literal["gemini", "openai"] = "gemini"
-    # Optional regen prompt override — set when regen is triggered from Scan tab.
-    # When present, the enhance worker uses this prompt verbatim instead of
-    # building one from toggles. All toggles will be False in this case.
-    regen_prompt_override: str | None = None
+    # Optional verbatim prompt override. Set by either:
+    #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or
+    #   • Enhance tab "Custom prompt (advanced)" textarea.
+    # When present, the worker uses this prompt as-is and ignores toggles.
+    # (Pydantic ignores unknown extra keys by default, so old in-flight
+    # tasks that still use the legacy `regen_prompt_override` key during
+    # a deploy will silently lose the override and fall back to toggles —
+    # acceptable for the brief deploy window.)
+    custom_prompt: str | None = None
 
 
 class ScanTaskPayload(BaseModel):

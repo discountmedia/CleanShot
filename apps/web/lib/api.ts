@@ -87,6 +87,8 @@ export async function enqueueEnhance(params: {
   forkliftMeta?: Partial<ForkliftMeta>;
   /** Image generation provider. Default = "gemini". "openai" routes through gpt-image-1. */
   provider?: "gemini" | "openai";
+  /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
+  customPrompt?: string;
   idempotencyKey: string;
 }): Promise<{ jobId: string }> {
   return post("/api/enhance", params);
