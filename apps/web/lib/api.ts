@@ -85,6 +85,8 @@ export async function enqueueEnhance(params: {
   assetId: string;
   toggles: EnhanceToggles;
   forkliftMeta?: Partial<ForkliftMeta>;
+  /** Image generation provider. Default = "gemini". "openai" routes through gpt-image-1. */
+  provider?: "gemini" | "openai";
   idempotencyKey: string;
 }): Promise<{ jobId: string }> {
   return post("/api/enhance", params);

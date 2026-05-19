@@ -15,9 +15,11 @@ Model: gemini-2.5-flash-image (generation/cleanup)
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import mimetypes
 import uuid
+from typing import Any
 
 from fastapi import BackgroundTasks, Request
 from google.genai import types
@@ -35,7 +37,8 @@ from cleanshot_api.services.tasks import enqueue_scan
 
 logger = logging.getLogger(__name__)
 
-ENHANCE_MODEL = "gemini-2.5-flash-image"
+ENHANCE_MODEL_GEMINI = "gemini-2.5-flash-image"
+ENHANCE_MODEL_OPENAI = "gpt-image-1"
 REGEN_PROMPT_KEY = "__regen_prompt_override__"  # sentinel — not a real toggle
 
 
@@ -150,6 +153,91 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
     )
 
 
+async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
+    """Download bytes from GCS in a worker thread (sync SDK).
+    Returns (bytes, detected_content_type).
+
+    Duplicated from scan_worker.py for now — TODO: move to services/gcs.py
+    once a third worker needs it.
+    """
+    from google.cloud import storage as gcs
+
+    settings = get_settings()
+    without_scheme = gcs_uri[len("gs://"):]
+    bucket_name, _, object_name = without_scheme.partition("/")
+
+    def _download() -> bytes:
+        client = gcs.Client(project=settings.gcp_project)
+        blob = client.bucket(bucket_name).blob(object_name)
+        return blob.download_as_bytes()
+
+    data = await asyncio.to_thread(_download)
+
+    ct = "image/jpeg"
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        ct = "image/png"
+    elif data[:4] == b"RIFF":
+        ct = "image/webp"
+    return data, ct
+
+
+async def _enhance_with_gemini(
+    genai_client: Any,
+    gcs_uri: str,
+    prompt: str,
+) -> bytes:
+    """Call Gemini 2.5 Flash Image. Returns raw PNG bytes."""
+    mime_type = mimetypes.guess_type(gcs_uri)[0] or "image/jpeg"
+    file_part = types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
+    text_part = types.Part.from_text(text=prompt)
+
+    response = await genai_client.aio.models.generate_content(
+        model=ENHANCE_MODEL_GEMINI,
+        contents=[types.Content(role="user", parts=[file_part, text_part])],
+        config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+    )
+
+    # google-genai already decodes the protobuf bytes field, so `data` is raw
+    # image bytes — do NOT b64-decode again (silently drops non-base64 chars).
+    for part in response.candidates[0].content.parts:
+        if part.inline_data and part.inline_data.data:
+            return part.inline_data.data
+    raise ValueError("Gemini returned no image part in enhance response")
+
+
+async def _enhance_with_openai(
+    openai_client: Any,
+    gcs_uri: str,
+    prompt: str,
+) -> bytes:
+    """
+    Call OpenAI gpt-image-1's image-edit endpoint. Slower + costlier than
+    Gemini (~$0.04–0.19 per image, ~8–15s typical) but sometimes recovers
+    images that Gemini refuses or under-edits.
+
+    OpenAI requires the image bytes in the request (no GCS URI ingress),
+    so we download via _load_image_bytes first.
+    """
+    image_bytes, ct = await _load_image_bytes(gcs_uri)
+
+    response = await openai_client.images.edit(
+        model=ENHANCE_MODEL_OPENAI,
+        # tuple form: (filename, content, content_type) for httpx multipart
+        image=("input.jpg", image_bytes, ct),
+        prompt=prompt,
+        n=1,
+        size="auto",
+        quality="high",
+    )
+
+    if not response.data:
+        raise ValueError("OpenAI returned no data in enhance response")
+    b64 = response.data[0].b64_json
+    if not b64:
+        raise ValueError("OpenAI returned no b64_json image in enhance response")
+    return base64.b64decode(b64)
+
+
 async def _run_enhance(
     request: Request,
     payload: EnhanceTaskPayload,
@@ -157,50 +245,42 @@ async def _run_enhance(
     """Background coroutine — runs after HTTP 200 has been returned."""
     pool = request.app.state.pool
     genai_client = request.app.state.genai
-    semaphore: asyncio.Semaphore = request.app.state.gemini_semaphore
+    openai_client = request.app.state.openai
+    gemini_semaphore: asyncio.Semaphore = request.app.state.gemini_semaphore
 
     async with pool.acquire() as conn:
         await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
 
     try:
-        async with semaphore:  # max 2 concurrent Gemini calls per instance
-            # Regen from Scan tab: use the auto-generated anomaly prompt verbatim.
-            # Toggle-derived prompt is used for normal Enhance flow.
-            if payload.regen_prompt_override:
-                prompt = payload.regen_prompt_override
-            else:
-                prompt = _build_enhance_prompt(payload.toggles)
+        # Regen from Scan tab: use the auto-generated anomaly prompt verbatim.
+        # Toggle-derived prompt is used for normal Enhance flow.
+        if payload.regen_prompt_override:
+            prompt = payload.regen_prompt_override
+        else:
+            prompt = _build_enhance_prompt(payload.toggles)
 
-            # Gemini file_data requires mime_type. Derive from filename in URI;
-            # fall back to JPEG (matches SignedUploadUrlRequest default).
-            mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
-            file_part = types.Part.from_uri(
-                file_uri=payload.input_gcs_uri,
-                mime_type=mime_type,
+        # Dispatch to the requested provider. Gemini calls go through the
+        # per-instance semaphore (max 2 concurrent); OpenAI has its own
+        # rate limits and doesn't share the cap.
+        if payload.provider == "openai":
+            if not openai_client:
+                raise RuntimeError(
+                    "OpenAI provider requested but client is not initialized. "
+                    "Set OPENAI_API_KEY and ensure the lifespan picked it up."
+                )
+            output_bytes = await _enhance_with_openai(
+                openai_client, payload.input_gcs_uri, prompt
             )
-            text_part = types.Part.from_text(text=prompt)
-
-            response = await genai_client.aio.models.generate_content(
-                model=ENHANCE_MODEL,
-                contents=[
-                    types.Content(role="user", parts=[file_part, text_part])
-                ],
-                config=types.GenerateContentConfig(
-                    response_modalities=["IMAGE", "TEXT"],
-                ),
-            )
-
-        # Extract image bytes from response. google-genai already decodes the
-        # protobuf bytes field, so `data` is raw image bytes — do NOT b64-decode
-        # again (that silently drops non-base64 chars and produces garbage).
-        output_bytes: bytes | None = None
-        for part in response.candidates[0].content.parts:
-            if part.inline_data and part.inline_data.data:
-                output_bytes = part.inline_data.data
-                break
+        else:  # "gemini" or default
+            async with gemini_semaphore:
+                output_bytes = await _enhance_with_gemini(
+                    genai_client, payload.input_gcs_uri, prompt
+                )
 
         if not output_bytes:
-            raise ValueError("Gemini returned no image part in enhance response")
+            raise ValueError(
+                f"{payload.provider} returned no image bytes in enhance response"
+            )
 
         # Write output to GCS derivatives bucket
         output_gcs_uri = await _write_to_gcs(

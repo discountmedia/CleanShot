@@ -10,7 +10,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from enum import StrEnum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -168,6 +168,11 @@ class EnhanceRequest(BaseModel):
     session_id: uuid.UUID
     asset_id: uuid.UUID
     toggles: EnhanceToggles
+    # Image generation provider. Default = gemini (fast, cheap). "openai"
+    # routes through gpt-image-1 (slower + costlier but sometimes better
+    # on photorealism / awkward shots). Frontend exposes this as a single
+    # "Use ChatGPT instead" checkbox.
+    provider: Literal["gemini", "openai"] = "gemini"
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -291,6 +296,10 @@ class EnhanceTaskPayload(BaseModel):
     input_asset_id: uuid.UUID
     input_gcs_uri: str
     toggles: EnhanceToggles
+    # Provider for image generation. Worker dispatches on this. Regen-from-Scan
+    # always uses Gemini regardless of caller preference (the scan-derived
+    # prompt was tuned for Gemini's behaviour).
+    provider: Literal["gemini", "openai"] = "gemini"
     # Optional regen prompt override — set when regen is triggered from Scan tab.
     # When present, the enhance worker uses this prompt verbatim instead of
     # building one from toggles. All toggles will be False in this case.

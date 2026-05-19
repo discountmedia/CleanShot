@@ -66,6 +66,7 @@ async def enqueue_enhance_job(
         input_asset_id=body.asset_id,
         input_gcs_uri=asset.gcs_uri,
         toggles=body.toggles,
+        provider=body.provider,
     )
     tasks_name = enqueue_enhance(task_payload)
 

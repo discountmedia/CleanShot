@@ -424,6 +424,8 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
   const [enhanceJobs, setEnhanceJobs] = useState<Map<string, string>>(new Map()); // fileId → jobId
   const [isRunning, setIsRunning]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+  /** Provider for image generation. Single checkbox in UI: "Use ChatGPT instead". */
+  const [useOpenAI, setUseOpenAI]   = useState(false);
 
   const makeValid = Boolean(meta.make?.trim());
 
@@ -564,6 +566,7 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
         assetId: signedResp.assetId,
         toggles,
         forkliftMeta: meta,
+        provider: useOpenAI ? "openai" : "gemini",
         idempotencyKey: `enhance-${id}`,
       });
       setEnhanceJobs((prev) => new Map(prev).set(id, jobId));
@@ -743,6 +746,36 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
         )}
       </div>
 
+      {/* ── Provider selector ── */}
+      <label
+        htmlFor="provider-openai"
+        className={`
+          flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
+          ${useOpenAI
+            ? "bg-green-950/40 border-green-800 hover:border-green-700"
+            : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
+        `}
+      >
+        <input
+          id="provider-openai"
+          type="checkbox"
+          checked={useOpenAI}
+          onChange={(e) => setUseOpenAI(e.target.checked)}
+          className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-green-500 focus:ring-2 focus:ring-green-500 focus:ring-offset-0"
+        />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-zinc-200">
+            Use ChatGPT instead
+          </p>
+          <p className="text-xs text-zinc-500 mt-0.5">
+            Slower but may offer better results depending on the lift. Default is Gemini.
+          </p>
+        </div>
+        <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-600">
+          {useOpenAI ? "GPT-IMAGE-1" : "GEMINI"}
+        </span>
+      </label>
+
       {/* ── Global error ── */}
       {globalError && (
         <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3" role="alert">
@@ -826,7 +859,9 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       {/* ── Model attribution ── */}
       <p className="text-[11px] text-zinc-700 text-center">
         Enhancement powered by{" "}
-        <code className="font-mono">gemini-2.5-flash-image</code>
+        <code className="font-mono">
+          {useOpenAI ? "gpt-image-1" : "gemini-2.5-flash-image"}
+        </code>
       </p>
     </div>
   );

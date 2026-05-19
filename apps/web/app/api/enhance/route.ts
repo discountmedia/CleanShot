@@ -17,6 +17,7 @@ interface ClientRequest {
   assetId: string;
   toggles: Record<string, boolean>;
   forkliftMeta?: Record<string, string>;  // intentionally dropped before forward
+  provider?: "gemini" | "openai";
   idempotencyKey: string;
 }
 
@@ -37,6 +38,7 @@ export async function POST(request: NextRequest) {
       session_id:      body.sessionId,
       asset_id:        body.assetId,
       toggles:         body.toggles,            // already camelCase; Pydantic aliases handle it
+      provider:        body.provider ?? "gemini",
       idempotency_key: body.idempotencyKey,
     }),
     signal: request.signal,
