@@ -119,8 +119,29 @@ function buildRegenPrompt(results: ProviderScanResult[]): string {
     }
   }
 
+  // Scene-preservation guardrails are duplicated here (loose mirror of the
+  // backend's _build_enhance_prompt block) because the regen path sends a
+  // verbatim custom_prompt that bypasses the worker's wrapper. Without
+  // these lines Gemini strips the scene to a blank studio backdrop —
+  // user-reported failure mode 2026-05-19.
+  const GUARDRAILS = [
+    "GUARDRAILS — keep identical to the source:",
+    "• Background, location, floor, walls, surroundings — keep the exact same scene. Do NOT isolate the forklift on a white / studio / gradient backdrop.",
+    "• Lighting direction, ambient colour, and shadow placement — keep the scene's original lighting character (do NOT replace with studio lighting).",
+    "• Camera angle, framing, distance, and proportions — no zoom, crop, rotate, or re-pose.",
+    "• Make, model, year, mast configuration, fork count, fork length, overhead guard, counterweight, and tire type.",
+    "• Same tires — same tread, sidewall, wear profile. Refresh appearance only; do not swap for new tires.",
+    "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or any bolt-on hardware that is not in the source.",
+    "• All OEM decals, capacity plates, VIN / serial numbers, model badges, and data tags remain present, legible, and unchanged.",
+    "• Do not introduce damage, rust, dents, or wear that was not in the source.",
+  ];
+
   if (anomalies.length === 0) {
-    return "Improve overall image quality, lighting, and presentation for commercial use.";
+    return [
+      "Improve the overall presentation of this USED forklift photograph while keeping it clearly the same used machine in the same place — light tonal correction, sharper decals, dressed tires.",
+      "",
+      ...GUARDRAILS,
+    ].join("\n");
   }
 
   const lines = anomalies
@@ -128,13 +149,15 @@ function buildRegenPrompt(results: ProviderScanResult[]): string {
       const order = { high: 0, medium: 1, low: 2 };
       return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
     })
-    .map((a) => `Fix [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.description}`);
+    .map((a) => `• Fix [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.description}`);
 
   return [
-    "Address the following quality issues detected by AI scan:",
+    "You are editing a photograph of a USED forklift to address SPECIFIC issues detected by AI scan. Fix the listed issues while leaving the rest of the image exactly as-is — same machine, same place, same lighting.",
+    "",
+    "ISSUES TO ADDRESS:",
     ...lines,
     "",
-    "Preserve all OEM decals, data plates, VIN numbers, and machine proportions exactly.",
+    ...GUARDRAILS,
   ].join("\n");
 }
 
