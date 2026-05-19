@@ -1,38 +1,54 @@
 // apps/web/app/api/enhance/regen/route.ts
 // BFF Route Handler — POST /api/enhance/regen
 // Proxies a single-image regen request to FastAPI.
-// Called from ScanPanel when user clicks "Regenerate Image".
-// FASTAPI_INTERNAL_KEY is injected server-side — never reaches the browser.
+// Called from ScanPanel when the user clicks "Regenerate Image".
+//
+// FastAPI's RegenRequest is snake_case with no Pydantic aliases on the
+// schema — the same translation pattern as /api/enhance.
+//
+//   client  -> BFF:    sessionId,  assetId,  regenPrompt,  idempotencyKey
+//   BFF     -> FastAPI: session_id, asset_id, regen_prompt, idempotency_key
+//   response: { job_id }  ->  { jobId }
 
 import { type NextRequest, NextResponse } from "next/server";
 
-export const maxDuration = 15;           // Enqueue only — returns job_id immediately
+import { forwardError, getFastApiEnv, jsonHeaders } from "@/lib/bff";
+
+export const maxDuration = 15;
 export const dynamic = "force-dynamic";
 
+interface ClientRequest {
+  sessionId: string;
+  assetId: string;
+  regenPrompt: string;
+  idempotencyKey: string;
+}
+
+interface FastApiResponse {
+  job_id: string;
+}
+
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  const env = getFastApiEnv();
+  if (env instanceof NextResponse) return env;
 
-  const res = await fetch(
-    `${process.env.FASTAPI_INTERNAL_URL}/api/v1/enhance/regen`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Api-Key": process.env.FASTAPI_INTERNAL_KEY!,
-      },
-      body: JSON.stringify(body),
-      signal: request.signal,   // propagate AbortSignal — prevents zombie Cloud Run connections
-      cache: "no-store",
-    }
-  );
+  const body = (await request.json()) as ClientRequest;
 
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    return NextResponse.json(
-      { error: "upstream failed", detail: text, status: res.status },
-      { status: res.status }
-    );
-  }
+  const res = await fetch(`${env.base}/api/v1/enhance/regen`, {
+    method: "POST",
+    headers: jsonHeaders(env.key),
+    body: JSON.stringify({
+      session_id:      body.sessionId,
+      asset_id:        body.assetId,
+      regen_prompt:    body.regenPrompt,
+      idempotency_key: body.idempotencyKey,
+    }),
+    signal: request.signal,
+    cache: "no-store",
+  });
 
-  return NextResponse.json(await res.json());
+  if (!res.ok) return forwardError(res);
+
+  const data = (await res.json()) as FastApiResponse;
+  return NextResponse.json({ jobId: data.job_id }, { status: 202 });
 }

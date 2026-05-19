@@ -88,6 +88,14 @@ const PROVIDER_COLORS: Record<ScanProvider, string> = {
   anthropic: "text-orange-400 bg-orange-950/60 border-orange-800",
 };
 
+// The three providers we render placeholder progress cards for while a scan
+// is in flight. Matches the worker's fan-out (gemini + openai + anthropic),
+// which is gated server-side by SCAN_PROVIDER_OPENAI / SCAN_PROVIDER_ANTHROPIC
+// env flags — if one is disabled there it just won't produce a result and
+// the placeholder will sit until job completion. Considered acceptable since
+// production has both flags enabled (see deploy-api.yml).
+const EXPECTED_SCAN_PROVIDERS: readonly ScanProvider[] = ["gemini", "openai", "anthropic"] as const;
+
 const SEVERITY_COLORS: Record<string, string> = {
   high:   "text-red-400 bg-red-950/60 border-red-800",
   medium: "text-yellow-400 bg-yellow-950/60 border-yellow-800",
@@ -188,6 +196,48 @@ function AnomalyList({ anomalies }: { anomalies: AnomalyItem[] }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/**
+ * Placeholder card rendered while the scan job is still in flight.
+ * One per expected provider, with an indeterminate progress bar so the user
+ * can see all three are running in parallel. Replaced by a ProviderResultCard
+ * once the real verdict arrives.
+ *
+ * The bar is purely indeterminate (CSS keyframes) — the worker fans out to
+ * all three providers concurrently and only writes results when the whole
+ * job is done, so we have no per-provider milestone to report. The visual
+ * still tells the operator "all three are working."
+ */
+function ProviderProgressCard({ provider }: { provider: ScanProvider }) {
+  return (
+    <div className={`rounded-lg border overflow-hidden ${PROVIDER_COLORS[provider]}`}>
+      <div className="flex items-center justify-between px-3 py-2">
+        <div className="flex items-center gap-2">
+          <svg
+            className="animate-spin w-3.5 h-3.5 opacity-80"
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+          </svg>
+          <span className="text-xs font-semibold">{PROVIDER_LABELS[provider]}</span>
+        </div>
+        <span className="text-[10px] uppercase tracking-[0.16em] opacity-60">
+          Scanning…
+        </span>
+      </div>
+      <div
+        className="h-1 bg-current bg-opacity-10 overflow-hidden"
+        role="progressbar"
+        aria-label={`${PROVIDER_LABELS[provider]} scan in progress`}
+      >
+        <div className="h-full w-1/3 bg-current opacity-70 animate-[scanbar_1.2s_ease-in-out_infinite]" />
+      </div>
+    </div>
   );
 }
 
@@ -357,20 +407,19 @@ function ImageScanCard({
             </div>
           )}
 
-          {/* Per-provider results */}
+          {/* Per-provider results — when scan is still running, show one
+              progress card per expected provider so the operator sees that
+              all three are in flight. Real results replace the placeholders
+              when the job's provider_results land. */}
           <div className="mt-2 space-y-1.5">
-            {scan.providerResults.map((r) => (
-              <ProviderResultCard key={r.provider} result={r} provider={r.provider} />
-            ))}
-            {scan.providerResults.length === 0 && (
-              <div className="flex items-center gap-2 text-xs text-zinc-500">
-                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                </svg>
-                Scanning with{" "}
-                <code className="font-mono text-[10px]">gemini-2.5-flash</code>…
-              </div>
+            {scan.providerResults.length === 0 ? (
+              EXPECTED_SCAN_PROVIDERS.map((p) => (
+                <ProviderProgressCard key={p} provider={p} />
+              ))
+            ) : (
+              scan.providerResults.map((r) => (
+                <ProviderResultCard key={r.provider} result={r} provider={r.provider} />
+              ))
             )}
           </div>
         </div>

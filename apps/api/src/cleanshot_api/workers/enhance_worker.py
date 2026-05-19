@@ -61,10 +61,14 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
 
     if toggles.new_paint_job:
         modifiers.append(
-            "Apply a fresh, even coat of the forklift's existing factory "
-            "paint colour over the body panels. The finish should look "
-            "smooth and freshly applied — no chips, scratches, oxidation, "
-            "scuffs, or dirt. Do not change the colour itself."
+            "Repaint every body panel of the forklift so it looks freshly "
+            "factory-painted. Aggressively remove ALL visible paint damage: "
+            "chips, scratches, scuffs, scrapes, oxidized/dulled patches, "
+            "fading, dirt streaks, and surface grime. The result must look "
+            "like a new coat of factory paint over the entire body, mast, "
+            "overhead guard, and counterweight. Match the forklift's exact "
+            "existing colour and finish type — do not change the colour, "
+            "hue, or which panels are which colour."
         )
     if toggles.remove_rust:
         modifiers.append(
@@ -93,10 +97,15 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
         )
     if toggles.paint_forks_red_yellow_tips:
         modifiers.append(
-            "Repaint the two forks themselves: solid safety red along the "
-            "shank, with bright safety yellow on the last ~6 inches of "
-            "the tip. Standard OSHA fork-safety convention. Do not change "
-            "fork length, profile, or mounting."
+            "Repaint the two forks with the standard OSHA two-tone safety "
+            "scheme: the MAIN BODY of each fork — the heel, the vertical "
+            "shank, and roughly the first 80% of the horizontal blade — "
+            "must be solid bright safety RED. Only the final tip — the "
+            "outermost ~15-20 cm (~6-8 inches) of the blade — should be "
+            "solid bright safety YELLOW. The result must clearly read as "
+            "a RED fork with a small YELLOW tip cap. Do NOT paint the "
+            "entire fork yellow. Do NOT paint the entire fork red. Do "
+            "not change fork length, profile, mounting, or position."
         )
     if toggles.shine_tires:
         modifiers.append(
