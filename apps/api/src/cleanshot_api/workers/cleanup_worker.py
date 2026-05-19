@@ -98,6 +98,12 @@ async def _run_cleanup(
                 ],
                 config=types.GenerateContentConfig(
                     response_modalities=["IMAGE", "TEXT"],
+                    # Gemini 3.x thinking control — see enhance_worker
+                    # for rationale. Cleanup runs from scan-derived
+                    # anomaly context, which is even more reasoning-
+                    # heavy than the standard enhance, so "High" is
+                    # warranted here too.
+                    thinking_config=types.ThinkingConfig(thinking_level="High"),
                 ),
             )
 

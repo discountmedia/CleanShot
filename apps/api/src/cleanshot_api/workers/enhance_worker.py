@@ -293,7 +293,15 @@ async def _enhance_with_gemini(
     response = await genai_client.aio.models.generate_content(
         model=ENHANCE_MODEL_GEMINI,
         contents=[types.Content(role="user", parts=[file_part, text_part])],
-        config=types.GenerateContentConfig(response_modalities=["IMAGE", "TEXT"]),
+        config=types.GenerateContentConfig(
+            response_modalities=["IMAGE", "TEXT"],
+            # Gemini 3.x thinking control. "High" gives the model the
+            # most reasoning budget — useful for image edits where the
+            # standard treatment + emphasis stack is long and the model
+            # benefits from planning the edit before generating. Capital
+            # "High" matches the official Python SDK enum exactly.
+            thinking_config=types.ThinkingConfig(thinking_level="High"),
+        ),
     )
 
     # google-genai already decodes the protobuf bytes field, so `data` is raw
