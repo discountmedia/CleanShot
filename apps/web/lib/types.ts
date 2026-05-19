@@ -70,14 +70,15 @@ export type UploadStatus = "pending" | "compressing" | "uploading" | "done" | "e
 
 export interface UploadFile {
   id: string;              // client-side UUID
-  file: File;
-  previewUrl: string;      // object URL for thumbnail
+  file: File;              // the ORIGINAL file the user picked; preserved for thumbnail
+  previewUrl: string;      // object URL for thumbnail (original)
   status: UploadStatus;
   progress: number;        // 0–100
   error?: string;
   assetId?: string;        // populated after successful upload
   gcsUri?: string;
   compressedSize?: number; // bytes after compression (if applied)
+  uploadedFilename?: string; // populated after JPEG conversion + rename; what actually hit GCS
 }
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────

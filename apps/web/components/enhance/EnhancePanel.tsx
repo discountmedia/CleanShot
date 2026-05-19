@@ -268,10 +268,20 @@ function JobStatusRow({
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
       {/* Header row */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-900">
-        <p className="text-sm text-zinc-200 font-mono truncate" title={file.file.name}>
-          {file.file.name}
-        </p>
+      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-900 gap-3">
+        <div className="min-w-0 flex-1">
+          <p
+            className="text-sm text-zinc-200 font-mono truncate"
+            title={file.uploadedFilename ?? file.file.name}
+          >
+            {file.uploadedFilename ?? file.file.name}
+          </p>
+          {file.uploadedFilename && file.uploadedFilename !== file.file.name && (
+            <p className="text-[10px] text-zinc-600 truncate" title={file.file.name}>
+              from {file.file.name}
+            </p>
+          )}
+        </div>
         {job ? (
           <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${statusColor[job.status] ?? "text-zinc-400"}`}>
             {job.status === "processing" && (
@@ -512,7 +522,10 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
     let toUpload: File;
     try {
       toUpload = await convertToJpeg(file, targetFilename);
-      updateFile(id, { compressedSize: toUpload.size });
+      updateFile(id, {
+        compressedSize: toUpload.size,
+        uploadedFilename: toUpload.name,
+      });
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Conversion failed";
       updateFile(id, { status: "error", error: msg });
