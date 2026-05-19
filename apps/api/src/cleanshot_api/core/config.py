@@ -75,6 +75,10 @@ class Settings(BaseSettings):
 
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
+    # Black Forest Labs (FLUX) — image-edit provider opt-in. Mounted from
+    # GCP Secret Manager (cleanshot-bfl-key) on Cloud Run; absent locally
+    # unless the developer also sets BFL_API_KEY in their .env.
+    bfl_api_key: str = Field("", alias="BFL_API_KEY")
 
     # -------------------------------------------------------------------------
     # Operational

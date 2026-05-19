@@ -168,12 +168,14 @@ class EnhanceRequest(BaseModel):
     session_id: uuid.UUID
     asset_id: uuid.UUID
     toggles: EnhanceToggles
-    # Image generation provider. Default = gemini (fast, cheap; uses
-    # gemini-flash-latest). "openai" routes through gpt-image-2 (slower
-    # + costlier but sometimes better on photorealism / awkward shots).
-    # Frontend exposes this as a single "Use ChatGPT instead" checkbox.
-    # Model IDs pinned in apps/api/.../workers/enhance_worker.py.
-    provider: Literal["gemini", "openai"] = "gemini"
+    # Image generation provider. Defaults to gemini (gemini-flash-latest:
+    # fastest, cheapest, decent). "openai" routes through
+    # gpt-image-2-2026-04-21 (slower + costlier, sometimes more literal).
+    # "flux" routes through Black Forest Labs FLUX 2 [PRO] — the recommended
+    # default for image editing per BFL's own docs; async polling pattern;
+    # ~$0.03–0.08 per image. Model IDs pinned in
+    # apps/api/.../workers/enhance_worker.py.
+    provider: Literal["gemini", "openai", "flux"] = "gemini"
     # Optional custom prompt — when present, overrides the toggle-derived
     # prompt and is passed to the model verbatim. The frontend's
     # "Custom prompt (advanced)" section produces this; the toggles
@@ -307,7 +309,7 @@ class EnhanceTaskPayload(BaseModel):
     # Provider for image generation. Worker dispatches on this. Regen-from-Scan
     # always uses Gemini regardless of caller preference (the scan-derived
     # prompt was tuned for Gemini's behaviour).
-    provider: Literal["gemini", "openai"] = "gemini"
+    provider: Literal["gemini", "openai", "flux"] = "gemini"
     # Optional verbatim prompt override. Set by either:
     #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or
     #   • Enhance tab "Custom prompt (advanced)" textarea.

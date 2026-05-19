@@ -21,6 +21,7 @@ import mimetypes
 import uuid
 from typing import Any
 
+import httpx
 from fastapi import BackgroundTasks, Request
 from google.genai import types
 
@@ -46,6 +47,12 @@ ENHANCE_MODEL_GEMINI = "gemini-flash-latest"
 # moving alias like "gpt-image-2-latest" if/when one exists and you
 # prefer auto-tracked updates.
 ENHANCE_MODEL_OPENAI = "gpt-image-2-2026-04-21"
+# BFL endpoint URL — flux-2-pro is their recommended editor (per docs).
+# Async pattern: POST returns { id, polling_url }; we poll polling_url until
+# status="Ready", then GET result.sample to fetch the rendered image bytes.
+FLUX_GENERATE_URL = "https://api.bfl.ai/v1/flux-2-pro"
+FLUX_POLL_INTERVAL_S = 1.5         # seconds between poll requests
+FLUX_POLL_MAX_ATTEMPTS = 60        # ~90s total budget; FLUX 2 PRO typically finishes in 10-30s
 
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
@@ -314,6 +321,94 @@ async def _enhance_with_openai(
     return base64.b64decode(b64)
 
 
+async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
+    """
+    Call Black Forest Labs FLUX 2 PRO via the async-polling pattern.
+
+      1. POST FLUX_GENERATE_URL with prompt + base64 image_prompt →
+         { id, polling_url }
+      2. GET polling_url every FLUX_POLL_INTERVAL_S seconds (auth via
+         x-key) until status == "Ready" (or terminal error).
+      3. GET result.sample (a presigned URL, no auth) → JPEG bytes.
+
+    The polling_url returned by the submit already encodes BFL's region;
+    use it verbatim rather than reconstructing.
+
+    BFL terminal statuses to surface as job failures:
+      "Error" | "Content Moderated" | "Request Moderated" | "Task not found"
+
+    Typical latency: 10-30s. Budget ceiling is
+    FLUX_POLL_INTERVAL_S × FLUX_POLL_MAX_ATTEMPTS (~90s today).
+    """
+    settings = get_settings()
+    if not settings.bfl_api_key:
+        raise RuntimeError(
+            "Flux provider requested but BFL_API_KEY is not set. "
+            "Mount cleanshot-bfl-key:latest via Cloud Run --set-secrets "
+            "and re-deploy."
+        )
+
+    image_bytes, _ct = await _load_image_bytes(gcs_uri)
+    image_b64 = base64.b64encode(image_bytes).decode()
+
+    auth_headers = {"x-key": settings.bfl_api_key}
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # ── 1. Submit ─────────────────────────────────────────────────
+        submit = await client.post(
+            FLUX_GENERATE_URL,
+            headers={**auth_headers, "Content-Type": "application/json"},
+            json={"prompt": prompt, "image_prompt": image_b64},
+        )
+        if submit.status_code >= 400:
+            raise ValueError(
+                f"BFL submit failed ({submit.status_code}): {submit.text[:300]}"
+            )
+        submit_data = submit.json()
+        polling_url = submit_data.get("polling_url")
+        if not polling_url:
+            raise ValueError(f"BFL submit returned no polling_url: {submit_data}")
+
+        # ── 2. Poll ──────────────────────────────────────────────────
+        for _attempt in range(FLUX_POLL_MAX_ATTEMPTS):
+            await asyncio.sleep(FLUX_POLL_INTERVAL_S)
+            poll = await client.get(polling_url, headers=auth_headers)
+            if poll.status_code >= 400:
+                raise ValueError(
+                    f"BFL poll failed ({poll.status_code}): {poll.text[:300]}"
+                )
+            poll_data = poll.json()
+            status = poll_data.get("status")
+
+            if status == "Ready":
+                result = poll_data.get("result") or {}
+                sample_url = result.get("sample")
+                if not sample_url:
+                    raise ValueError(
+                        f"BFL Ready without result.sample URL: {poll_data}"
+                    )
+                # ── 3. Fetch rendered image (signed URL, no auth) ───
+                image_resp = await client.get(sample_url)
+                image_resp.raise_for_status()
+                return image_resp.content
+
+            if status in (
+                "Error",
+                "Content Moderated",
+                "Request Moderated",
+                "Task not found",
+            ):
+                detail = poll_data.get("result") or poll_data.get("error") or "no detail"
+                raise ValueError(f"BFL returned terminal status '{status}': {detail}")
+            # Otherwise still "Pending" / transient — keep polling.
+
+        raise TimeoutError(
+            f"BFL FLUX 2 PRO did not finish within "
+            f"{FLUX_POLL_INTERVAL_S * FLUX_POLL_MAX_ATTEMPTS:.0f}s "
+            f"({FLUX_POLL_MAX_ATTEMPTS} polls)"
+        )
+
+
 async def _run_enhance(
     request: Request,
     payload: EnhanceTaskPayload,
@@ -338,8 +433,9 @@ async def _run_enhance(
             prompt = _build_enhance_prompt(payload.toggles)
 
         # Dispatch to the requested provider. Gemini calls go through the
-        # per-instance semaphore (max 2 concurrent); OpenAI has its own
-        # rate limits and doesn't share the cap.
+        # per-instance semaphore (Vertex AI quota is the binding cap). OpenAI
+        # and Flux have their own vendor-side rate limits and don't share
+        # ours.
         if payload.provider == "openai":
             if not openai_client:
                 raise RuntimeError(
@@ -348,6 +444,10 @@ async def _run_enhance(
                 )
             output_bytes = await _enhance_with_openai(
                 openai_client, payload.input_gcs_uri, prompt
+            )
+        elif payload.provider == "flux":
+            output_bytes = await _enhance_with_flux(
+                payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default
             async with gemini_semaphore:
