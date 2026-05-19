@@ -46,12 +46,15 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  // Cross-panel pipeline state. EnhancePanel.onEnhanceComplete appends here
-  // once a job finishes and we have a signed GET URL — at that point the new
-  // asset is offered as a target in Scan + Resize without needing an explicit
-  // "send to scan" button.
+  // Cross-panel pipeline state. The flow is curated by the user:
+  //   Enhance → "Send to Scan"   → enhancedAssets  (what Scan tab analyzes)
+  //   Scan    → "Send to Resize" → resizeAssets   (what Resize tab processes)
+  //   Resize  → onResizeComplete → resizeResults  (sized outputs for export)
+  // Each handoff is explicit so the operator can curate (e.g., only push
+  // images that passed scan, or regenerated versions instead of originals).
   const [enhancedAssets, setEnhancedAssets] = useState<PipelineAsset[]>([]);
-  const [resizeResults, setResizeResults] = useState<ResizeResult[]>([]);
+  const [resizeAssets,   setResizeAssets]   = useState<PipelineAsset[]>([]);
+  const [resizeResults,  setResizeResults]  = useState<ResizeResult[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -68,9 +71,9 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
   }, []);
 
   const tabs = [
-    { id: "enhance" as const, label: "Enhance", count: enhancedAssets.length || undefined },
+    { id: "enhance" as const, label: "Enhance" },
     { id: "scan"    as const, label: "Scan",    count: enhancedAssets.length || undefined },
-    { id: "resize"  as const, label: "Resize",  count: resizeResults.length || undefined },
+    { id: "resize"  as const, label: "Resize",  count: resizeAssets.length || undefined },
     { id: "history" as const, label: "History" },
   ];
 
@@ -104,7 +107,19 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
   // level so old assets don't keep getting rescanned or re-listed.
   const handleClearPipeline = () => {
     setEnhancedAssets([]);
+    setResizeAssets([]);
     setResizeResults([]);
+  };
+
+  // Explicit user action from the Scan tab. Mirror of handleSendToScan,
+  // but feeds the resizeAssets pipeline + switches to the Resize tab.
+  const handleSendToResize = (items: PipelineAsset[]) => {
+    setResizeAssets((prev) => {
+      const existing = new Set(prev.map((a) => a.assetId));
+      const additions = items.filter((it) => !existing.has(it.assetId));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+    setActiveTab("resize");
   };
 
   return (
@@ -143,6 +158,7 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
                 sessionId={sessionId}
                 enhancedAssets={enhancedAssets}
                 onClearPipeline={handleClearPipeline}
+                onSendToResize={handleSendToResize}
               />
             )}
           </PanelSlot>
@@ -151,7 +167,11 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
             {sessionId && (
               <ResizePanel
                 sessionId={sessionId}
-                enhancedAssets={enhancedAssets}
+                // ResizePanel's prop is named enhancedAssets for historic
+                // reasons; semantically it now receives the curated
+                // resizeAssets list (images user explicitly sent to Resize
+                // from the Scan tab).
+                enhancedAssets={resizeAssets}
                 resizeResults={resizeResults}
                 onResizeComplete={setResizeResults}
               />

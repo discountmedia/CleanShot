@@ -309,15 +309,33 @@ function ProviderResultCard({
 function ImageScanCard({
   scan,
   sessionId,
+  sent,
   onRegenComplete,
+  onSend,
 }: {
   scan: ImageScanState;
   sessionId: string;
+  /** True once the user has already sent this scan to the Resize tab. */
+  sent: boolean;
   onRegenComplete: (scan: ImageScanState, outputAssetId: string) => void;
+  /**
+   * Per-card "Send to Resize" handler. The card supplies the most-recent
+   * asset id + URL — the regen output when one exists, otherwise the
+   * enhanced original that came from the Enhance tab.
+   */
+  onSend: (item: {
+    assetId: string;
+    filename: string;
+    thumbnailUrl: string;
+    outputUrl?: string;
+  }) => void;
 }) {
   const [regenJobId, setRegenJobId]   = useState<string | null>(scan.regenJobId ?? null);
   const [regenStatus, setRegenStatus] = useState<string>(scan.regenStatus ?? "idle");
   const [regenUrl, setRegenUrl]       = useState<string | null>(null);
+  // Track the regen output asset id locally so "Send to Resize" can hand
+  // it up instead of the original enhanced asset when a regen has run.
+  const [regenAssetId, setRegenAssetId] = useState<string | null>(null);
   const [promptText, setPromptText]   = useState<string>(
     scan.regenPrompt ?? buildRegenPrompt(scan.providerResults)
   );
@@ -334,6 +352,7 @@ function ImageScanCard({
         try {
           const { url } = await getAssetUrl(job.outputAssetId);
           setRegenUrl(url);
+          setRegenAssetId(job.outputAssetId);
           onRegenComplete(scan, job.outputAssetId);
         } catch {
           setRegenError("Could not fetch regenerated image URL");
@@ -500,6 +519,32 @@ function ImageScanCard({
           </button>
         </div>
       )}
+
+      {/* Send-to-Resize footer — always shown so the operator can hand
+          off whichever scans they want to size, regardless of pass/fail
+          verdict. Sends the regen output when one exists, otherwise the
+          original enhanced asset from the Enhance tab. */}
+      <div className="border-t border-zinc-800 bg-zinc-900/50 p-3 flex items-center justify-end gap-2">
+        {sent ? (
+          <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-500 px-3 py-2">
+            ✓ Sent to Resize
+          </span>
+        ) : (
+          <button
+            onClick={() =>
+              onSend({
+                assetId:      regenAssetId ?? scan.assetId,
+                filename:     scan.filename,
+                thumbnailUrl: regenUrl ?? scan.thumbnailUrl,
+                outputUrl:    regenUrl ?? scan.outputUrl,
+              })
+            }
+            className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-red-600 hover:bg-red-500 border border-red-500 transition-colors px-3 py-2 rounded"
+          >
+            Send to Resize →
+          </button>
+        )}
+      </div>
     </article>
   );
 }
@@ -516,12 +561,62 @@ export interface ScanPanelProps {
    * dismissed. The local scanStates / batchJobIds reset happens inline.
    */
   onClearPipeline: () => void;
+  /**
+   * Called when the user explicitly clicks "Send to Resize" (per-card) or
+   * "Send all to Resize" (batch). The workspace appends to its
+   * resizeAssets pipeline and switches to the Resize tab. Sends the
+   * latest version of the image (regen output if a regen has run,
+   * otherwise the enhanced thumbnail URL).
+   */
+  onSendToResize: (items: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }>) => void;
 }
 
-export function ScanPanel({ sessionId, enhancedAssets, onScanComplete, onClearPipeline }: ScanPanelProps) {
+export function ScanPanel({
+  sessionId,
+  enhancedAssets,
+  onScanComplete,
+  onClearPipeline,
+  onSendToResize,
+}: ScanPanelProps) {
   const [scanStates, setScanStates] = useState<ImageScanState[]>([]);
   const [batchJobIds, setBatchJobIds] = useState<string[]>([]);
   const [scanError, setScanError]     = useState<string | null>(null);
+
+  // Track which scan asset IDs the user has already pushed to the Resize
+  // tab so the per-card button shows "✓ Sent" and the batch button knows
+  // who's left. Keyed by scan.assetId (the original enhanced asset id) —
+  // the card itself decides whether to send regen or original payload.
+  const [sentToResizeAssetIds, setSentToResizeAssetIds] = useState<Set<string>>(new Set());
+
+  const sendOneToResize = useCallback(
+    (item: { assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }, scanAssetId: string) => {
+      if (sentToResizeAssetIds.has(scanAssetId)) return;
+      onSendToResize([item]);
+      setSentToResizeAssetIds((prev) => new Set(prev).add(scanAssetId));
+    },
+    [onSendToResize, sentToResizeAssetIds]
+  );
+
+  const unsentScans = scanStates.filter(
+    (s) => s.providerResults.length > 0 && !sentToResizeAssetIds.has(s.assetId)
+  );
+
+  const sendAllToResize = useCallback(() => {
+    if (unsentScans.length === 0) return;
+    onSendToResize(
+      unsentScans.map((s) => ({
+        assetId:      s.assetId,
+        filename:     s.filename,
+        thumbnailUrl: s.thumbnailUrl,
+        outputUrl:    s.outputUrl,
+      }))
+    );
+    setSentToResizeAssetIds((prev) => {
+      const next = new Set(prev);
+      for (const s of unsentScans) next.add(s.assetId);
+      return next;
+    });
+  }, [onSendToResize, unsentScans]);
 
   // isScanning is derived: a scan is active iff we have states and at least
   // one of them hasn't received any provider results yet (and we haven't
@@ -721,6 +816,7 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete, onClearPi
               setScanStates([]);
               setBatchJobIds([]);
               setScanError(null);
+              setSentToResizeAssetIds(new Set());
               onClearPipeline();
             }}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
@@ -745,11 +841,31 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete, onClearPi
             <ImageScanCard
               scan={scan}
               sessionId={sessionId}
+              sent={sentToResizeAssetIds.has(scan.assetId)}
               onRegenComplete={handleRegenComplete}
+              onSend={(item) => sendOneToResize(item, scan.assetId)}
             />
           </div>
         ))}
       </div>
+
+      {/* ── Send-all-to-Resize batch button ── */}
+      {scanStates.some((s) => s.providerResults.length > 0) && (
+        <button
+          onClick={sendAllToResize}
+          disabled={unsentScans.length === 0}
+          className={`
+            w-full py-4 px-6 rounded-xl font-bold text-sm uppercase tracking-[0.18em] transition-all border-2
+            ${unsentScans.length > 0
+              ? "bg-red-600 hover:bg-red-500 border-red-500 text-white shadow-lg shadow-red-900/40"
+              : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"}
+          `}
+        >
+          {unsentScans.length > 0
+            ? <>Send {unsentScans.length} image{unsentScans.length !== 1 ? "s" : ""} to Resize tab →</>
+            : <>✓ All sent to Resize</>}
+        </button>
+      )}
 
       {/* ── Model attribution ── */}
       {scanStates.length > 0 && (

@@ -41,7 +41,7 @@ export interface EnhanceToggles {
 }
 
 export const DEFAULT_TOGGLES: EnhanceToggles = {
-  newPaintJob: false,
+  newPaintJob: true,             // default ON — the single most common ask
   removeRust: false,
   restoreDecals: false,
   removePeople: false,
