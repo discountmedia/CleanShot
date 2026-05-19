@@ -28,7 +28,7 @@ from cleanshot_api.models.schemas import (
 
 logger = logging.getLogger(__name__)
 
-CLEANUP_MODEL = "gemini-3.5-flash"
+CLEANUP_MODEL = "gemini-3.1-flash-image-preview"
 
 
 def _build_cleanup_prompt(anomaly_context: list[dict[str, Any]] | None) -> str:
