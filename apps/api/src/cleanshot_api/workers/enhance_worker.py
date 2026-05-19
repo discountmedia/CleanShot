@@ -48,7 +48,7 @@ logger = logging.getLogger(__name__)
 # (gemini-3-pro-image-preview, gemini-3-flash-image, gemini-flash-latest
 # all 404'd the same way). Always pin to an explicit dated/numbered
 # image model that's published in us-central1 for this project.
-ENHANCE_MODEL_GEMINI = "gemini-3.1-flash-image-preview"
+ENHANCE_MODEL_GEMINI = "gemini-3.5-flash"
 # gpt-image-2 dated snapshot (2026-04-21 release). Switch back to a
 # moving alias like "gpt-image-2-latest" if/when one exists and you
 # prefer auto-tracked updates.
