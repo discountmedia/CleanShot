@@ -28,6 +28,7 @@ import {
 import {
   createSession,
   enqueueEnhance,
+  getAssetUrl,
   getSignedUploadUrl,
   uploadToGcs,
 } from "../../lib/api";
@@ -201,14 +202,31 @@ function JobStatusRow({
 }: {
   file: UploadFile;
   jobId: string;
-  onComplete: (job: JobRecord) => void;
+  // Resolved by the parent into a thumbnailUrl appended to the pipeline.
+  // Called once, after a successful job has its signed URL minted.
+  onComplete: (job: JobRecord, outputUrl: string) => void;
 }) {
   const [job, setJob] = useState<JobRecord | null>(null);
+  const [outputUrl, setOutputUrl] = useState<string | null>(null);
+  const [outputError, setOutputError] = useState<string | null>(null);
 
   useJobPoller(
     jobId,
     (j) => setJob(j),
-    (j) => { setJob(j); onComplete(j); },
+    (j) => {
+      // Job completed — fetch the signed GET URL for the output asset, then
+      // hand it up so the workspace can append it to enhancedAssets and the
+      // Scan / Resize tabs immediately see it.
+      setJob(j);
+      if (j.outputAssetId) {
+        getAssetUrl(j.outputAssetId)
+          .then((res) => {
+            setOutputUrl(res.url);
+            onComplete(j, res.url);
+          })
+          .catch((err: Error) => setOutputError(err.message));
+      }
+    },
     (j) => setJob(j)
   );
 
@@ -221,20 +239,64 @@ function JobStatusRow({
   };
 
   return (
-    <div className="flex items-center justify-between px-3 py-2 bg-zinc-900 rounded-lg border border-zinc-800">
-      <span className="text-xs text-zinc-400 truncate max-w-[160px]">{file.file.name}</span>
-      {job ? (
-        <span className={`text-xs font-medium ${statusColor[job.status] ?? "text-zinc-400"}`}>
-          {job.status === "processing" && (
-            <svg className="inline animate-spin w-3 h-3 mr-1" viewBox="0 0 24 24" fill="none">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-            </svg>
-          )}
-          {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-        </span>
-      ) : (
-        <span className="text-xs text-zinc-500">Waiting…</span>
+    <div className="flex items-center gap-3 px-3 py-2 bg-zinc-900 rounded-lg border border-zinc-800">
+      {/* Before / after thumbnails (after appears when signed URL resolves) */}
+      <div className="flex items-center gap-2 shrink-0">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={file.previewUrl}
+          alt={`${file.file.name} (original)`}
+          className="w-12 h-12 object-cover rounded border border-zinc-800"
+        />
+        <span className="text-zinc-700" aria-hidden="true">→</span>
+        {outputUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={outputUrl}
+            alt={`${file.file.name} (enhanced)`}
+            className="w-12 h-12 object-cover rounded border border-green-800"
+          />
+        ) : (
+          <div className="w-12 h-12 rounded border border-dashed border-zinc-800 bg-zinc-950 flex items-center justify-center">
+            {job?.status === "processing" || job?.status === "queued" ? (
+              <svg className="animate-spin w-4 h-4 text-zinc-600" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+            ) : (
+              <span className="text-zinc-700 text-xs">—</span>
+            )}
+          </div>
+        )}
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-zinc-300 truncate">{file.file.name}</p>
+        {job ? (
+          <p className={`text-[11px] font-medium ${statusColor[job.status] ?? "text-zinc-400"}`}>
+            {job.status === "processing" && (
+              <svg className="inline animate-spin w-3 h-3 mr-1" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+            )}
+            {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
+            {outputError && <span className="ml-2 text-red-400">· {outputError}</span>}
+          </p>
+        ) : (
+          <p className="text-[11px] text-zinc-500">Waiting…</p>
+        )}
+      </div>
+
+      {outputUrl && (
+        <a
+          href={outputUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 text-[10px] uppercase tracking-wider font-semibold text-zinc-400 hover:text-white transition-colors px-2 py-1 border border-zinc-800 hover:border-zinc-600 rounded"
+        >
+          Open
+        </a>
       )}
     </div>
   );
@@ -244,7 +306,15 @@ function JobStatusRow({
 
 export interface EnhancePanelProps {
   sessionId: string;
-  onEnhanceComplete: (jobId: string, outputAssetId: string) => void;
+  // Fired when an enhance job finishes successfully AND we've minted a signed
+  // GET URL for the output. The workspace uses this to push the new asset
+  // into the Scan / Resize pipeline.
+  onEnhanceComplete: (params: {
+    jobId: string;
+    outputAssetId: string;
+    filename: string;
+    outputUrl: string;
+  }) => void;
 }
 
 export function EnhancePanel({ sessionId, onEnhanceComplete }: EnhancePanelProps) {
@@ -553,9 +623,14 @@ export function EnhancePanel({ sessionId, onEnhanceComplete }: EnhancePanelProps
                 key={f.id}
                 file={f}
                 jobId={enhanceJobs.get(f.id)!}
-                onComplete={(job) => {
+                onComplete={(job, outputUrl) => {
                   if (job.outputAssetId) {
-                    onEnhanceComplete(job.id, job.outputAssetId);
+                    onEnhanceComplete({
+                      jobId: job.id,
+                      outputAssetId: job.outputAssetId,
+                      filename: f.file.name,
+                      outputUrl,
+                    });
                   }
                 }}
               />

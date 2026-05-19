@@ -46,11 +46,11 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessionError, setSessionError] = useState<string | null>(null);
 
-  // Cross-panel pipeline state.
-  // enhancedAssets is reserved for the EnhancePanel → Scan/Resize handoff once
-  // EnhancePanel's onEnhanceComplete callback carries filename + thumbnailUrl.
-  // Until then the list is always [].
-  const [enhancedAssets] = useState<PipelineAsset[]>([]);
+  // Cross-panel pipeline state. EnhancePanel.onEnhanceComplete appends here
+  // once a job finishes and we have a signed GET URL — at that point the new
+  // asset is offered as a target in Scan + Resize without needing an explicit
+  // "send to scan" button.
+  const [enhancedAssets, setEnhancedAssets] = useState<PipelineAsset[]>([]);
   const [resizeResults, setResizeResults] = useState<ResizeResult[]>([]);
 
   useEffect(() => {
@@ -74,10 +74,27 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
     { id: "history" as const, label: "History" },
   ];
 
-  // Cross-panel notification point. EnhancePanel manages its own per-file
-  // state; once it surfaces filename + thumbnailUrl in this callback, this
-  // will append to enhancedAssets so Scan and Resize can offer the output.
-  const handleEnhanceComplete = () => {};
+  const handleEnhanceComplete = ({
+    outputAssetId,
+    filename,
+    outputUrl,
+  }: {
+    jobId: string;
+    outputAssetId: string;
+    filename: string;
+    outputUrl: string;
+  }) => {
+    setEnhancedAssets((prev) => {
+      // Guard against the same job firing onComplete twice (defensive — the
+      // poller's terminal branch should fire once, but a re-mount could
+      // re-trigger).
+      if (prev.some((a) => a.assetId === outputAssetId)) return prev;
+      return [
+        ...prev,
+        { assetId: outputAssetId, filename, thumbnailUrl: outputUrl, outputUrl },
+      ];
+    });
+  };
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
