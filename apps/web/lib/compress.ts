@@ -15,7 +15,13 @@
 
 export const MAX_BYTES = 4.5 * 1024 * 1024; // 4.5 MB
 const TARGET_BYTES = 4.0 * 1024 * 1024;     // 4.0 MB target after compression
-const MAX_LONG_EDGE = 3840;                  // 4K cap — preserves quality
+// Long-edge cap for the image we hand to the model. 2048 is the sweet spot:
+// large enough that detail / decals / fork colours survive the round-trip,
+// small enough that Gemini's response time drops ~30-40% vs 4K input, and
+// small enough that the JPEG re-encode finishes in under a second on most
+// devices. Was 3840 (4K). Bump back up if you ever see visible loss in
+// the enhanced output.
+const MAX_LONG_EDGE = 2048;
 
 /**
  * Compress a File to under TARGET_BYTES using Canvas + iterative JPEG quality reduction.

@@ -116,10 +116,12 @@ async def lifespan(app: FastAPI):
     logger.info("Valkey client initialised (%s)", settings.valkey_url)
 
     # --- Gemini Pro Image concurrency semaphore ---
-    # Layer 3 throttle: max 2 concurrent calls per Cloud Run instance.
+    # Layer 3 throttle: max concurrent Gemini calls per Cloud Run instance.
     # Layer 1: Cloud Tasks max_concurrent_dispatches (global cap).
-    # Layer 2: Cloud Run max-instances=1 at Tier 1.
-    app.state.gemini_semaphore = asyncio.Semaphore(2)
+    # Layer 2: Cloud Run max-instances (per deploy-api.yml).
+    # Bumped 2 → 4 to roughly halve batch wall-clock time. Vertex AI quota
+    # is the next ceiling; back off here if you start seeing 429s.
+    app.state.gemini_semaphore = asyncio.Semaphore(4)
 
     logger.info("CleanShot API ready")
     yield
