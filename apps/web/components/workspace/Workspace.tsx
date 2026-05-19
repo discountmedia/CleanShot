@@ -74,26 +74,29 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
     { id: "history" as const, label: "History" },
   ];
 
-  const handleEnhanceComplete = ({
-    outputAssetId,
-    filename,
-    outputUrl,
-  }: {
+  // Explicit user action: "Send to Scan" (per-row) or "Send all to Scan tab"
+  // (batch). Auto-handoff was removed at the user's request — enhance completion
+  // alone does NOT push to Scan; the user clicks the button when ready.
+  const handleSendToScan = (items: Array<{
     jobId: string;
     outputAssetId: string;
     filename: string;
     outputUrl: string;
-  }) => {
+  }>) => {
     setEnhancedAssets((prev) => {
-      // Guard against the same job firing onComplete twice (defensive — the
-      // poller's terminal branch should fire once, but a re-mount could
-      // re-trigger).
-      if (prev.some((a) => a.assetId === outputAssetId)) return prev;
-      return [
-        ...prev,
-        { assetId: outputAssetId, filename, thumbnailUrl: outputUrl, outputUrl },
-      ];
+      const existing = new Set(prev.map((a) => a.assetId));
+      const additions = items
+        .filter((it) => !existing.has(it.outputAssetId))
+        .map((it): PipelineAsset => ({
+          assetId:      it.outputAssetId,
+          filename:     it.filename,
+          thumbnailUrl: it.outputUrl,
+          outputUrl:    it.outputUrl,
+        }));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
     });
+    // Switch to the Scan tab so the user sees the result of their action.
+    setActiveTab("scan");
   };
 
   return (
@@ -120,7 +123,7 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
             {sessionId && (
               <EnhancePanel
                 sessionId={sessionId}
-                onEnhanceComplete={handleEnhanceComplete}
+                onSendToScan={handleSendToScan}
               />
             )}
           </PanelSlot>

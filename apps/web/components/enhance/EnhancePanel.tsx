@@ -198,13 +198,19 @@ function MetaFields({
 function JobStatusRow({
   file,
   jobId,
+  sent,
   onComplete,
+  onSend,
 }: {
   file: UploadFile;
   jobId: string;
+  /** True once the user has already "sent to Scan" — disables the per-row button. */
+  sent: boolean;
   // Resolved by the parent into a thumbnailUrl appended to the pipeline.
   // Called once, after a successful job has its signed URL minted.
   onComplete: (job: JobRecord, outputUrl: string) => void;
+  /** Per-row "Send to Scan" click handler. */
+  onSend: () => void;
 }) {
   const [job, setJob] = useState<JobRecord | null>(null);
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
@@ -289,14 +295,28 @@ function JobStatusRow({
       </div>
 
       {outputUrl && (
-        <a
-          href={outputUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="shrink-0 text-[10px] uppercase tracking-wider font-semibold text-zinc-400 hover:text-white transition-colors px-2 py-1 border border-zinc-800 hover:border-zinc-600 rounded"
-        >
-          Open
-        </a>
+        <div className="shrink-0 flex items-center gap-2">
+          <a
+            href={outputUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 hover:text-white transition-colors px-2 py-1 border border-zinc-800 hover:border-zinc-600 rounded"
+          >
+            Open
+          </a>
+          {sent ? (
+            <span className="text-[10px] uppercase tracking-wider font-semibold text-zinc-600 px-2 py-1">
+              ✓ Sent
+            </span>
+          ) : (
+            <button
+              onClick={onSend}
+              className="text-[10px] uppercase tracking-wider font-semibold text-red-300 hover:text-white bg-red-900/30 hover:bg-red-700 border border-red-800 hover:border-red-600 transition-colors px-2 py-1 rounded"
+            >
+              Send to Scan →
+            </button>
+          )}
+        </div>
       )}
     </div>
   );
@@ -304,20 +324,26 @@ function JobStatusRow({
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
-export interface EnhancePanelProps {
-  sessionId: string;
-  // Fired when an enhance job finishes successfully AND we've minted a signed
-  // GET URL for the output. The workspace uses this to push the new asset
-  // into the Scan / Resize pipeline.
-  onEnhanceComplete: (params: {
-    jobId: string;
-    outputAssetId: string;
-    filename: string;
-    outputUrl: string;
-  }) => void;
+export interface CompletedEnhanceItem {
+  jobId: string;
+  outputAssetId: string;
+  filename: string;
+  /** Signed GET URL for the enhanced image (works as both preview and full-size). */
+  outputUrl: string;
 }
 
-export function EnhancePanel({ sessionId, onEnhanceComplete }: EnhancePanelProps) {
+export interface EnhancePanelProps {
+  sessionId: string;
+  /**
+   * Called when the user explicitly clicks "Send to Scan" (per-row) or
+   * "Send all to Scan tab" (batch). The workspace appends to its
+   * enhancedAssets pipeline and switches to the Scan tab. Nothing happens
+   * automatically — completion alone does not push to Scan.
+   */
+  onSendToScan: (items: CompletedEnhanceItem[]) => void;
+}
+
+export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -328,6 +354,40 @@ export function EnhancePanel({ sessionId, onEnhanceComplete }: EnhancePanelProps
   const [metaOpen, setMetaOpen]     = useState(false);
   const [isRunning, setIsRunning]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
+
+  // Completed-but-not-yet-sent state for the explicit "Send to Scan" flow.
+  // Keyed by jobId so a re-poll on remount won't duplicate.
+  const [completed, setCompleted]   = useState<Map<string, CompletedEnhanceItem>>(new Map());
+  const [sentJobIds, setSentJobIds] = useState<Set<string>>(new Set());
+
+  const markCompleted = useCallback((item: CompletedEnhanceItem) => {
+    setCompleted((prev) => {
+      if (prev.has(item.jobId)) return prev;
+      const next = new Map(prev);
+      next.set(item.jobId, item);
+      return next;
+    });
+  }, []);
+
+  const sendOne = useCallback((item: CompletedEnhanceItem) => {
+    if (sentJobIds.has(item.jobId)) return;
+    onSendToScan([item]);
+    setSentJobIds((prev) => new Set(prev).add(item.jobId));
+  }, [onSendToScan, sentJobIds]);
+
+  const unsentItems = Array.from(completed.values()).filter(
+    (it) => !sentJobIds.has(it.jobId)
+  );
+
+  const sendAll = useCallback(() => {
+    if (unsentItems.length === 0) return;
+    onSendToScan(unsentItems);
+    setSentJobIds((prev) => {
+      const next = new Set(prev);
+      for (const it of unsentItems) next.add(it.jobId);
+      return next;
+    });
+  }, [onSendToScan, unsentItems]);
 
   const anyToggleOn = Object.values(toggles).some(Boolean);
 
@@ -623,9 +683,10 @@ export function EnhancePanel({ sessionId, onEnhanceComplete }: EnhancePanelProps
                 key={f.id}
                 file={f}
                 jobId={enhanceJobs.get(f.id)!}
+                sent={sentJobIds.has(enhanceJobs.get(f.id)!)}
                 onComplete={(job, outputUrl) => {
                   if (job.outputAssetId) {
-                    onEnhanceComplete({
+                    markCompleted({
                       jobId: job.id,
                       outputAssetId: job.outputAssetId,
                       filename: f.file.name,
@@ -633,9 +694,31 @@ export function EnhancePanel({ sessionId, onEnhanceComplete }: EnhancePanelProps
                     });
                   }
                 }}
+                onSend={() => {
+                  const item = completed.get(enhanceJobs.get(f.id)!);
+                  if (item) sendOne(item);
+                }}
               />
             ))}
         </div>
+      )}
+
+      {/* ── Send-all-to-Scan batch button ── */}
+      {completed.size > 0 && (
+        <button
+          onClick={sendAll}
+          disabled={unsentItems.length === 0}
+          className={`
+            w-full py-4 px-6 rounded-xl font-bold text-sm uppercase tracking-[0.18em] transition-all border-2
+            ${unsentItems.length > 0
+              ? "bg-red-600 hover:bg-red-500 border-red-500 text-white shadow-lg shadow-red-900/40"
+              : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"}
+          `}
+        >
+          {unsentItems.length > 0
+            ? <>Send {unsentItems.length} image{unsentItems.length !== 1 ? "s" : ""} to Scan tab →</>
+            : <>✓ All sent to Scan</>}
+        </button>
       )}
 
       {/* ── Model attribution ── */}
