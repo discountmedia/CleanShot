@@ -41,61 +41,113 @@ REGEN_PROMPT_KEY = "__regen_prompt_override__"  # sentinel — not a real toggle
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
     """
-    Build a Gemini instruction prompt from the 7 active toggles.
-    Field names match the camelCase aliases from the frontend exactly.
-    Gemini has no negative_prompt — exclusions are written as positive descriptions.
+    Build a Gemini image-edit instruction from the 7 active toggles.
+
+    Structure:
+      1. MASTER GOAL — tells the model what kind of output we want overall.
+         Without this, individual toggles read as descriptive sentences and
+         Gemini does almost nothing.
+      2. INVARIANTS — what must NOT change. Listed up front so the model
+         treats them as hard constraints, not afterthoughts.
+      3. CONDITIONAL MODIFIERS — each toggle is phrased as "ONLY if X is
+         present, do Y; otherwise preserve as-is." Critical fix: the prior
+         unconditional "Remove all visible rust" framing caused Gemini to
+         add rust to clean machines because "rust" was the topic.
     """
-    parts: list[str] = []
+    modifiers: list[str] = []
 
     if toggles.new_paint_job:
-        parts.append(
-            "Repaint the forklift body in its original factory colour. "
-            "The finish should appear clean, uniform, and professionally applied. "
-            "Preserve all OEM decals, data plates, and capacity tags exactly."
+        modifiers.append(
+            "Apply a fresh, even coat of the forklift's existing factory "
+            "paint colour over the body panels. The finish should look "
+            "smooth and freshly applied — no chips, scratches, oxidation, "
+            "scuffs, or dirt. Do not change the colour itself."
         )
     if toggles.remove_rust:
-        parts.append(
-            "Remove all visible rust, corrosion, and oxidation from every surface. "
-            "Restore affected areas to clean painted metal in the machine's original colour."
+        modifiers.append(
+            "If — and only if — rust, corrosion, oxidation, or surface "
+            "pitting is visible anywhere on the machine, replace those "
+            "areas with clean painted metal in the surrounding OEM colour. "
+            "Do not add, suggest, or imply any rust or wear that was not "
+            "in the source image. If the machine is already clean, leave "
+            "its surface exactly as-is."
         )
     if toggles.restore_decals:
-        parts.append(
-            "Restore any faded, peeling, or missing OEM decals, brand logos, "
-            "and capacity/safety labels to their original crisp, legible appearance."
+        modifiers.append(
+            "If OEM decals, brand logos, capacity stickers, or safety "
+            "labels are faded, peeling, scratched, or partially missing, "
+            "restore them to crisp, fully legible condition while keeping "
+            "their original text, layout, and position. Do not invent new "
+            "decals, add manufacturer logos that were not present, or "
+            "change any model/capacity numbering."
         )
     if toggles.remove_people:
-        parts.append(
-            "Remove all people, bystanders, and human figures from the image. "
-            "Fill vacated areas naturally with the surrounding background."
+        modifiers.append(
+            "Remove every person, operator, bystander, and hand from the "
+            "frame. Fill the vacated space with whatever is plausibly "
+            "behind them — warehouse floor, parking lot pavement, "
+            "showroom flooring — matching the surrounding environment."
         )
     if toggles.paint_forks_red_yellow_tips:
-        parts.append(
-            "Paint the forklift forks red with yellow safety tips, "
-            "following standard OSHA forklift safety colour conventions."
+        modifiers.append(
+            "Repaint the two forks themselves: solid safety red along the "
+            "shank, with bright safety yellow on the last ~6 inches of "
+            "the tip. Standard OSHA fork-safety convention. Do not change "
+            "fork length, profile, or mounting."
         )
     if toggles.shine_tires:
-        parts.append(
-            "Make all tires appear clean, jet-black, and recently conditioned. "
-            "Remove dirt, dust, and fading. Tires should look showroom-ready."
+        modifiers.append(
+            "Render the tires clean, deep black, and freshly conditioned, "
+            "as if just dressed. Remove visible dust, mud, salt residue, "
+            "and grey UV fading. Do not change tire type (cushion / "
+            "pneumatic / solid), tread pattern, or sidewall markings."
         )
     if toggles.improve_lighting:
-        parts.append(
-            "Apply balanced exposure correction: reduce harsh shadows, "
-            "eliminate blown highlights, correct white balance, and boost "
-            "overall clarity so the machine appears professionally lit."
+        modifiers.append(
+            "Balance the exposure: lift deep shadows, recover any blown "
+            "highlights, neutralize colour casts (yellow warehouse lights, "
+            "blue overcast, etc.), and present the machine as if "
+            "photographed under clean, soft, professional studio lighting."
         )
 
-    if not parts:
-        parts.append("Make minor improvements to lighting and overall image clarity.")
+    # Fallback when no toggles are on — should never happen given the
+    # frontend's "at least one toggle" gate, but keep a sensible default.
+    if not modifiers:
+        modifiers.append(
+            "Improve overall image quality: balanced exposure, accurate "
+            "colour, and increased clarity. Do not alter the machine itself."
+        )
 
-    # Safety clause — always appended regardless of toggles
-    parts.append(
-        "CRITICAL: Preserve the forklift's exact colour, all OEM decals, "
-        "data plates, VIN numbers, capacity tags, and proportions exactly. "
-        "Do not alter, generate, or hallucinate any text or numbers on the machine."
+    master = (
+        "Re-render this image as a professional dealership-listing "
+        "photograph of the SAME forklift. The output must be visibly "
+        "improved for use in an online inventory listing, while remaining "
+        "an honest representation of the actual machine in the source image."
     )
 
-    return "\n".join(f"- {p}" for p in parts)
+    invariants = (
+        "HARD CONSTRAINTS — these MUST hold in the output:\n"
+        "• Same make, model, year, and trim level as the source.\n"
+        "• Same mast configuration, fork count, fork length, and tire type.\n"
+        "• Same camera angle, framing, and proportions (do not zoom, "
+        "rotate, or re-pose the machine).\n"
+        "• All OEM decals, capacity plates, VIN/serial numbers, and "
+        "model/data tags remain present, legible, and unchanged. Do not "
+        "alter, regenerate, or hallucinate any text, digits, or logos on "
+        "the machine.\n"
+        "• Do not introduce damage, rust, dents, scratches, or wear that "
+        "was not in the source image."
+    )
+
+    modifier_block = "\n".join(f"• {m}" for m in modifiers)
+
+    return (
+        f"{master}\n\n"
+        f"{invariants}\n\n"
+        f"APPLY THE FOLLOWING — each item is conditional and only takes "
+        f"effect where the described condition is present in the source:\n"
+        f"{modifier_block}"
+    )
 
 
 async def _run_enhance(
