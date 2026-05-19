@@ -468,7 +468,6 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
     });
   }, [onSendToScan, unsentItems]);
 
-  const anyToggleOn = Object.values(toggles).some(Boolean);
 
   // ─── File picker ──────────────────────────────────────────────────────────
 
@@ -590,12 +589,12 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       setGlobalError("Enter the forklift Make before enhancing.");
       return;
     }
-    if (!customPromptActive && !anyToggleOn) {
-      setGlobalError(
-        "Enable at least one enhancement toggle, or enter a custom prompt below."
-      );
-      return;
-    }
+    // The backend now always applies a hardcoded standard treatment
+    // (paint refresh, decals, rust, tires, lighting), so no toggle is
+    // required. We still gate on customPrompt-vs-toggles only when the
+    // user explicitly enables the custom-prompt section AND types
+    // nothing — that's an ambiguous half-state we want to flag.
+    // (No "you need at least one toggle" error any more.)
     setGlobalError(null);
     setIsRunning(true);
 
@@ -729,9 +728,9 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
         aria-disabled={customPromptActive || undefined}
         className={customPromptActive ? "opacity-40 pointer-events-none" : ""}
       >
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex items-baseline justify-between mb-1">
           <h3 className="text-sm font-semibold text-zinc-200">
-            Enhancements
+            Optional emphasis
             {customPromptActive && (
               <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-amber-500">
                 disabled — custom prompt active
@@ -745,6 +744,11 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
             Reset
           </button>
         </div>
+        <p className="text-xs text-zinc-500 mb-3">
+          Every enhance run does the standard makeover (paint, decals, rust,
+          tires, lighting). Toggles below add extra emphasis or specific
+          actions on top.
+        </p>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>).map((key) => (
@@ -758,12 +762,6 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
             />
           ))}
         </div>
-
-        {!anyToggleOn && !customPromptActive && (
-          <p className="mt-2 text-xs text-amber-500" role="alert">
-            Enable at least one toggle to apply enhancements.
-          </p>
-        )}
       </div>
 
       {/* ── Custom prompt (advanced) ── */}
@@ -867,15 +865,10 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       {/* ── Enhance button ── */}
       <button
         onClick={handleEnhanceAll}
-        disabled={
-          pendingCount === 0 ||
-          !makeValid ||
-          (!anyToggleOn && !customPromptActive) ||
-          isRunning
-        }
+        disabled={pendingCount === 0 || !makeValid || isRunning}
         className={`
           w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
-          ${pendingCount > 0 && makeValid && (anyToggleOn || customPromptActive) && !isRunning
+          ${pendingCount > 0 && makeValid && !isRunning
             ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
             : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
         `}
@@ -885,11 +878,9 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
           : pendingCount > 0
             ? !makeValid
               ? "Enter forklift Make to continue"
-              : (!anyToggleOn && !customPromptActive)
-                ? "Enable a toggle or enter a custom prompt"
-                : customPromptActive
-                  ? `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""} (custom prompt)`
-                  : `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""}`
+              : customPromptActive
+                ? `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""} (custom prompt)`
+                : `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""}`
             : doneCount > 0
               ? "All images processing"
               : "Add images above"}

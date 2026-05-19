@@ -43,106 +43,24 @@ ENHANCE_MODEL_OPENAI = "gpt-image-1"
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
     """
-    Build a Gemini image-edit instruction from the 7 active toggles.
+    Build a Gemini image-edit instruction.
 
-    Structure:
-      1. MASTER GOAL — tells the model what kind of output we want overall.
-         Without this, individual toggles read as descriptive sentences and
-         Gemini does almost nothing.
-      2. INVARIANTS — what must NOT change. Listed up front so the model
-         treats them as hard constraints, not afterthoughts.
-      3. CONDITIONAL MODIFIERS — each toggle is phrased as "ONLY if X is
-         present, do Y; otherwise preserve as-is." Critical fix: the prior
-         unconditional "Remove all visible rust" framing caused Gemini to
-         add rust to clean machines because "rust" was the topic.
+    Hardcoded standard treatment + optional toggle-driven emphasis.
+
+    Structure (applied to every Enhance request regardless of toggle state):
+      1. MASTER GOAL — used-lift makeover, same machine in same place,
+         output MUST be visibly improved.
+      2. STANDARD TREATMENT — paint refresh, decal restoration, rust
+         removal, tire refresh, lighting correction. ALWAYS in the prompt.
+         These were previously gated behind individual toggles, but
+         Gemini's conservative bias meant toggling them on barely
+         produced change. Making them unconditional + present-tense
+         significantly raises compliance.
+      3. ADDITIONAL EMPHASIS — driven by toggles. The five "core"
+         toggles emphasize the matching base item; remove_people and
+         paint_forks_red_yellow_tips add genuinely new actions.
+      4. GUARDRAILS — same scene, same hardware, readable decals.
     """
-    modifiers: list[str] = []
-
-    if toggles.new_paint_job:
-        modifiers.append(
-            "PAINT REFRESH — REQUIRED VISIBLE CHANGE. Repaint every visibly-"
-            "worn body panel so the machine looks like it just came out of "
-            "a professional detail bay. Concretely:\n"
-            "  – Where any panel is currently yellowed, cream-coloured, or "
-            "dingy white, render it as clean, bright, even white.\n"
-            "  – Where any panel is currently dull, faded, dirty, or chalky "
-            "red, render it as clean, saturated, evenly painted red.\n"
-            "  – Anywhere you see chips, scratches, scuffs, scrapes, paint "
-            "loss, oxidation, stains, or dirt streaks, replace those areas "
-            "with a smooth uniform coat of paint matching the surrounding "
-            "panel's colour.\n"
-            "The cab roof, overhead guard, mast, main body, step panels, "
-            "and counterweight should all visibly look freshly painted in "
-            "the output. Keep the same colours and the same panel-to-colour "
-            "mapping — only the surface condition changes. The user MUST "
-            "be able to see, at a glance, that the paint is fresher than "
-            "the source."
-        )
-    if toggles.remove_rust:
-        modifiers.append(
-            "If — and only if — rust, corrosion, oxidation, or surface "
-            "pitting is visible anywhere on the machine, replace those "
-            "areas with clean painted metal in the surrounding OEM colour. "
-            "Do not add, suggest, or imply any rust or wear that was not "
-            "in the source image. If the machine is already clean, leave "
-            "its surface exactly as-is."
-        )
-    if toggles.restore_decals:
-        modifiers.append(
-            "If OEM decals, brand logos, capacity stickers, or safety "
-            "labels are faded, peeling, scratched, or partially missing, "
-            "restore them to crisp, fully legible condition while keeping "
-            "their original text, layout, and position. Do not invent new "
-            "decals, add manufacturer logos that were not present, or "
-            "change any model/capacity numbering."
-        )
-    if toggles.remove_people:
-        modifiers.append(
-            "Remove every person, operator, bystander, and hand from the "
-            "frame. Fill the vacated space with whatever is plausibly "
-            "behind them — warehouse floor, parking lot pavement, "
-            "showroom flooring — matching the surrounding environment."
-        )
-    if toggles.paint_forks_red_yellow_tips:
-        modifiers.append(
-            "Repaint the two forks with the standard OSHA two-tone safety "
-            "scheme: the MAIN BODY of each fork — the heel, the vertical "
-            "shank, and roughly the first 80% of the horizontal blade — "
-            "must be solid bright safety RED. Only the final tip — the "
-            "outermost ~15-20 cm (~6-8 inches) of the blade — should be "
-            "solid bright safety YELLOW. The result must clearly read as "
-            "a RED fork with a small YELLOW tip cap. Do NOT paint the "
-            "entire fork yellow. Do NOT paint the entire fork red. Do "
-            "not change fork length, profile, mounting, or position."
-        )
-    if toggles.shine_tires:
-        modifiers.append(
-            "Clean and refresh the EXISTING tires only. Remove dust, mud, "
-            "salt residue, and grey UV fading from the original tires so "
-            "the rubber looks darker and freshly dressed. Keep the same "
-            "tires — do NOT replace them with new tires. Identical tire "
-            "type (cushion / pneumatic / solid), identical tread pattern, "
-            "identical wear profile, identical sidewall markings."
-        )
-    if toggles.improve_lighting:
-        modifiers.append(
-            "Improve the exposure of the existing photograph while keeping "
-            "the original location and lighting character intact. Lift the "
-            "deepest shadows just enough to reveal detail, recover any blown "
-            "highlights, and neutralize obvious colour casts. Do NOT replace "
-            "the lighting with studio lighting. Do NOT change the light "
-            "direction or the location's ambient mood — the machine should "
-            "still clearly read as photographed in the same place."
-        )
-
-    # Fallback when no toggles are on — should never happen given the
-    # frontend's "at least one toggle" gate, but keep a sensible default.
-    if not modifiers:
-        modifiers.append(
-            "Improve overall image quality: balanced exposure, accurate "
-            "colour, and increased clarity. Do not alter the machine itself."
-        )
-
     master = (
         "You are editing a photograph of a USED forklift. The goal is a "
         "thorough makeover of the SAME machine in the SAME place: clean "
@@ -154,30 +72,123 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
         "factory, not a stock photo, not a studio composite."
     )
 
-    modifier_block = "\n\n".join(f"• {m}" for m in modifiers)
+    standard_treatment = (
+        "STANDARD TREATMENT — apply ALL of the following to every request. "
+        "These are the changes the output MUST reflect:\n\n"
 
-    actions_lead = (
-        "ACTIONS — apply each of the following wherever its described "
-        "condition is present in the source. These are the changes the "
-        "output must reflect:"
+        "• PAINT REFRESH. Repaint every visibly-worn body panel so the "
+        "machine looks like it just came out of a professional detail bay. "
+        "Concretely:\n"
+        "    – Where any panel is currently yellowed, cream-coloured, or "
+        "dingy white, render it as clean, bright, even white.\n"
+        "    – Where any panel is currently dull, faded, dirty, or chalky "
+        "red, render it as clean, saturated, evenly painted red.\n"
+        "    – Anywhere you see chips, scratches, scuffs, scrapes, paint "
+        "loss, oxidation, stains, or dirt streaks, replace those areas "
+        "with a smooth uniform coat of paint matching the surrounding "
+        "panel's colour.\n"
+        "  The cab roof, overhead guard, mast, main body, step panels, "
+        "and counterweight should all visibly look freshly painted in the "
+        "output. Keep the same colours and the same panel-to-colour "
+        "mapping — only the surface condition changes.\n\n"
+
+        "• DECAL RESTORATION. Restore every OEM decal, brand logo, "
+        "capacity sticker, model badge, and safety label to crisp, fully "
+        "legible condition. Keep their original text, layout, and "
+        "position. Do not invent new decals, add manufacturer logos that "
+        "were not present, or change any model / capacity numbering.\n\n"
+
+        "• RUST + CORROSION. Where rust, corrosion, oxidation, or surface "
+        "pitting is visible, replace those areas with clean painted metal "
+        "in the surrounding OEM colour. Do NOT add or imply rust or wear "
+        "that was not in the source.\n\n"
+
+        "• TIRE REFRESH. Clean and refresh the EXISTING tires — darker "
+        "rubber, no dust or grime, freshly dressed appearance. Keep the "
+        "same tires (same type, tread, sidewall, wear profile); do NOT "
+        "swap them for new tires.\n\n"
+
+        "• LIGHTING / EXPOSURE. Lift the deepest shadows just enough to "
+        "reveal detail, recover any blown highlights, and neutralize "
+        "obvious colour casts. Keep the scene's original light direction "
+        "and ambient mood — do NOT replace it with studio lighting."
+    )
+
+    # Toggle-driven additions. The 5 "core" toggles emphasize a base item;
+    # remove_people and paint_forks_red_yellow_tips add genuinely new
+    # actions the standard treatment doesn't cover.
+    extras: list[str] = []
+
+    if toggles.new_paint_job:
+        extras.append(
+            "EXTRA EMPHASIS — paint refresh. This image has been flagged "
+            "as needing particularly fresh paint; be especially aggressive "
+            "on the paint step above."
+        )
+    if toggles.remove_rust:
+        extras.append(
+            "EXTRA EMPHASIS — rust removal. This image has been flagged "
+            "as needing particularly thorough rust / corrosion cleanup."
+        )
+    if toggles.restore_decals:
+        extras.append(
+            "EXTRA EMPHASIS — decals. Pay extra attention to decal "
+            "restoration on this image; every label should read perfectly "
+            "crisp in the output."
+        )
+    if toggles.shine_tires:
+        extras.append(
+            "EXTRA EMPHASIS — tires. Pay extra attention to the tire "
+            "refresh; the rubber should read as freshly conditioned."
+        )
+    if toggles.improve_lighting:
+        extras.append(
+            "EXTRA EMPHASIS — lighting / exposure. Balance the histogram "
+            "more aggressively on this image while keeping the scene's "
+            "location intact."
+        )
+    if toggles.remove_people:
+        extras.append(
+            "ADDITIONAL ACTION — remove every person, operator, bystander, "
+            "and hand from the frame. Fill the vacated space with whatever "
+            "is plausibly behind them (warehouse floor, parking lot "
+            "pavement, showroom flooring), matching the surrounding "
+            "environment."
+        )
+    if toggles.paint_forks_red_yellow_tips:
+        extras.append(
+            "ADDITIONAL ACTION — repaint the forks with the standard OSHA "
+            "two-tone safety scheme. The MAIN BODY of each fork (the heel, "
+            "the vertical shank, and roughly the first 80% of the "
+            "horizontal blade) must be solid bright safety RED. Only the "
+            "final tip — the outermost ~15-20 cm (~6-8 inches) of the "
+            "blade — should be solid bright safety YELLOW. The result must "
+            "clearly read as a RED fork with a small YELLOW tip cap. Do "
+            "NOT paint the entire fork yellow or the entire fork red. Do "
+            "not change fork length, profile, mounting, or position."
+        )
+
+    extras_block = (
+        "ADDITIONAL EMPHASIS — apply ON TOP of the standard treatment:\n\n"
+        + "\n\n".join(f"• {e}" for e in extras)
+        if extras
+        else ""
     )
 
     guardrails = (
-        "GUARDRAILS — while applying the actions above, the following must "
+        "GUARDRAILS — while applying everything above, the following must "
         "stay identical to the source. These are limits on HOW you change "
-        "the image, not reasons to skip the changes:\n"
+        "the image, not reasons to skip the standard treatment:\n"
         "• Background, floor, walls, surroundings — keep the exact same "
         "location. Never isolate the forklift on a white / studio / "
         "gradient backdrop. Never blur or replace the scene.\n"
-        "• Lighting direction, ambient colour, and shadow placement. Do "
-        "not swap warehouse / yard lighting for studio lighting.\n"
+        "• Lighting direction, ambient colour, and shadow placement. "
+        "Refresh exposure, but keep the same lighting character.\n"
         "• Camera angle, framing, distance, proportions. No zoom, crop, "
         "rotate, horizon-leveling, or re-posing.\n"
         "• Make, model, year, trim level. Same mast configuration, fork "
         "count, fork length, overhead guard shape, counterweight shape, "
         "and tire type.\n"
-        "• Tires themselves — same tread pattern, sidewall, wear profile. "
-        "Refresh appearance only; do not swap for new tires.\n"
         "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or "
         "any bolt-on hardware that is not already in the source.\n"
         "• Every OEM decal, capacity plate, VIN / serial number, and "
@@ -187,12 +198,11 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
         "the source image."
     )
 
-    return (
-        f"{master}\n\n"
-        f"{actions_lead}\n\n"
-        f"{modifier_block}\n\n"
-        f"{guardrails}"
-    )
+    sections = [master, standard_treatment]
+    if extras_block:
+        sections.append(extras_block)
+    sections.append(guardrails)
+    return "\n\n".join(sections)
 
 
 async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
