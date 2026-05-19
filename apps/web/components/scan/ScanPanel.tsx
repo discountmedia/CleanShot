@@ -353,8 +353,6 @@ function ImageScanCard({
     consensus === "split" ? "text-yellow-400 border-yellow-800 bg-yellow-950/30" :
                             "text-zinc-400 border-zinc-700 bg-zinc-900/30";
 
-  const enhancedUrl = regenUrl ?? scan.outputUrl;
-
   return (
     <article
       className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden"
@@ -379,39 +377,33 @@ function ImageScanCard({
         )}
       </div>
 
-      {/* Large before/after — full row so the operator can actually
-          examine the image side-by-side with the AI's verdict below. */}
-      <div className={`grid ${enhancedUrl ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"} gap-3 p-5 pb-3`}>
-        <figure className="flex flex-col gap-2">
-          <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
-            Original
-          </span>
-          <a href={scan.thumbnailUrl} target="_blank" rel="noopener noreferrer" className="block">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={scan.thumbnailUrl}
-              alt={`Original: ${scan.filename}`}
-              className="w-full aspect-square object-contain bg-black rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors"
-            />
-          </a>
-        </figure>
-
-        {enhancedUrl && (
-          <figure className="flex flex-col gap-2">
+      {/* Single large image — the thing being scanned. scan.thumbnailUrl
+          is already the enhanced version (sent from the Enhance tab); when
+          a regen runs, regenUrl supersedes it. No "original" pair — the
+          user just wants to see the image the AI is actually judging. */}
+      {(() => {
+        const displayUrl = regenUrl ?? scan.thumbnailUrl;
+        const isRegen   = !!regenUrl;
+        return (
+          <figure className="flex flex-col gap-2 p-5 pb-3">
             <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
-              {regenUrl ? "Regenerated" : "Enhanced"}
+              {isRegen ? "Regenerated" : "Enhanced"}
             </span>
-            <a href={enhancedUrl} target="_blank" rel="noopener noreferrer" className="block">
+            <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={enhancedUrl}
-                alt={`Enhanced: ${scan.filename}`}
-                className="w-full aspect-square object-contain bg-black rounded-lg border border-blue-900 hover:border-blue-700 transition-colors"
+                src={displayUrl}
+                alt={`${isRegen ? "Regenerated" : "Enhanced"}: ${scan.filename}`}
+                className={`w-full aspect-square object-contain bg-black rounded-lg border transition-colors ${
+                  isRegen
+                    ? "border-amber-900 hover:border-amber-700"
+                    : "border-zinc-800 hover:border-zinc-600"
+                }`}
               />
             </a>
           </figure>
-        )}
-      </div>
+        );
+      })()}
 
       {/* Provider verdicts */}
       <div className="px-5 pb-4">
