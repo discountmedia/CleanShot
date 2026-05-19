@@ -244,80 +244,123 @@ function JobStatusRow({
     cancelled:  "text-zinc-400",
   };
 
+  const isProcessing = job?.status === "processing" || job?.status === "queued";
+  const isFailed     = job?.status === "failed";
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2 bg-zinc-900 rounded-lg border border-zinc-800">
-      {/* Before / after thumbnails (after appears when signed URL resolves) */}
-      <div className="flex items-center gap-2 shrink-0">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={file.previewUrl}
-          alt={`${file.file.name} (original)`}
-          className="w-12 h-12 object-cover rounded border border-zinc-800"
-        />
-        <span className="text-zinc-700" aria-hidden="true">→</span>
-        {outputUrl ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={outputUrl}
-            alt={`${file.file.name} (enhanced)`}
-            className="w-12 h-12 object-cover rounded border border-green-800"
-          />
-        ) : (
-          <div className="w-12 h-12 rounded border border-dashed border-zinc-800 bg-zinc-950 flex items-center justify-center">
-            {job?.status === "processing" || job?.status === "queued" ? (
-              <svg className="animate-spin w-4 h-4 text-zinc-600" viewBox="0 0 24 24" fill="none">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+      {/* Header row */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-900">
+        <p className="text-sm text-zinc-200 font-mono truncate" title={file.file.name}>
+          {file.file.name}
+        </p>
+        {job ? (
+          <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${statusColor[job.status] ?? "text-zinc-400"}`}>
+            {job.status === "processing" && (
+              <svg className="inline animate-spin w-3.5 h-3.5 mr-1.5 -mt-0.5" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
               </svg>
+            )}
+            {job.status}
+          </span>
+        ) : (
+          <span className="text-xs uppercase tracking-[0.18em] text-zinc-500">Waiting…</span>
+        )}
+      </div>
+
+      {/* Body — large before/after */}
+      <div className="p-5">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_auto_1fr] items-center gap-4">
+          {/* Original */}
+          <figure className="flex flex-col gap-2">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">Original</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={file.previewUrl}
+              alt={`${file.file.name} (original)`}
+              className="w-full aspect-square object-contain bg-zinc-950 rounded-lg border border-zinc-800"
+            />
+          </figure>
+
+          {/* Arrow */}
+          <div className="hidden md:flex items-center justify-center text-3xl text-zinc-700" aria-hidden="true">
+            →
+          </div>
+
+          {/* Enhanced (or placeholder) */}
+          <figure className="flex flex-col gap-2">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">Enhanced</span>
+            {outputUrl ? (
+              /* eslint-disable-next-line @next/next/no-img-element */
+              <img
+                src={outputUrl}
+                alt={`${file.file.name} (enhanced)`}
+                className="w-full aspect-square object-contain bg-zinc-950 rounded-lg border border-green-900"
+              />
             ) : (
-              <span className="text-zinc-700 text-xs">—</span>
+              <div className="w-full aspect-square rounded-lg border border-dashed border-zinc-800 bg-zinc-950 flex items-center justify-center">
+                {isProcessing ? (
+                  <div className="flex flex-col items-center gap-2 text-zinc-600">
+                    <svg className="animate-spin w-8 h-8" viewBox="0 0 24 24" fill="none">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+                    </svg>
+                    <span className="text-xs uppercase tracking-[0.18em]">{job?.status}</span>
+                  </div>
+                ) : isFailed ? (
+                  <div className="text-center px-4 text-red-400">
+                    <svg className="w-10 h-10 mx-auto mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                    </svg>
+                    <p className="text-xs uppercase tracking-[0.18em] font-semibold">Failed</p>
+                  </div>
+                ) : (
+                  <span className="text-zinc-700 text-xs uppercase tracking-[0.18em]">Awaiting</span>
+                )}
+              </div>
+            )}
+          </figure>
+        </div>
+
+        {/* Error detail */}
+        {isFailed && job?.error && (
+          <p className="mt-4 text-xs text-red-400 bg-red-950/30 border border-red-900 rounded px-3 py-2 font-mono leading-relaxed">
+            {job.error}
+          </p>
+        )}
+        {outputError && (
+          <p className="mt-4 text-xs text-red-400">
+            Could not load output: {outputError}
+          </p>
+        )}
+
+        {/* Action row */}
+        {outputUrl && (
+          <div className="mt-4 flex items-center justify-end gap-2">
+            <a
+              href={outputUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white transition-colors px-3 py-2 border border-zinc-800 hover:border-zinc-600 rounded"
+            >
+              Open full size
+            </a>
+            {sent ? (
+              <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-600 px-3 py-2">
+                ✓ Sent
+              </span>
+            ) : (
+              <button
+                onClick={onSend}
+                className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-red-600 hover:bg-red-500 border border-red-500 transition-colors px-3 py-2 rounded"
+              >
+                Send to Scan →
+              </button>
             )}
           </div>
         )}
       </div>
-
-      <div className="flex-1 min-w-0">
-        <p className="text-xs text-zinc-300 truncate">{file.file.name}</p>
-        {job ? (
-          <p className={`text-[11px] font-medium ${statusColor[job.status] ?? "text-zinc-400"}`}>
-            {job.status === "processing" && (
-              <svg className="inline animate-spin w-3 h-3 mr-1" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
-            )}
-            {job.status.charAt(0).toUpperCase() + job.status.slice(1)}
-            {outputError && <span className="ml-2 text-red-400">· {outputError}</span>}
-          </p>
-        ) : (
-          <p className="text-[11px] text-zinc-500">Waiting…</p>
-        )}
-      </div>
-
-      {outputUrl && (
-        <div className="shrink-0 flex items-center gap-2">
-          <a
-            href={outputUrl}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[10px] uppercase tracking-wider font-semibold text-zinc-400 hover:text-white transition-colors px-2 py-1 border border-zinc-800 hover:border-zinc-600 rounded"
-          >
-            Open
-          </a>
-          {sent ? (
-            <span className="text-[10px] uppercase tracking-wider font-semibold text-zinc-600 px-2 py-1">
-              ✓ Sent
-            </span>
-          ) : (
-            <button
-              onClick={onSend}
-              className="text-[10px] uppercase tracking-wider font-semibold text-red-300 hover:text-white bg-red-900/30 hover:bg-red-700 border border-red-800 hover:border-red-600 transition-colors px-2 py-1 rounded"
-            >
-              Send to Scan →
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }
