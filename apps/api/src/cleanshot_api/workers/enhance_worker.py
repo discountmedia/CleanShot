@@ -60,14 +60,23 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
 
     if toggles.new_paint_job:
         modifiers.append(
-            "Repaint every body panel of the forklift so it looks freshly "
-            "factory-painted. Aggressively remove ALL visible paint damage: "
-            "chips, scratches, scuffs, scrapes, oxidized/dulled patches, "
-            "fading, dirt streaks, and surface grime. The result must look "
-            "like a new coat of factory paint over the entire body, mast, "
-            "overhead guard, and counterweight. Match the forklift's exact "
-            "existing colour and finish type — do not change the colour, "
-            "hue, or which panels are which colour."
+            "PAINT REFRESH — REQUIRED VISIBLE CHANGE. Repaint every visibly-"
+            "worn body panel so the machine looks like it just came out of "
+            "a professional detail bay. Concretely:\n"
+            "  – Where any panel is currently yellowed, cream-coloured, or "
+            "dingy white, render it as clean, bright, even white.\n"
+            "  – Where any panel is currently dull, faded, dirty, or chalky "
+            "red, render it as clean, saturated, evenly painted red.\n"
+            "  – Anywhere you see chips, scratches, scuffs, scrapes, paint "
+            "loss, oxidation, stains, or dirt streaks, replace those areas "
+            "with a smooth uniform coat of paint matching the surrounding "
+            "panel's colour.\n"
+            "The cab roof, overhead guard, mast, main body, step panels, "
+            "and counterweight should all visibly look freshly painted in "
+            "the output. Keep the same colours and the same panel-to-colour "
+            "mapping — only the surface condition changes. The user MUST "
+            "be able to see, at a glance, that the paint is fresher than "
+            "the source."
         )
     if toggles.remove_rust:
         modifiers.append(
@@ -135,51 +144,54 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
         )
 
     master = (
-        "This is a photograph of a USED forklift. Re-render it so the same "
-        "machine looks like it just got a thorough detailing and refurbishment "
-        "— clean paint, sharp decals, dressed tires — but is still clearly "
-        "the same used unit in the same place where the photo was taken. "
-        "Do NOT make it look brand-new-from-factory, do NOT make it look "
-        "like a stock photo, and do NOT make it look like a studio composite. "
-        "Think \"used lift with a really good makeover,\" not \"showroom display.\""
+        "You are editing a photograph of a USED forklift. The goal is a "
+        "thorough makeover of the SAME machine in the SAME place: clean "
+        "paint, sharp decals, dressed tires — like the unit just rolled "
+        "out of a professional detail bay. The output MUST be visibly "
+        "improved versus the input. A reasonable viewer should be able "
+        "to see at a glance that the machine has been cleaned up. "
+        "\"Used lift with a really good makeover\" — not brand-new from "
+        "factory, not a stock photo, not a studio composite."
     )
 
-    invariants = (
-        "HARD CONSTRAINTS — these MUST hold in the output:\n"
-        "• Same make, model, year, and trim level.\n"
-        "• Same background, floor, walls, and surroundings as the source. "
-        "Do NOT isolate the forklift on a white / studio / gradient backdrop. "
-        "Do NOT replace, blur, soften, or substitute the location.\n"
-        "• Same lighting environment as the source — same light direction, "
-        "same ambient colour, same shadow placement. Do NOT swap warehouse "
-        "or yard lighting for studio lighting.\n"
-        "• Same camera angle, framing, distance, and proportions. Do NOT "
-        "zoom, crop, rotate, level the horizon, or re-pose the machine.\n"
-        "• Same mast configuration, fork count, fork length, overhead guard, "
-        "counterweight shape, and tire type. Do NOT add lamps, beacons, "
-        "mirrors, attachments, antennas, or any bolt-on hardware that is "
-        "not already present in the source image.\n"
-        "• Same tires — keep the exact tread pattern, sidewall, and wear "
-        "profile. Refresh their appearance only; do not swap them for new "
-        "tires.\n"
-        "• All OEM decals, capacity plates, VIN / serial numbers, and "
-        "model / data tags remain present, legible, and unchanged. Do not "
-        "alter, regenerate, or hallucinate any text, digits, or logos.\n"
+    modifier_block = "\n\n".join(f"• {m}" for m in modifiers)
+
+    actions_lead = (
+        "ACTIONS — apply each of the following wherever its described "
+        "condition is present in the source. These are the changes the "
+        "output must reflect:"
+    )
+
+    guardrails = (
+        "GUARDRAILS — while applying the actions above, the following must "
+        "stay identical to the source. These are limits on HOW you change "
+        "the image, not reasons to skip the changes:\n"
+        "• Background, floor, walls, surroundings — keep the exact same "
+        "location. Never isolate the forklift on a white / studio / "
+        "gradient backdrop. Never blur or replace the scene.\n"
+        "• Lighting direction, ambient colour, and shadow placement. Do "
+        "not swap warehouse / yard lighting for studio lighting.\n"
+        "• Camera angle, framing, distance, proportions. No zoom, crop, "
+        "rotate, horizon-leveling, or re-posing.\n"
+        "• Make, model, year, trim level. Same mast configuration, fork "
+        "count, fork length, overhead guard shape, counterweight shape, "
+        "and tire type.\n"
+        "• Tires themselves — same tread pattern, sidewall, wear profile. "
+        "Refresh appearance only; do not swap for new tires.\n"
+        "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or "
+        "any bolt-on hardware that is not already in the source.\n"
+        "• Every OEM decal, capacity plate, VIN / serial number, and "
+        "data tag remains present, legible, and unchanged. Do not invent "
+        "or alter any text, digits, or logos on the machine.\n"
         "• Do not introduce damage, rust, dents, or wear that was not in "
         "the source image."
     )
 
-    modifier_block = "\n".join(f"• {m}" for m in modifiers)
-
     return (
         f"{master}\n\n"
-        f"{invariants}\n\n"
-        f"APPLY THE FOLLOWING — each item is conditional and only takes "
-        f"effect where the described condition is present in the source. "
-        f"None of these should change the background, the location, the "
-        f"camera angle, the tire identity, or add accessories that were "
-        f"not on the original machine:\n"
-        f"{modifier_block}"
+        f"{actions_lead}\n\n"
+        f"{modifier_block}\n\n"
+        f"{guardrails}"
     )
 
 
