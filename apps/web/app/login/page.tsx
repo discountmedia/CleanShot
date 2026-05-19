@@ -15,8 +15,8 @@ interface Props {
 export default async function LoginPage({ searchParams }: Props) {
   const { callbackUrl } = await searchParams;
 
-  // AUTH_ENABLED=false → bypass, go straight to app
-  if (process.env.AUTH_ENABLED === "false") {
+  // Auth off (default) → skip the login page entirely
+  if (process.env.AUTH_ENABLED !== "true") {
     redirect(callbackUrl ?? "/");
   }
 

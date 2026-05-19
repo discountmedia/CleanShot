@@ -3,11 +3,15 @@
 // Named export must be `proxy` — default export also works but named is explicit.
 //
 // Auth flow:
-//   AUTH_ENABLED=false  → pass all requests through (dev/test mode)
 //   AUTH_ENABLED=true   → check Better Auth session cookie
 //                         no session → redirect /login
 //                         session present → allow through
 //                         (domain/email gate happens at signIn callback, not here)
+//   anything else       → pass all requests through (default, dev/test mode)
+//
+// Auth is OFF unless explicitly turned ON. Inverted from a prior default
+// because an unset (or wrong-environment-scoped) Vercel env var would
+// otherwise gate the whole site behind a half-configured OAuth flow.
 //
 // We intentionally keep the proxy LEAN — just cookie presence check.
 // Full session validation (DB lookup) happens in Server Components and Route Handlers.
@@ -26,8 +30,8 @@ const PUBLIC_PATHS = [
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
-  // AUTH_ENABLED=false → bypass entirely (testing mode)
-  if (process.env.AUTH_ENABLED === "false") {
+  // Bypass unless auth is explicitly enabled.
+  if (process.env.AUTH_ENABLED !== "true") {
     return NextResponse.next();
   }
 
