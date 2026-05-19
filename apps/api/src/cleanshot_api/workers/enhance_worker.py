@@ -108,17 +108,22 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
         )
     if toggles.shine_tires:
         modifiers.append(
-            "Render the tires clean, deep black, and freshly conditioned, "
-            "as if just dressed. Remove visible dust, mud, salt residue, "
-            "and grey UV fading. Do not change tire type (cushion / "
-            "pneumatic / solid), tread pattern, or sidewall markings."
+            "Clean and refresh the EXISTING tires only. Remove dust, mud, "
+            "salt residue, and grey UV fading from the original tires so "
+            "the rubber looks darker and freshly dressed. Keep the same "
+            "tires — do NOT replace them with new tires. Identical tire "
+            "type (cushion / pneumatic / solid), identical tread pattern, "
+            "identical wear profile, identical sidewall markings."
         )
     if toggles.improve_lighting:
         modifiers.append(
-            "Balance the exposure: lift deep shadows, recover any blown "
-            "highlights, neutralize colour casts (yellow warehouse lights, "
-            "blue overcast, etc.), and present the machine as if "
-            "photographed under clean, soft, professional studio lighting."
+            "Improve the exposure of the existing photograph while keeping "
+            "the original location and lighting character intact. Lift the "
+            "deepest shadows just enough to reveal detail, recover any blown "
+            "highlights, and neutralize obvious colour casts. Do NOT replace "
+            "the lighting with studio lighting. Do NOT change the light "
+            "direction or the location's ambient mood — the machine should "
+            "still clearly read as photographed in the same place."
         )
 
     # Fallback when no toggles are on — should never happen given the
@@ -130,24 +135,38 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
         )
 
     master = (
-        "Re-render this image as a professional dealership-listing "
-        "photograph of the SAME forklift. The output must be visibly "
-        "improved for use in an online inventory listing, while remaining "
-        "an honest representation of the actual machine in the source image."
+        "This is a photograph of a USED forklift. Re-render it so the same "
+        "machine looks like it just got a thorough detailing and refurbishment "
+        "— clean paint, sharp decals, dressed tires — but is still clearly "
+        "the same used unit in the same place where the photo was taken. "
+        "Do NOT make it look brand-new-from-factory, do NOT make it look "
+        "like a stock photo, and do NOT make it look like a studio composite. "
+        "Think \"used lift with a really good makeover,\" not \"showroom display.\""
     )
 
     invariants = (
         "HARD CONSTRAINTS — these MUST hold in the output:\n"
-        "• Same make, model, year, and trim level as the source.\n"
-        "• Same mast configuration, fork count, fork length, and tire type.\n"
-        "• Same camera angle, framing, and proportions (do not zoom, "
-        "rotate, or re-pose the machine).\n"
-        "• All OEM decals, capacity plates, VIN/serial numbers, and "
-        "model/data tags remain present, legible, and unchanged. Do not "
-        "alter, regenerate, or hallucinate any text, digits, or logos on "
-        "the machine.\n"
-        "• Do not introduce damage, rust, dents, scratches, or wear that "
-        "was not in the source image."
+        "• Same make, model, year, and trim level.\n"
+        "• Same background, floor, walls, and surroundings as the source. "
+        "Do NOT isolate the forklift on a white / studio / gradient backdrop. "
+        "Do NOT replace, blur, soften, or substitute the location.\n"
+        "• Same lighting environment as the source — same light direction, "
+        "same ambient colour, same shadow placement. Do NOT swap warehouse "
+        "or yard lighting for studio lighting.\n"
+        "• Same camera angle, framing, distance, and proportions. Do NOT "
+        "zoom, crop, rotate, level the horizon, or re-pose the machine.\n"
+        "• Same mast configuration, fork count, fork length, overhead guard, "
+        "counterweight shape, and tire type. Do NOT add lamps, beacons, "
+        "mirrors, attachments, antennas, or any bolt-on hardware that is "
+        "not already present in the source image.\n"
+        "• Same tires — keep the exact tread pattern, sidewall, and wear "
+        "profile. Refresh their appearance only; do not swap them for new "
+        "tires.\n"
+        "• All OEM decals, capacity plates, VIN / serial numbers, and "
+        "model / data tags remain present, legible, and unchanged. Do not "
+        "alter, regenerate, or hallucinate any text, digits, or logos.\n"
+        "• Do not introduce damage, rust, dents, or wear that was not in "
+        "the source image."
     )
 
     modifier_block = "\n".join(f"• {m}" for m in modifiers)
@@ -156,7 +175,10 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
         f"{master}\n\n"
         f"{invariants}\n\n"
         f"APPLY THE FOLLOWING — each item is conditional and only takes "
-        f"effect where the described condition is present in the source:\n"
+        f"effect where the described condition is present in the source. "
+        f"None of these should change the background, the location, the "
+        f"camera angle, the tire identity, or add accessories that were "
+        f"not on the original machine:\n"
         f"{modifier_block}"
     )
 
