@@ -62,7 +62,6 @@ import {
   getAssetUrl,
   enqueueScanBatch,
   enqueueRegen,
-  pollJob,
 } from "../../lib/api";
 import { useJobPoller } from "../../lib/polling";
 import type {

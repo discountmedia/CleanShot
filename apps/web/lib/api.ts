@@ -7,7 +7,6 @@ import type {
   EnhanceToggles,
   ForkliftMeta,
   JobRecord,
-  ProviderScanResult,
 } from "./types";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -85,8 +84,10 @@ export async function enqueueEnhance(params: {
   assetId: string;
   toggles: EnhanceToggles;
   forkliftMeta?: Partial<ForkliftMeta>;
-  /** Image generation provider. Default = "gemini" (gemini-flash-latest). "openai" routes through gpt-image-2-2026-04-21. */
-  provider?: "gemini" | "openai";
+  /** Image generation provider. Default = "gemini" (gemini-flash-latest).
+   * "openai" routes through gpt-image-2-2026-04-21.
+   * "flux" routes through Black Forest Labs FLUX 2 [PRO]. */
+  provider?: "gemini" | "openai" | "flux";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
   idempotencyKey: string;

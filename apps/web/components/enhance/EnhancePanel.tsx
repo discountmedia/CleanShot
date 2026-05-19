@@ -27,7 +27,6 @@ import {
   type UploadFile,
 } from "../../lib/types";
 import {
-  createSession,
   enqueueEnhance,
   getAssetUrl,
   getSignedUploadUrl,
@@ -456,12 +455,17 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
   const [enhanceJobs, setEnhanceJobs] = useState<Map<string, string>>(new Map()); // fileId → jobId
   const [isRunning, setIsRunning]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  /** Provider for image generation. Single checkbox in UI: "Use ChatGPT instead". */
-  const [useOpenAI, setUseOpenAI]   = useState(false);
+  /** Provider for image generation. Mutually-exclusive checkboxes in UI:
+   * "Use ChatGPT instead" / "Use Flux instead". Default is Gemini. */
+  const [provider, setProvider] = useState<"gemini" | "openai" | "flux">("gemini");
 
   /** "Custom prompt (advanced)" disclosure state + textarea contents. */
   const [customPromptOpen, setCustomPromptOpen] = useState(false);
   const [customPrompt, setCustomPrompt]         = useState("");
+
+  // Monotonic counter for regen idempotency keys. Mutating a ref inside an
+  // event handler is purity-safe; Date.now() in render path is not.
+  const regenSeqRef = useRef(0);
 
   const makeValid          = Boolean(meta.make?.trim());
   const customPromptActive = customPrompt.trim().length > 0;
@@ -602,7 +606,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
         assetId: signedResp.assetId,
         toggles,
         forkliftMeta: meta,
-        provider: useOpenAI ? "openai" : "gemini",
+        provider,
         // Custom prompt (when active) takes precedence over toggles on the
         // backend. We still send toggles for telemetry/job-row context.
         customPrompt: customPromptActive ? customPrompt : undefined,
@@ -639,11 +643,12 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
         assetId:        file.assetId,
         toggles,
         forkliftMeta:   meta,
-        provider:       useOpenAI ? "openai" : "gemini",
+        provider,
         customPrompt:   customPromptActive ? customPrompt : undefined,
         // New idempotency key per regen so the backend doesn't dedupe
-        // against the prior job.
-        idempotencyKey: `enhance-${file.id}-regen-${Date.now()}`,
+        // against the prior job. Bump the ref counter in this handler
+        // (purity-safe; Date.now() during render is not).
+        idempotencyKey: `enhance-${file.id}-regen-${++regenSeqRef.current}`,
       });
       setEnhanceJobs((prev) => new Map(prev).set(file.id, jobId));
     } catch (err) {
@@ -815,6 +820,103 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
         </div>
       </section>
 
+      {/* ── Model selector ── */}
+      {/* Three mutually-exclusive checkboxes (effectively radio buttons with
+          checkbox styling). Default is Gemini (auto-checked on first render).
+          Clicking another box switches the active provider; clicking an
+          already-checked openai/flux unchecks it and reverts to Gemini.
+          Gemini's onChange is unconditional — clicking it just keeps Gemini. */}
+      <div className="space-y-2">
+        <h3 className="text-sm font-semibold text-zinc-200 mb-1">Model</h3>
+
+        {/* Gemini checkbox (default) */}
+        <label
+          htmlFor="provider-gemini"
+          className={`
+            flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
+            ${provider === "gemini"
+              ? "bg-blue-950/40 border-blue-800 hover:border-blue-700"
+              : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
+          `}
+        >
+          <input
+            id="provider-gemini"
+            type="checkbox"
+            checked={provider === "gemini"}
+            onChange={() => setProvider("gemini")}
+            className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-zinc-200">
+              Use Google (default)
+            </p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Fastest and cheapest. Routes through gemini-flash-latest.
+            </p>
+          </div>
+        </label>
+
+        {/* OpenAI checkbox */}
+        <label
+          htmlFor="provider-openai"
+          className={`
+            flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
+            ${provider === "openai"
+              ? "bg-green-950/40 border-green-800 hover:border-green-700"
+              : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
+          `}
+        >
+          <input
+            id="provider-openai"
+            type="checkbox"
+            checked={provider === "openai"}
+            onChange={(e) => setProvider(e.target.checked ? "openai" : "gemini")}
+            className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-green-500 focus:ring-2 focus:ring-green-500 focus:ring-offset-0"
+          />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-zinc-200">
+              Use ChatGPT instead
+            </p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Slower but can be more literal. Routes through gpt-image-2-2026-04-21.
+            </p>
+          </div>
+        </label>
+
+        {/* Flux checkbox */}
+        <label
+          htmlFor="provider-flux"
+          className={`
+            flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
+            ${provider === "flux"
+              ? "bg-purple-950/40 border-purple-800 hover:border-purple-700"
+              : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
+          `}
+        >
+          <input
+            id="provider-flux"
+            type="checkbox"
+            checked={provider === "flux"}
+            onChange={(e) => setProvider(e.target.checked ? "flux" : "gemini")}
+            className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-purple-500 focus:ring-2 focus:ring-purple-500 focus:ring-offset-0"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-zinc-200">
+                Use Flux instead
+              </p>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-purple-100 bg-purple-600 rounded px-1.5 py-0.5 shadow-sm shadow-purple-900/60 animate-pulse">
+                New
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Black Forest Labs FLUX 2 PRO — best for editorial-style edits.
+              Async polling, typically 10-30s per image.
+            </p>
+          </div>
+        </label>
+      </div>
+
       {/* ── Enhancement toggles ── */}
       <div
         aria-disabled={customPromptActive || undefined}
@@ -916,36 +1018,6 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
           </div>
         )}
       </section>
-
-      {/* ── Provider selector ── */}
-      <label
-        htmlFor="provider-openai"
-        className={`
-          flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
-          ${useOpenAI
-            ? "bg-green-950/40 border-green-800 hover:border-green-700"
-            : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
-        `}
-      >
-        <input
-          id="provider-openai"
-          type="checkbox"
-          checked={useOpenAI}
-          onChange={(e) => setUseOpenAI(e.target.checked)}
-          className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-green-500 focus:ring-2 focus:ring-green-500 focus:ring-offset-0"
-        />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-zinc-200">
-            Use ChatGPT instead
-          </p>
-          <p className="text-xs text-zinc-500 mt-0.5">
-            Slower but may offer better results depending on the lift. Default is Gemini.
-          </p>
-        </div>
-        <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-600">
-          {useOpenAI ? "GPT-IMAGE-1" : "GEMINI"}
-        </span>
-      </label>
 
       {/* ── Global error ── */}
       {globalError && (
@@ -1049,7 +1121,11 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
       <p className="text-[11px] text-zinc-700 text-center">
         Enhancement powered by{" "}
         <code className="font-mono">
-          {useOpenAI ? "gpt-image-2-2026-04-21" : "gemini-flash-latest"}
+          {provider === "openai"
+            ? "gpt-image-2-2026-04-21"
+            : provider === "flux"
+            ? "flux-2-pro (Black Forest Labs)"
+            : "gemini-flash-latest"}
         </code>
       </p>
     </div>

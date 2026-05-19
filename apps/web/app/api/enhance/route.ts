@@ -17,7 +17,7 @@ interface ClientRequest {
   assetId: string;
   toggles: Record<string, boolean>;
   forkliftMeta?: Record<string, string>;  // intentionally dropped before forward
-  provider?: "gemini" | "openai";
+  provider?: "gemini" | "openai" | "flux";
   customPrompt?: string;                  // when set, FastAPI bypasses toggles
   idempotencyKey: string;
 }
