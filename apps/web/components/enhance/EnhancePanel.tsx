@@ -412,11 +412,20 @@ export interface EnhancePanelProps {
    * automatically — completion alone does not push to Scan.
    */
   onSendToScan: (items: CompletedEnhanceItem[]) => void;
+  /**
+   * Called when the user clicks "Clear all". Wipes downstream pipeline
+   * state in the workspace (enhancedAssets, resizeResults) so Scan and
+   * Resize tabs don't keep stale jobs queued.
+   */
+  onClearPipeline: () => void;
 }
 
-export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
+export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: EnhancePanelProps) {
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Ref to the per-job rows section — scrolled into view when the user
+  // clicks Enhance so they see progress without having to scroll manually.
+  const jobsSectionRef = useRef<HTMLDivElement>(null);
 
   const [files, setFiles]           = useState<UploadFile[]>([]);
   const [toggles, setToggles]       = useState<EnhanceToggles>(DEFAULT_TOGGLES);
@@ -598,6 +607,17 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
     setGlobalError(null);
     setIsRunning(true);
 
+    // Scroll the per-job rows into view so the operator sees progress
+    // without having to scroll past the upload zone + toggles. Done
+    // BEFORE awaiting so the scroll happens immediately, not after the
+    // first batch finishes uploading.
+    requestAnimationFrame(() => {
+      jobsSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+
     // Upload all in parallel (browser limits concurrent XHRs naturally).
     // Index + total are used to assign sequential filename suffixes.
     await Promise.allSettled(
@@ -664,7 +684,18 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
               )}
             </h3>
             <button
-              onClick={() => { files.forEach((f) => URL.revokeObjectURL(f.previewUrl)); setFiles([]); }}
+              onClick={() => {
+                // Comprehensive reset: don't just hide thumbnails — wipe
+                // every piece of state that downstream tabs care about, so
+                // "Scan all" on the Scan tab doesn't re-process old assets.
+                files.forEach((f) => URL.revokeObjectURL(f.previewUrl));
+                setFiles([]);
+                setEnhanceJobs(new Map());
+                setCompleted(new Map());
+                setSentJobIds(new Set());
+                onClearPipeline();
+                setGlobalError(null);
+              }}
               className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
             >
               Clear all
@@ -887,9 +918,21 @@ export function EnhancePanel({ sessionId, onSendToScan }: EnhancePanelProps) {
       </button>
 
       {/* ── Per-job status rows ── */}
-      {enhanceJobs.size > 0 && (
-        <div className="space-y-2">
+      {/* Renders as soon as the user clicks Enhance (isRunning becomes true)
+          so the scroll-target div exists for the auto-scroll, even before
+          the first jobId is assigned a couple of seconds later. */}
+      {(enhanceJobs.size > 0 || isRunning) && (
+        <div ref={jobsSectionRef} className="space-y-2 scroll-mt-4">
           <h3 className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Enhance Jobs</h3>
+          {enhanceJobs.size === 0 && isRunning && (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-center text-xs text-zinc-500 flex items-center justify-center gap-2">
+              <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              Preparing batch — converting to JPEG, uploading, and enqueueing…
+            </div>
+          )}
           {files
             .filter((f) => enhanceJobs.has(f.id))
             .map((f) => (

@@ -99,6 +99,14 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
     setActiveTab("scan");
   };
 
+  // Called by EnhancePanel or ScanPanel when the user clicks their own
+  // "Clear all" — wipes the downstream pipeline state at the workspace
+  // level so old assets don't keep getting rescanned or re-listed.
+  const handleClearPipeline = () => {
+    setEnhancedAssets([]);
+    setResizeResults([]);
+  };
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       <Header bypassed={bypassed} />
@@ -124,6 +132,7 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
               <EnhancePanel
                 sessionId={sessionId}
                 onSendToScan={handleSendToScan}
+                onClearPipeline={handleClearPipeline}
               />
             )}
           </PanelSlot>
@@ -133,6 +142,7 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
               <ScanPanel
                 sessionId={sessionId}
                 enhancedAssets={enhancedAssets}
+                onClearPipeline={handleClearPipeline}
               />
             )}
           </PanelSlot>

@@ -155,6 +155,23 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
             "pavement, showroom flooring), matching the surrounding "
             "environment."
         )
+    if toggles.remove_background_signage:
+        extras.append(
+            "ADDITIONAL ACTION — clean up background signage. Remove from "
+            "the surrounding environment: exit signs, fire-exit signs, "
+            "company logos, posters, notice boards, wall-mounted notices, "
+            "branded banners, store branding, racking labels, and any "
+            "other printed text or signage on the walls, doors, ceilings, "
+            "or floor of the scene. Replace each removed sign with a "
+            "plausible continuation of the wall / door / surface behind "
+            "it (same colour, same material, same lighting).\n"
+            "  CRITICAL EXCEPTION — do NOT touch any signage that lives "
+            "ON THE FORKLIFT ITSELF. The OEM decals, brand name on the "
+            "mast (e.g., 'NISSAN', 'TOYOTA', 'HYSTER'), capacity plates, "
+            "VIN / serial numbers, model badges, safety stickers, and "
+            "data tags must all remain present, legible, and unchanged. "
+            "Only environmental / background signage is removed."
+        )
     if toggles.paint_forks_red_yellow_tips:
         extras.append(
             "ADDITIONAL ACTION — repaint the forks with the standard OSHA "

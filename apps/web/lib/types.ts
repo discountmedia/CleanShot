@@ -22,13 +22,19 @@ export interface ForkliftMeta {
   fuelType: string;
 }
 
-// ─── Enhance toggles (7 toggles per spec) ────────────────────────────────────
+// ─── Enhance toggles ─────────────────────────────────────────────────────────
+// Toggles are optional emphasis on top of the hardcoded standard treatment
+// (paint refresh, decals, rust, tires, lighting) that the worker always
+// applies. The 5 "core" toggles emphasize a base item; remove_people,
+// remove_background_signage, and paint_forks_red_yellow_tips add new
+// actions the base doesn't perform.
 
 export interface EnhanceToggles {
   newPaintJob: boolean;
   removeRust: boolean;
   restoreDecals: boolean;
   removePeople: boolean;
+  removeBackgroundSignage: boolean;
   paintForksRedYellowTips: boolean;
   shineTires: boolean;
   improveLighting: boolean;
@@ -39,6 +45,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   removeRust: false,
   restoreDecals: false,
   removePeople: false,
+  removeBackgroundSignage: false,
   paintForksRedYellowTips: false,
   shineTires: false,
   improveLighting: false,
@@ -49,19 +56,21 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   removeRust: "Remove Rust",
   restoreDecals: "Restore Decals",
   removePeople: "Remove People",
+  removeBackgroundSignage: "Remove Background Signage",
   paintForksRedYellowTips: "Paint Forks Red w/ Yellow Tips",
   shineTires: "Shine Tires",
   improveLighting: "Improve Lighting",
 };
 
 export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
-  newPaintJob: "Repaint the forklift body in its original factory colour, clean and uniform",
-  removeRust: "Remove rust, corrosion, and oxidation from all surfaces",
-  restoreDecals: "Restore faded or missing OEM decals, brand logos, and capacity labels",
-  removePeople: "Remove any people or bystanders from the image",
-  paintForksRedYellowTips: "Paint the forks red with yellow safety tips per OSHA convention",
-  shineTires: "Make tires appear clean, black, and recently conditioned",
-  improveLighting: "Correct exposure, reduce shadows, and balance white point for studio quality",
+  newPaintJob: "Extra emphasis on paint refresh on this image",
+  removeRust: "Extra emphasis on rust / corrosion cleanup on this image",
+  restoreDecals: "Extra emphasis on decal restoration on this image",
+  removePeople: "Remove any people or bystanders from the frame",
+  removeBackgroundSignage: "Remove exit signs, company logos, posters, and other background signage (forklift OEM decals stay intact)",
+  paintForksRedYellowTips: "Paint the forks red with yellow tips per OSHA convention",
+  shineTires: "Extra emphasis on tire dressing on this image",
+  improveLighting: "Extra emphasis on exposure / lighting correction on this image",
 };
 
 // ─── Upload ───────────────────────────────────────────────────────────────────

@@ -353,75 +353,78 @@ function ImageScanCard({
     consensus === "split" ? "text-yellow-400 border-yellow-800 bg-yellow-950/30" :
                             "text-zinc-400 border-zinc-700 bg-zinc-900/30";
 
+  const enhancedUrl = regenUrl ?? scan.outputUrl;
+
   return (
     <article
       className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden"
       aria-label={`Scan result for ${scan.filename}`}
     >
-      {/* Header row */}
-      <div className="flex items-start gap-3 p-3">
-        {/* Before/after thumbnails */}
-        <div className="flex gap-1.5 shrink-0">
-          <div className="relative">
+      {/* Header row — filename + consensus pill */}
+      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-900 gap-3">
+        <p className="text-sm font-mono text-zinc-200 truncate flex-1" title={scan.filename}>
+          {scan.filename}
+        </p>
+        {consensus && (
+          <div className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${consensusColor}`}>
+            {consensus === "pass"  ? "✓ PASS" :
+             consensus === "fail"  ? "✗ FAIL" :
+                                     "⚡ SPLIT"}
+            {scan.consensusConfidence !== undefined && (
+              <span className="opacity-60 text-[10px]">
+                {Math.round(scan.consensusConfidence * 100)}%
+              </span>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Large before/after — full row so the operator can actually
+          examine the image side-by-side with the AI's verdict below. */}
+      <div className={`grid ${enhancedUrl ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1"} gap-3 p-5 pb-3`}>
+        <figure className="flex flex-col gap-2">
+          <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+            Original
+          </span>
+          <a href={scan.thumbnailUrl} target="_blank" rel="noopener noreferrer" className="block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={scan.thumbnailUrl}
               alt={`Original: ${scan.filename}`}
-              className="w-20 h-20 object-cover rounded-lg border border-zinc-700"
+              className="w-full aspect-square object-contain bg-black rounded-lg border border-zinc-800 hover:border-zinc-600 transition-colors"
             />
-            <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/70 text-zinc-400 px-1 rounded">
-              Original
+          </a>
+        </figure>
+
+        {enhancedUrl && (
+          <figure className="flex flex-col gap-2">
+            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+              {regenUrl ? "Regenerated" : "Enhanced"}
             </span>
-          </div>
-          {(regenUrl ?? scan.outputUrl) && (
-            <div className="relative">
+            <a href={enhancedUrl} target="_blank" rel="noopener noreferrer" className="block">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={regenUrl ?? scan.outputUrl}
+                src={enhancedUrl}
                 alt={`Enhanced: ${scan.filename}`}
-                className="w-20 h-20 object-cover rounded-lg border border-zinc-600"
+                className="w-full aspect-square object-contain bg-black rounded-lg border border-blue-900 hover:border-blue-700 transition-colors"
               />
-              <span className="absolute bottom-0.5 left-0.5 text-[9px] bg-black/70 text-blue-400 px-1 rounded">
-                {regenUrl ? "Regen" : "Enhanced"}
-              </span>
-            </div>
+            </a>
+          </figure>
+        )}
+      </div>
+
+      {/* Provider verdicts */}
+      <div className="px-5 pb-4">
+        <div className="space-y-1.5">
+          {scan.providerResults.length === 0 ? (
+            EXPECTED_SCAN_PROVIDERS.map((p) => (
+              <ProviderProgressCard key={p} provider={p} />
+            ))
+          ) : (
+            scan.providerResults.map((r) => (
+              <ProviderResultCard key={r.provider} result={r} provider={r.provider} />
+            ))
           )}
-        </div>
-
-        {/* Info */}
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-zinc-200 truncate">{scan.filename}</p>
-
-          {/* Consensus verdict */}
-          {consensus && (
-            <div className={`inline-flex items-center gap-1.5 mt-1 px-2 py-0.5 rounded-full border text-xs font-semibold ${consensusColor}`}>
-              Consensus:{" "}
-              {consensus === "pass"  ? "✓ PASS" :
-               consensus === "fail"  ? "✗ FAIL" :
-                                       "⚡ SPLIT"}
-              {scan.consensusConfidence !== undefined && (
-                <span className="opacity-60 text-[10px]">
-                  {Math.round(scan.consensusConfidence * 100)}%
-                </span>
-              )}
-            </div>
-          )}
-
-          {/* Per-provider results — when scan is still running, show one
-              progress card per expected provider so the operator sees that
-              all three are in flight. Real results replace the placeholders
-              when the job's provider_results land. */}
-          <div className="mt-2 space-y-1.5">
-            {scan.providerResults.length === 0 ? (
-              EXPECTED_SCAN_PROVIDERS.map((p) => (
-                <ProviderProgressCard key={p} provider={p} />
-              ))
-            ) : (
-              scan.providerResults.map((r) => (
-                <ProviderResultCard key={r.provider} result={r} provider={r.provider} />
-              ))
-            )}
-          </div>
         </div>
       </div>
 
@@ -492,9 +495,15 @@ export interface ScanPanelProps {
   sessionId: string;
   enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }>;
   onScanComplete?: (scans: ImageScanState[]) => void;
+  /**
+   * Called by "Reset scan" — wipes the workspace's enhancedAssets pipeline
+   * so the next "Scan all" doesn't include images the user already
+   * dismissed. The local scanStates / batchJobIds reset happens inline.
+   */
+  onClearPipeline: () => void;
 }
 
-export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPanelProps) {
+export function ScanPanel({ sessionId, enhancedAssets, onScanComplete, onClearPipeline }: ScanPanelProps) {
   const [scanStates, setScanStates] = useState<ImageScanState[]>([]);
   const [batchJobIds, setBatchJobIds] = useState<string[]>([]);
   const [scanError, setScanError]     = useState<string | null>(null);
@@ -690,7 +699,15 @@ export function ScanPanel({ sessionId, enhancedAssets, onScanComplete }: ScanPan
             )}
           </div>
           <button
-            onClick={() => { setScanStates([]); setBatchJobIds([]); }}
+            onClick={() => {
+              // Wipe local scan state AND tell the workspace to drop the
+              // enhancedAssets pipeline — otherwise a fresh "Scan all"
+              // would re-scan the same images the user just dismissed.
+              setScanStates([]);
+              setBatchJobIds([]);
+              setScanError(null);
+              onClearPipeline();
+            }}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             Reset scan

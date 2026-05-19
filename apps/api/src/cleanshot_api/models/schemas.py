@@ -183,10 +183,11 @@ class EnhanceRequest(BaseModel):
 
 class EnhanceToggles(BaseModel):
     """
-    7 enhancement toggles — must match frontend types.ts EnhanceToggles exactly.
-    Field names are camelCase from the frontend; FastAPI/Pydantic receives them
-    via JSON so the names must match the camelCase keys the frontend sends.
-    We use model_config alias_generator or explicit aliases to accept camelCase.
+    Optional emphasis / action toggles — must match frontend types.ts
+    EnhanceToggles exactly. Field names are camelCase from the frontend;
+    FastAPI/Pydantic receives them via JSON so the names must match the
+    camelCase keys the frontend sends. We use model_config alias_generator
+    or explicit aliases to accept camelCase.
     """
     model_config = {"populate_by_name": True}
 
@@ -194,6 +195,7 @@ class EnhanceToggles(BaseModel):
     remove_rust: bool = Field(False, alias="removeRust")
     restore_decals: bool = Field(False, alias="restoreDecals")
     remove_people: bool = Field(False, alias="removePeople")
+    remove_background_signage: bool = Field(False, alias="removeBackgroundSignage")
     paint_forks_red_yellow_tips: bool = Field(False, alias="paintForksRedYellowTips")
     shine_tires: bool = Field(False, alias="shineTires")
     improve_lighting: bool = Field(False, alias="improveLighting")
