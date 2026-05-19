@@ -47,12 +47,22 @@ ENHANCE_MODEL_GEMINI = "gemini-flash-latest"
 # moving alias like "gpt-image-2-latest" if/when one exists and you
 # prefer auto-tracked updates.
 ENHANCE_MODEL_OPENAI = "gpt-image-2-2026-04-21"
-# BFL endpoint URL — flux-2-pro is their recommended editor (per docs).
-# Async pattern: POST returns { id, polling_url }; we poll polling_url until
-# status="Ready", then GET result.sample to fetch the rendered image bytes.
-FLUX_GENERATE_URL = "https://api.bfl.ai/v1/flux-2-pro"
+# BFL endpoint URL — flux-2-max is their flagship image editor with
+# product/identity consistency (preserves the input subject while
+# changing context, surface treatment, lighting, etc.). The earlier
+# flux-2-pro endpoint was generation-flavored and tended to fabricate
+# a new subject rather than edit the source.
+#
+# Async pattern: POST returns { id, polling_url }; we poll polling_url
+# until status="Ready", then GET result.sample to fetch the bytes.
+#
+# Request body field for the source image is `input_image` (base64
+# string, no data: prefix). The flux-2-pro endpoint used `image_prompt`
+# for the same field — the rename was a breaking change between the
+# two endpoints.
+FLUX_GENERATE_URL = "https://api.bfl.ai/v1/flux-2-max"
 FLUX_POLL_INTERVAL_S = 1.5         # seconds between poll requests
-FLUX_POLL_MAX_ATTEMPTS = 60        # ~90s total budget; FLUX 2 PRO typically finishes in 10-30s
+FLUX_POLL_MAX_ATTEMPTS = 60        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
 
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
@@ -358,7 +368,7 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
         submit = await client.post(
             FLUX_GENERATE_URL,
             headers={**auth_headers, "Content-Type": "application/json"},
-            json={"prompt": prompt, "image_prompt": image_b64},
+            json={"prompt": prompt, "input_image": image_b64},
         )
         if submit.status_code >= 400:
             raise ValueError(
