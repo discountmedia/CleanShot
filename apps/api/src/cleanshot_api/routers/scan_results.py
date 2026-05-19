@@ -123,7 +123,7 @@ async def enqueue_regen(
 ) -> RegenResponse:
     """
     Single-image regen triggered from the Scan tab.
-    Uses the same enhance pipeline (default model: gemini-flash-latest) but
+    Uses the same enhance pipeline (default model: gemini-2.5-flash-image) but
     with an explicit regen_prompt instead of toggle-derived instructions.
     The prompt flows through EnhanceTaskPayload.custom_prompt; the worker
     treats that as a verbatim override and skips _build_enhance_prompt.

@@ -11,7 +11,7 @@
 //  • Direct-to-GCS upload via V4 signed PUT URL (API pod never receives bytes)
 //  • Enqueues enhance job per uploaded asset, shows per-job polling
 //
-// Models: gemini-flash-latest (default) | gpt-image-2-2026-04-21 (opt-in via
+// Models: gemini-2.5-flash-image (default) | gpt-image-2-2026-04-21 (opt-in via
 // "Use ChatGPT instead" checkbox). Pinned server-side in enhance_worker.py.
 
 import { useCallback, useId, useRef, useState } from "react";
@@ -851,7 +851,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
               Use Google (default)
             </p>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Fastest and cheapest. Routes through gemini-flash-latest.
+              Fastest and cheapest. Routes through gemini-2.5-flash-image.
             </p>
           </div>
         </label>
@@ -1125,7 +1125,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
             ? "gpt-image-2-2026-04-21"
             : provider === "flux"
             ? "flux-2-pro (Black Forest Labs)"
-            : "gemini-flash-latest"}
+            : "gemini-2.5-flash-image"}
         </code>
       </p>
     </div>

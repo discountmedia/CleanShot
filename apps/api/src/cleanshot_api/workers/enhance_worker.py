@@ -9,7 +9,7 @@ Pattern (Phase 2 v2.5):
      Global cap is enforced by Cloud Tasks max_concurrent_dispatches=10.
   4. On completion: write output asset to GCS, update job row, auto-enqueue scan.
 
-Models: gemini-flash-latest (default) | gpt-image-2-2026-04-21 (OpenAI opt-in)
+Models: gemini-2.5-flash-image (default) | gpt-image-2-2026-04-21 (OpenAI opt-in) | flux-2-max (BFL opt-in)
 """
 
 from __future__ import annotations
@@ -39,10 +39,16 @@ from cleanshot_api.services.tasks import enqueue_scan
 logger = logging.getLogger(__name__)
 
 # Model IDs are pinned here. Update via this single source of truth.
-# gemini-flash-latest is a Google moving-target alias — it auto-tracks the
-# newest Gemini Flash release. Pin to a dated snapshot (e.g.,
-# "gemini-2.5-flash-image") if you want reproducibility across deploys.
-ENHANCE_MODEL_GEMINI = "gemini-flash-latest"
+#
+# IMPORTANT — do NOT use Google's `-latest` aliases here. Vertex AI's
+# Publisher Models catalog does not resolve them for image-gen variants
+# (only the AI Studio backend does), so requests get a 404 NOT_FOUND
+# "Publisher Model ... was not found or your project does not have
+# access to it". This has bitten us three times in this codebase
+# (gemini-3-pro-image-preview, gemini-3-flash-image, gemini-flash-latest
+# all 404'd the same way). Always pin to an explicit dated/numbered
+# image model that's published in us-central1 for this project.
+ENHANCE_MODEL_GEMINI = "gemini-3.1-flash-image-preview"
 # gpt-image-2 dated snapshot (2026-04-21 release). Switch back to a
 # moving alias like "gpt-image-2-latest" if/when one exists and you
 # prefer auto-tracked updates.

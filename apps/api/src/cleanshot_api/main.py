@@ -11,7 +11,7 @@ Startup sequence (lifespan):
   7. asyncio.Semaphore(2) for Gemini Pro Image concurrency
 
 Models in use:
-  Generation / Cleanup (default):  gemini-flash-latest
+  Generation / Cleanup (default):  gemini-2.5-flash-image
   Generation (OpenAI opt-in):      gpt-image-2-2026-04-21
   Scan (Gemini):                   gemini-2.5-flash
   Scan (OpenAI):                   gpt-5.4

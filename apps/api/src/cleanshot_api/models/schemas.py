@@ -168,7 +168,7 @@ class EnhanceRequest(BaseModel):
     session_id: uuid.UUID
     asset_id: uuid.UUID
     toggles: EnhanceToggles
-    # Image generation provider. Defaults to gemini (gemini-flash-latest:
+    # Image generation provider. Defaults to gemini (gemini-2.5-flash-image:
     # fastest, cheapest, decent). "openai" routes through
     # gpt-image-2-2026-04-21 (slower + costlier, sometimes more literal).
     # "flux" routes through Black Forest Labs FLUX 2 [PRO] — the recommended
