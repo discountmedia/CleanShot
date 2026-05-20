@@ -563,6 +563,48 @@ export function EnhancePanel({
       setGlobalError("Enter the forklift Make before enhancing.");
       return;
     }
+
+    // If there's a prior batch's state hanging around AND that batch is fully
+    // terminal (every variant complete/failed/cancelled), this Enhance click
+    // is a fresh batch — wipe the prior batch's local state and the
+    // downstream Scan/Resize pipeline before starting. Without this the
+    // Scan tab keeps accumulating items from earlier enhance sessions
+    // ("ended up with 2 sets in Scan after enhancing another lift").
+    //
+    // If the prior batch still has in-flight jobs, we DON'T clear — the
+    // user is adding more images to the same batch and expects the
+    // existing variants to keep polling.
+    if (enhanceJobs.size > 0) {
+      let allTerminal = true;
+      for (const providerMap of enhanceJobs.values()) {
+        for (const jobId of providerMap.values()) {
+          const job = jobStateMap.get(jobId);
+          if (!job || (job.status !== "complete" && job.status !== "failed" && job.status !== "cancelled")) {
+            allTerminal = false;
+            break;
+          }
+        }
+        if (!allTerminal) break;
+      }
+      if (allTerminal) {
+        // Drop fully-handled files from the upload grid so the previous
+        // batch's thumbnails don't linger next to the new pending ones.
+        files
+          .filter((f) => f.status !== "pending")
+          .forEach((f) => URL.revokeObjectURL(f.previewUrl));
+        setFiles((prev) => prev.filter((f) => f.status === "pending"));
+        setEnhanceJobs(new Map());
+        setCompleted(new Map());
+        setSentJobIds(new Set());
+        setJobStateMap(new Map());
+        setChosenByFile(new Map());
+        setHeldFiles(new Set());
+        // onClearPipeline wipes Workspace's enhancedAssets + resizeAssets +
+        // resizeResults, which is what causes the Scan tab to reset.
+        onClearPipeline();
+      }
+    }
+
     setGlobalError(null);
     setIsRunning(true);
 

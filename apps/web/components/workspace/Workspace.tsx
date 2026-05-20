@@ -78,6 +78,15 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // Set via the `onFileCountChange` callback prop.
   const [enhanceFileCount, setEnhanceFileCount] = useState(0);
 
+  // Bumped every time the cross-panel pipeline gets cleared (by
+  // EnhancePanel's auto-reset on a new batch, by any tab's "Clear all"
+  // button, etc.). Used as the React `key` on ScanPanel and ResizePanel
+  // so they remount with fresh local state — otherwise their internal
+  // scanStates / uploads / previewItems would survive the workspace
+  // queue clear and the operator would still see ghost cards from the
+  // previous batch.
+  const [pipelineGeneration, setPipelineGeneration] = useState(0);
+
   // One session per workspace mount. Created lazily on first render so unauthed
   // dev sessions still get a working pipeline.
   const [sessionId, setSessionId] = useState<string | null>(null);
@@ -152,10 +161,15 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // Called by EnhancePanel or ScanPanel when the user clicks their own
   // "Clear all" — wipes the downstream pipeline state at the workspace
   // level so old assets don't keep getting rescanned or re-listed.
+  // Also bumps pipelineGeneration, which forces ScanPanel + ResizePanel
+  // to remount with empty local state on the next render. Without that
+  // remount their internal scanStates / preview lists would still show
+  // ghost rows from the cleared batch.
   const handleClearPipeline = () => {
     setEnhancedAssets([]);
     setResizeAssets([]);
     setResizeResults([]);
+    setPipelineGeneration((g) => g + 1);
   };
 
   // Explicit user action from the Scan tab. Mirror of handleSendToScan,
@@ -248,6 +262,10 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           <PanelSlot active={activeTab === "scan"}>
             {sessionId && (
               <ScanPanel
+                // key bumps when handleClearPipeline runs, forcing a fresh
+                // mount so internal scanStates/uploads don't outlive the
+                // workspace queue clear.
+                key={pipelineGeneration}
                 sessionId={sessionId}
                 enhancedAssets={enhancedAssets}
                 onClearPipeline={handleClearPipeline}
@@ -259,6 +277,8 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           <PanelSlot active={activeTab === "resize"}>
             {sessionId && (
               <ResizePanel
+                // key bumps when handleClearPipeline runs — see ScanPanel above.
+                key={pipelineGeneration}
                 sessionId={sessionId}
                 // ResizePanel's prop is named enhancedAssets for historic
                 // reasons; semantically it now receives the curated
