@@ -25,6 +25,7 @@
 
 import { useState } from "react";
 import {
+  approveSet,
   exportProPreviewStream,
   saveProject,
   type ExportProPreviewItem,
@@ -46,10 +47,7 @@ export interface ResizePanelProps {
   onResizeComplete: (results: ResizeResult[]) => void;
 }
 
-type PhotoType = "auction" | "studio";
-
 interface ProjectForm {
-  title:     string;
   make:      string;
   year:      string;        // input value; parsed to int before send
   model:     string;
@@ -57,11 +55,9 @@ interface ProjectForm {
   capacity:  string;
   fuelType:  string;
   username:  string;
-  photoType: PhotoType;
 }
 
 const EMPTY_FORM: ProjectForm = {
-  title:     "",
   make:      "",
   year:      "",
   model:     "",
@@ -69,7 +65,6 @@ const EMPTY_FORM: ProjectForm = {
   capacity:  "",
   fuelType:  "",
   username:  "",
-  photoType: "auction",
 };
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -78,7 +73,6 @@ function validateForm(form: ProjectForm): { valid: boolean; yearNum: number | nu
   const yearNum = Number.parseInt(form.year, 10);
   const yearOk  = Number.isInteger(yearNum) && yearNum >= 1900 && yearNum <= 2100;
   const allTextFieldsOk = (
-    form.title.trim().length    > 0 &&
     form.make.trim().length     > 0 &&
     form.model.trim().length    > 0 &&
     form.tireType.trim().length > 0 &&
@@ -116,34 +110,6 @@ function TextField({
         disabled={disabled}
         className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition disabled:opacity-50"
       />
-    </label>
-  );
-}
-
-function SelectField<T extends string>({
-  label, value, options, onChange, disabled,
-}: {
-  label: string;
-  value: T;
-  options: readonly { value: T; label: string }[];
-  onChange: (v: T) => void;
-  disabled?: boolean;
-}) {
-  return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
-        {label}
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value as T)}
-        disabled={disabled}
-        className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition disabled:opacity-50"
-      >
-        {options.map((o) => (
-          <option key={o.value} value={o.value}>{o.label}</option>
-        ))}
-      </select>
     </label>
   );
 }
@@ -198,9 +164,20 @@ export function ResizePanel({
     setError(null);
     setIsSaving(true);
     try {
+      // Auto-derive title from make/model/year — the backend's
+      // SaveProjectRequest still requires a title (min_length=1), but the
+      // operator already enters those values so re-typing a third name
+      // would be busywork. photoType isn't surfaced in the UI either;
+      // defaults to "auction" since that's the dominant use case.
+      const derivedTitle =
+        [form.make, form.model, form.year].map((s) => s.trim()).filter(Boolean).join(" ")
+        || "Untitled";
+
+      // 1. Commit the project metadata (unlocks the export endpoints
+      // server-side by setting projects.saved_at).
       await saveProject({
         sessionId,
-        title:     form.title.trim(),
+        title:     derivedTitle,
         make:      form.make.trim(),
         year:      yearNum,
         model:     form.model.trim(),
@@ -208,8 +185,25 @@ export function ResizePanel({
         capacity:  form.capacity.trim(),
         fuelType:  form.fuelType.trim(),
         username:  form.username.trim(),
-        photoType: form.photoType,
+        photoType: "auction",
       });
+
+      // 2. Commit the curated image set to History. Save Project is the
+      // single trigger that does both — there is no separate "Approve
+      // All" action. Skips silently if no assets are queued; the user
+      // can still save the project metadata without an image set yet.
+      if (enhancedAssets.length > 0) {
+        await approveSet({
+          sessionId,
+          assetIds: enhancedAssets.map((a) => a.assetId),
+          projectMeta: {
+            make:  form.make.trim()  || "unknown",
+            model: form.model.trim() || "unknown",
+            year:  form.year.trim(),
+          },
+        });
+      }
+
       setIsSaved(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -301,9 +295,14 @@ export function ResizePanel({
       {/* ── Project form ── */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
         <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
-          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
-            Project Details
-          </span>
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+              Project Details
+            </span>
+            <span className="text-[10px] text-zinc-500">
+              Save Project commits this metadata AND adds the queued image set to your History tab.
+            </span>
+          </div>
           {isSaved && (
             <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-green-400">
               Saved ✓
@@ -312,12 +311,6 @@ export function ResizePanel({
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
-          <TextField
-            label="Title"
-            value={form.title}
-            onChange={(v) => updateField("title", v)}
-            placeholder="e.g. Toyota 8FGU25 2019 — Lot 042"
-          />
           <TextField
             label="Username"
             value={form.username}
@@ -359,15 +352,6 @@ export function ResizePanel({
             value={form.fuelType}
             onChange={(v) => updateField("fuelType", v)}
             placeholder="LP / Diesel / Electric"
-          />
-          <SelectField<PhotoType>
-            label="Photo type"
-            value={form.photoType}
-            options={[
-              { value: "auction", label: "Auction" },
-              { value: "studio",  label: "Studio"  },
-            ]}
-            onChange={(v) => updateField("photoType", v)}
           />
         </div>
       </section>

@@ -147,6 +147,30 @@ export async function saveProject(input: SaveProjectInput): Promise<{ projectId:
   return post("/api/projects/save", input);
 }
 
+// ─── Approvals (commit a curated set to the user's History) ──────────────────
+
+export interface ApproveSetInput {
+  sessionId: string;
+  assetIds: string[];
+  projectMeta: { make: string; model: string; year: string };
+}
+
+/**
+ * POST /api/approvals — copies each asset to gs://…/approved/{email}/{dir}/
+ * and creates an approval_set row keyed by the signed-in user's email
+ * (resolved server-side from the Better Auth session). Result rows show up
+ * on the History tab.
+ *
+ * In the current Resize flow this is called immediately after a successful
+ * Save Project so a single click commits both the project metadata AND the
+ * curated image set. There is no separate "Approve All" action.
+ */
+export async function approveSet(
+  input: ApproveSetInput,
+): Promise<{ approvalSetId: string }> {
+  return post("/api/approvals", input);
+}
+
 // ─── Export (PRO preset: 1024×731 7:5 JPEG ≤99 KB) ───────────────────────────
 
 export interface ExportProResult {
