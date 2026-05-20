@@ -81,6 +81,15 @@ export interface ResizePanelProps {
   /** Kept for prop compatibility with Workspace; not currently invoked. */
   onResizeComplete: (results: ResizeResult[]) => void;
   /**
+   * Resets the cross-tab pipeline state (Workspace's enhancedAssets +
+   * resizeAssets + resizeResults). Used by the local "Clear all" button
+   * so the operator can wipe everything queued for export — both the
+   * curated set from Enhance/Scan AND the standalone uploads — and
+   * start fresh without a page reload. Optional so older callers without
+   * the prop don't break.
+   */
+  onClearPipeline?: () => void;
+  /**
    * Shared forklift metadata from Workspace state. The Resize tab's Save
    * Project form pre-fills from this — the operator already typed
    * make / model / year on the Enhance tab, so re-entry would be busywork.
@@ -171,6 +180,7 @@ function TextField({
 export function ResizePanel({
   sessionId,
   enhancedAssets,
+  onClearPipeline,
   meta,
   userEmail,
 }: ResizePanelProps) {
@@ -531,6 +541,38 @@ export function ResizePanel({
     }
   };
 
+  // ─── Clear all ──────────────────────────────────────────────────────────────
+  //
+  // Wipes everything queued for export and every visible result on this tab:
+  //   • Standalone uploads (with URL.revokeObjectURL on each preview)
+  //   • PRO preview cards + ZIP signed URL + warning banner
+  //   • Streaming progress numbers
+  //   • Surface error message
+  //   • The cross-tab pipeline state via onClearPipeline (Workspace's
+  //     enhancedAssets / resizeAssets / resizeResults) — same callback the
+  //     Enhance and Scan tabs already use for their own Clear All actions
+  //   • Save status (so the next batch upserts the project metadata + a
+  //     fresh approval set for the new image set, not the old one)
+  //
+  // What it deliberately does NOT touch: the project metadata form values.
+  // The operator usually keeps working on the same forklift model across
+  // multiple batches, so re-typing make/model/year every time would be
+  // friction with no upside. Clear them manually if needed.
+  const handleClearAll = () => {
+    uploads.forEach((u) => URL.revokeObjectURL(u.previewUrl));
+    setUploads([]);
+    setPreviewItems([]);
+    setZipUrl(null);
+    setZipSizeBytes(0);
+    setAnyWarning(false);
+    setProgressTotal(0);
+    setProgressCurrent(0);
+    setProgressFilename("");
+    setError(null);
+    setIsSaved(false);
+    onClearPipeline?.();
+  };
+
   // Format bytes as KB or MB for the status badges.
   const formatBytes = (b: number): string => {
     if (b < 1024) return `${b} B`;
@@ -698,8 +740,12 @@ export function ResizePanel({
         )}
       </section>
 
-      {/* ── Asset count ── */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 flex items-center justify-between">
+      {/* ── Asset count + Clear all ── */}
+      {/* Clear all is shown whenever there's anything to clear — assets
+          queued OR an export preview lingering OR an in-flight upload
+          (lets the operator bail on a stuck upload too). Styled as a
+          de-emphasised text link to match the Enhance tab's "Clear all". */}
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 flex items-center justify-between gap-3">
         <div className="flex flex-col">
           <span className="text-xs uppercase tracking-[0.18em] text-zinc-500 font-semibold">
             Assets queued
@@ -710,9 +756,21 @@ export function ResizePanel({
             </span>
           )}
         </div>
-        <span className={`text-sm font-mono tabular-nums ${hasAssets ? "text-zinc-200" : "text-zinc-500"}`}>
-          {allAssets.length}
-        </span>
+        <div className="flex items-center gap-3">
+          {(hasAssets || uploads.length > 0 || previewItems.length > 0) && (
+            <button
+              type="button"
+              onClick={handleClearAll}
+              className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+              title="Wipe queued assets, uploads, and previews"
+            >
+              Clear all
+            </button>
+          )}
+          <span className={`text-sm font-mono tabular-nums ${hasAssets ? "text-zinc-200" : "text-zinc-500"}`}>
+            {allAssets.length}
+          </span>
+        </div>
       </div>
 
       {/* ── Project form ── */}

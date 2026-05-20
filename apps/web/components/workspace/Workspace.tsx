@@ -235,6 +235,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 enhancedAssets={resizeAssets}
                 resizeResults={resizeResults}
                 onResizeComplete={setResizeResults}
+                onClearPipeline={handleClearPipeline}
                 meta={meta}
                 userEmail={userEmail}
               />
