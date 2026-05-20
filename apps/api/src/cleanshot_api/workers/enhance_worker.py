@@ -372,7 +372,7 @@ async def _enhance_with_gemini(
             # standard treatment + emphasis stack is long and the model
             # benefits from planning the edit before generating. Capital
             # "High" matches the official Python SDK enum exactly.
-            thinking_config=types.ThinkingConfig(thinking_level="Medium"),
+            thinking_config=types.ThinkingConfig(thinking_level="Low"),
         ),
     )
 

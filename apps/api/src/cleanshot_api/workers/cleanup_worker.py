@@ -122,7 +122,7 @@ async def _run_cleanup(
                     # inputs + targeted anomaly prompts don't need the
                     # full reasoning budget. Bump back to "High" if you
                     # see cleanup outputs missing flagged issues.
-                    thinking_config=types.ThinkingConfig(thinking_level="Medium"),
+                    thinking_config=types.ThinkingConfig(thinking_level="Low"),
                 ),
             )
 
