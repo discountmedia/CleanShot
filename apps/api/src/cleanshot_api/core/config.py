@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     # Run; the worker dispatches to /v1/image/edit when payload.provider
     # == "reve".
     reve_api_key: str = Field("", alias="REVE_API_KEY")
+    # xAI / Grok (https://api.x.ai) — fifth image-edit provider via
+    # /v1/images/edits with the grok-imagine-image-quality model.
+    # Bearer-token auth. Mounted from GCP Secret Manager
+    # (cleanshot-xai-key) on Cloud Run.
+    xai_api_key: str = Field("", alias="XAI_API_KEY")
     # Google AI Studio API key — used for the enhance pipeline's Gemini
     # calls so we can access preview image-gen models (e.g.
     # gemini-3.1-flash-image-preview) that aren't yet published in this

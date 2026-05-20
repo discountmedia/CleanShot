@@ -88,7 +88,7 @@ export async function enqueueEnhance(params: {
    * "openai" routes through gpt-image-2-2026-04-21.
    * "flux"   routes through Black Forest Labs FLUX 2 MAX.
    * "reve"   routes through Reve image-edit (latest). */
-  provider?: "gemini" | "openai" | "flux" | "reve";
+  provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
   idempotencyKey: string;

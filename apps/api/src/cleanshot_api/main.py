@@ -187,6 +187,16 @@ async def lifespan(app: FastAPI):
         name="reve_image_edit",
     )
 
+    # --- xAI / Grok image-edit rate limiter ---
+    # xAI doesn't publish a per-minute cap for /v1/images/edits.
+    # Defensive default mirrors Reve (3 per 30s ≈ 6/min) until we see
+    # real burst behaviour and can retune.
+    app.state.grok_image_rate_limiter = AsyncRateLimiter(
+        max_events=3,
+        interval_seconds=30.0,
+        name="grok_image_edit",
+    )
+
     logger.info("CleanShot API ready")
     yield
 

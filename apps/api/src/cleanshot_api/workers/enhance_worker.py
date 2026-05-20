@@ -85,6 +85,17 @@ ENHANCE_MODEL_REVE = "reve-edit-latest"
 # than it would on the more literal providers.
 REVE_PROMPT_MAX_CHARS = 2560
 
+# Grok / xAI image editing — synchronous JSON request to /v1/images/edits.
+# Auth via Bearer header. Source image is sent as a base64 data URI
+# inside the `image` object (NOT the OpenAI-compatible multipart/edit
+# shape — the xAI docs explicitly call out that openai-sdk's
+# client.images.edit() doesn't work because xAI's endpoint requires
+# application/json). Response is OpenAI-style: { data: [{ url }] } or
+# { data: [{ b64_json }] } depending on response_format.
+GROK_GENERATE_URL = "https://api.x.ai/v1/images/edits"
+ENHANCE_MODEL_GROK = "grok-imagine-image-quality"
+GROK_PROMPT_MAX_CHARS = 4000
+
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
     """
@@ -537,6 +548,83 @@ async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
     return base64.b64decode(image_b64_out)
 
 
+async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
+    """
+    Call xAI Grok's /v1/images/edits endpoint and return raw PNG bytes.
+
+    Request shape (per https://docs.x.ai/.../images/editing):
+      Authorization: Bearer <XAI_API_KEY>
+      Content-Type: application/json
+      body: {
+        model:  "grok-imagine-image-quality",
+        prompt: <prompt, capped to GROK_PROMPT_MAX_CHARS>,
+        image: {
+          url:  "data:<mime>;base64,<...>",
+          type: "image_url",
+        },
+      }
+
+    Response is OpenAI-compatible: data[0].url is a temporary signed
+    URL we fetch once to get the rendered bytes. (xAI also supports
+    response_format=b64_json on the generation endpoint; this code
+    handles either shape defensively in case the edits endpoint
+    follows suit.)
+    """
+    settings = get_settings()
+    if not settings.xai_api_key:
+        raise RuntimeError(
+            "Grok provider requested but XAI_API_KEY is not set. "
+            "Mount cleanshot-xai-key:latest via Cloud Run --set-secrets "
+            "and re-deploy."
+        )
+
+    image_bytes, ct = await _load_image_bytes(gcs_uri)
+    image_b64 = base64.b64encode(image_bytes).decode()
+
+    headers = {
+        "Authorization": f"Bearer {settings.xai_api_key}",
+        "Content-Type":  "application/json",
+    }
+    body = {
+        "model":  ENHANCE_MODEL_GROK,
+        "prompt": prompt[:GROK_PROMPT_MAX_CHARS],
+        "image": {
+            "url":  f"data:{ct};base64,{image_b64}",
+            "type": "image_url",
+        },
+    }
+
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(GROK_GENERATE_URL, headers=headers, json=body)
+
+    if resp.status_code >= 400:
+        try:
+            err = resp.json()
+            detail = err.get("error", {}).get("message") or err.get("detail") or resp.text[:300]
+        except Exception:
+            detail = resp.text[:300]
+        raise ValueError(f"Grok edit failed ({resp.status_code}): {detail}")
+
+    data = resp.json()
+    items = data.get("data") or []
+    if not items:
+        raise ValueError(f"Grok returned no image data: {data}")
+
+    item = items[0]
+    # Prefer inline base64 if present; otherwise fetch the temporary URL.
+    b64 = item.get("b64_json")
+    if b64:
+        return base64.b64decode(b64)
+    image_url = item.get("url")
+    if not image_url:
+        raise ValueError(f"Grok response missing both url and b64_json: {data}")
+
+    async with httpx.AsyncClient(timeout=60.0) as client:
+        img_resp = await client.get(image_url)
+    img_resp.raise_for_status()
+    return img_resp.content
+
+
 async def _run_enhance(
     request: Request,
     payload: EnhanceTaskPayload,
@@ -604,6 +692,15 @@ async def _run_enhance(
             # have data on Reve's actual ceiling.
             await request.app.state.reve_image_rate_limiter.acquire()
             output_bytes = await _enhance_with_reve(
+                payload.input_gcs_uri, prompt
+            )
+        elif payload.provider == "grok":
+            provider_model = ENHANCE_MODEL_GROK
+            # xAI doesn't publish a per-minute cap for /v1/images/edits.
+            # Mirroring the Reve treatment (3 per 30s) until we observe
+            # actual behaviour and can retune in main.py.
+            await request.app.state.grok_image_rate_limiter.acquire()
+            output_bytes = await _enhance_with_grok(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default

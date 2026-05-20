@@ -52,6 +52,12 @@ PER_IMAGE_USD: dict[str, float] = {
     # inspect the actual credits_used + Reve's pricing page and
     # update this entry.
     "reve-edit-latest":               0.030,
+
+    # xAI Grok image edit (https://docs.x.ai). Public pricing for
+    # /v1/images/edits isn't published yet — placeholder of $0.07 per
+    # edit (roughly the midpoint of comparable image-edit models).
+    # Update once we have an invoice / real bill to calibrate against.
+    "grok-imagine-image-quality":     0.070,
 }
 
 

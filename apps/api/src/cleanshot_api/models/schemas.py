@@ -175,7 +175,7 @@ class EnhanceRequest(BaseModel):
     # default for image editing per BFL's own docs; async polling pattern;
     # ~$0.03–0.08 per image. Model IDs pinned in
     # apps/api/.../workers/enhance_worker.py.
-    provider: Literal["gemini", "openai", "flux", "reve"] = "gemini"
+    provider: Literal["gemini", "openai", "flux", "reve", "grok"] = "gemini"
     # Optional custom prompt — when present, overrides the toggle-derived
     # prompt and is passed to the model verbatim. The frontend's
     # "Custom prompt (advanced)" section produces this; the toggles
@@ -399,7 +399,7 @@ class EnhanceTaskPayload(BaseModel):
     # Provider for image generation. Worker dispatches on this. Regen-from-Scan
     # always uses Gemini regardless of caller preference (the scan-derived
     # prompt was tuned for Gemini's behaviour).
-    provider: Literal["gemini", "openai", "flux", "reve"] = "gemini"
+    provider: Literal["gemini", "openai", "flux", "reve", "grok"] = "gemini"
     # Optional verbatim prompt override. Set by either:
     #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or
     #   • Enhance tab "Custom prompt (advanced)" textarea.
