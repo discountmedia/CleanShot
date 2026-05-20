@@ -27,34 +27,46 @@ export default async function LoginPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 flex items-center justify-center p-4">
-      <div className="w-full max-w-sm space-y-8">
+    <div className="min-h-screen bg-black flex items-center justify-center p-4">
+      {/* Subtle red glow behind the logo to match the red-accent
+          treatment the rest of the app uses (Header border, admin
+          badge, send-to-resize button). */}
+      <div className="w-full max-w-sm space-y-8 relative">
         {/* Logo / wordmark */}
-        <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-blue-600 mb-4">
-            <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-          </div>
-          <h1 className="text-2xl font-bold text-white">CleanShot</h1>
-          <p className="text-sm text-zinc-400">AI-powered forklift image processing</p>
+        <div className="text-center space-y-3">
+          {/* eslint-disable-next-line @next/next/no-img-element -- plain <img>; logo is a circular PNG with transparency, next/image optimization isn't worth the config */}
+          <img
+            src="/cleanshot-logo.png"
+            alt="CleanShot"
+            className="inline-block w-24 h-24 rounded-full mb-2 shadow-lg shadow-red-900/40"
+          />
+          <h1 className="text-2xl font-bold text-white tracking-[0.18em] uppercase">
+            CleanShot
+          </h1>
+          <p className="text-sm text-zinc-500">AI-powered forklift image processing</p>
         </div>
 
-        {/* Sign-in card */}
-        <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6 space-y-4">
-          <p className="text-sm text-zinc-400 text-center">
-            Sign in with your Microsoft account to continue.
-            Only authorized accounts can access CleanShot.
-          </p>
-          <LoginButton callbackUrl={callbackUrl} />
+        {/* Sign-in card — black with a red top accent matching the
+            site Header's red-600 underline. */}
+        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden">
+          <div className="h-1 bg-red-600" aria-hidden="true" />
+          <div className="p-6 space-y-4">
+            <p className="text-sm text-zinc-400 text-center">
+              Sign in with your Microsoft account to continue.
+              Only authorized accounts can access CleanShot.
+            </p>
+            <LoginButton callbackUrl={callbackUrl} />
+          </div>
         </div>
 
         <p className="text-center text-xs text-zinc-700">
           Access restricted to authorized users only.
           Contact your administrator to request access.
+        </p>
+
+        {/* Attribution footer (same as workspace + admin) */}
+        <p className="text-[10px] text-zinc-800 text-center select-none">
+          Developed by Stephen Cunningham © AI App Integrations LLC 2026
         </p>
       </div>
     </div>
