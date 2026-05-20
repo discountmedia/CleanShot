@@ -33,7 +33,10 @@ export function UnifiedAnomalies({ unified, totalProviders }: UnifiedAnomaliesPr
   return (
     <ul className="space-y-1.5" aria-label="Detected anomalies">
       {unified.map((a, i) => {
-        const sev = SEV_STYLE[a.severity];
+        // Defensive: backend can occasionally emit severity in unexpected
+        // casing or value (the JSON schema documents low/medium/high but
+        // models drift). Fall back to the low style rather than crash.
+        const sev = SEV_STYLE[a.severity] ?? SEV_STYLE.low;
         const flaggedCount = a.flaggedBy.size;
         return (
           <li key={`${a.type}::${a.location}::${i}`} className={`rounded-md border px-3 py-2 ${sev.bg}`}>

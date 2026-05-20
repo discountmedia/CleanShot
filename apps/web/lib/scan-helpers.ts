@@ -89,6 +89,22 @@ export interface UnifiedAnomalyEntry {
  * scene-part normalisation table. Land the heuristic first; treat the
  * table as a follow-up.
  */
+/**
+ * Backend severity normalisation. The JSON schema documents
+ * `low | medium | high` but models occasionally emit uppercase, "med",
+ * "minor", etc. Anything we don't recognise defaults to "low" rather
+ * than blowing up downstream lookups.
+ */
+function normalizeSeverity(raw: unknown): AnomalyItem["severity"] {
+  if (typeof raw !== "string") return "low";
+  const lower = raw.toLowerCase();
+  if (lower === "high" || lower === "medium" || lower === "low") return lower;
+  // Common drift cases worth pinning by hand.
+  if (lower === "med") return "medium";
+  if (lower === "critical" || lower === "severe") return "high";
+  return "low";
+}
+
 export function unifyAnomalies(
   providerResults: ProviderScanResult[],
 ): UnifiedAnomalyEntry[] {
@@ -101,22 +117,27 @@ export function unifyAnomalies(
 
   for (const result of providerResults) {
     for (const a of result.anomalies) {
-      const locPrefix = a.location.split(" ")[0]?.toLowerCase() ?? "";
-      const key = `${a.type.toLowerCase()}::${locPrefix}`;
+      const type = (a.type ?? "").toString();
+      const location = (a.location ?? "").toString();
+      const description = (a.description ?? "").toString();
+      const severity = normalizeSeverity(a.severity);
+
+      const locPrefix = location.split(" ")[0]?.toLowerCase() ?? "";
+      const key = `${type.toLowerCase()}::${locPrefix}`;
       const existing = map.get(key);
       if (!existing) {
         map.set(key, {
-          type:        a.type,
-          location:    a.location,
-          severity:    a.severity,
-          description: a.description,
-          flaggedBy:   new Set<ScanProvider>([result.provider]),
+          type,
+          location,
+          severity,
+          description,
+          flaggedBy: new Set<ScanProvider>([result.provider]),
         });
         continue;
       }
       existing.flaggedBy.add(result.provider);
-      if (sevOrder[a.severity] > sevOrder[existing.severity]) {
-        existing.severity = a.severity;
+      if (sevOrder[severity] > sevOrder[existing.severity]) {
+        existing.severity = severity;
       }
     }
   }
