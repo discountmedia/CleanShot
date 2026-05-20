@@ -210,11 +210,14 @@ export function SourceCompareCard({
             )}
           </div>
 
-          {/* 5-column grid so every variant has a fixed slot whether or
-              not it's been enqueued yet. Providers not enqueued for this
-              file (e.g. the operator unchecked them mid-batch) render as
-              a disabled placeholder so the layout stays stable. */}
-          <div className="grid grid-cols-5 gap-2">
+          {/* Variants stacked vertically at the SAME landscape size as
+              the original, so the operator can scroll down and compare
+              each provider's output directly against the source up top
+              without squinting at small thumbs. Capped at max-w-4xl to
+              match the original; centered. Providers not enqueued for
+              this file (e.g. operator unchecked mid-batch) still render
+              as disabled placeholders so the layout stays stable. */}
+          <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
             {ENHANCE_PROVIDERS.map((p) => {
               const variant = variants[p];
               return (
@@ -353,7 +356,7 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen }: V
           <img
             src={variant.outputUrl}
             alt={`${ENHANCE_PROVIDER_LABELS[provider]} variant`}
-            className="absolute inset-0 w-full h-full object-cover"
+            className="absolute inset-0 w-full h-full object-contain"
           />
         )}
 
