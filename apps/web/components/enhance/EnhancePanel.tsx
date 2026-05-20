@@ -418,6 +418,12 @@ function JobStatusRow({
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
 export interface CompletedEnhanceItem {
+  /**
+   * UploadFile id (stable across regens). Used as the dedupe key in the
+   * `completed` map so a regenerated enhance overwrites the prior result
+   * for the same source file instead of accumulating alongside it.
+   */
+  fileId: string;
   jobId: string;
   outputAssetId: string;
   filename: string;
@@ -471,15 +477,22 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
   const customPromptActive = customPrompt.trim().length > 0;
 
   // Completed-but-not-yet-sent state for the explicit "Send to Scan" flow.
-  // Keyed by jobId so a re-poll on remount won't duplicate.
+  // Keyed by fileId (NOT jobId) so a regenerated enhance overwrites the
+  // prior result for the same source file. With jobId keying, "Send all"
+  // would push BOTH the original (e.g. with an artifact) and the regen
+  // (clean) to Scan; the user's regen would effectively be ignored.
   const [completed, setCompleted]   = useState<Map<string, CompletedEnhanceItem>>(new Map());
   const [sentJobIds, setSentJobIds] = useState<Set<string>>(new Set());
 
   const markCompleted = useCallback((item: CompletedEnhanceItem) => {
     setCompleted((prev) => {
-      if (prev.has(item.jobId)) return prev;
+      // Dedupe only against the SAME job re-emitting completion (e.g.
+      // poll race on remount). A different job for the same fileId
+      // (i.e. a regen) is allowed to overwrite.
+      const existing = prev.get(item.fileId);
+      if (existing?.jobId === item.jobId) return prev;
       const next = new Map(prev);
-      next.set(item.jobId, item);
+      next.set(item.fileId, item);
       return next;
     });
   }, []);
@@ -627,9 +640,10 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
    * Side-effects:
    *   • Replaces enhanceJobs[fileId] with the new jobId — JobStatusRow's
    *     React key uses this so the row remounts with fresh poller state.
-   *   • Leaves `completed` and `sentJobIds` keyed by the OLD jobId; the
-   *     new row gets fresh entries when its job completes. Old entries
-   *     become orphaned but are bounded by the file count so we skip GC.
+   *   • When the new job completes, markCompleted overwrites the prior
+   *     `completed[fileId]` entry (keyed by fileId, not jobId). This
+   *     ensures "Send all to Scan" sends only the latest enhance per
+   *     source file, not both the original and every regen.
    */
   const regenerateEnhance = async (file: UploadFile) => {
     if (!file.assetId) {
@@ -1082,6 +1096,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
                 onComplete={(job, outputUrl) => {
                   if (job.outputAssetId) {
                     markCompleted({
+                      fileId: f.id,
                       jobId: job.id,
                       outputAssetId: job.outputAssetId,
                       filename: f.file.name,
