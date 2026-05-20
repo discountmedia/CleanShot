@@ -851,7 +851,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
               Use Google (default)
             </p>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Fastest and cheapest. Routes through gemini-2.5-flash-image.
+              Fastest and cheapest. Routes through gemini-3.1-flash-image-preview.
             </p>
           </div>
         </label>
@@ -1124,8 +1124,8 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
           {provider === "openai"
             ? "gpt-image-2-2026-04-21"
             : provider === "flux"
-            ? "flux-2-pro (Black Forest Labs)"
-            : "gemini-2.5-flash-image"}
+            ? "flux-2-max (Black Forest Labs)"
+            : "gemini-3.1-flash-image-preview"}
         </code>
       </p>
     </div>

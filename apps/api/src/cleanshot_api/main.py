@@ -109,7 +109,14 @@ async def lifespan(app: FastAPI):
         app.state.openai = openai.AsyncOpenAI(
             api_key=settings.openai_api_key,
             max_retries=3,
-            timeout=90.0,
+            # 300s budget. /v1/responses (scan, GPT-5.4) returns in ~5s
+            # so the higher ceiling is harmless there, but /v1/images/edits
+            # with quality="high" on full-res forklift photos was reliably
+            # exceeding the prior 90s cap with zero successes in a run of
+            # 12 attempts. Cloud Run task timeout is 900s so we have
+            # headroom; once Phase 3 input-resize-to-2048 ships, this can
+            # come back down.
+            timeout=300.0,
         )
         logger.info("OpenAI client initialised (gpt-5.4 scan provider)")
     else:
