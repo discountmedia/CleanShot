@@ -72,7 +72,7 @@ import {
 import { useJobPoller } from "../../lib/polling";
 import type { JobRecord } from "../../lib/types";
 
-const MAX_UPLOADS = 22;
+const MAX_UPLOADS = 10;
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
