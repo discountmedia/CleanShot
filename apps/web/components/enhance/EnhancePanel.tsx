@@ -1260,7 +1260,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
               Reve image-edit (latest) — synchronous /v1/image/edit; auto-enhances the instruction internally.
             </p>
             <p className="text-[11px] text-amber-400 mt-1">
-              ⏱ ~10-30s per image · no published per-minute cap — synchronous, throughput bounded by your Reve key&apos;s server-side quota.
+              ⏱ ~10-30s per image · throttled to 5 / minute server-side (Reve returns 429 RPM on bursts despite no published cap) — larger batches queue.
             </p>
           </div>
         </label>

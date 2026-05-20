@@ -598,6 +598,11 @@ async def _run_enhance(
             )
         elif payload.provider == "reve":
             provider_model = ENHANCE_MODEL_REVE
+            # Reve's docs claim no per-minute cap but the API returns
+            # 429 RPM on bursts. Same sliding-window throttle as the
+            # OpenAI path (5 per 60s) — retune in main.py once we
+            # have data on Reve's actual ceiling.
+            await request.app.state.reve_image_rate_limiter.acquire()
             output_bytes = await _enhance_with_reve(
                 payload.input_gcs_uri, prompt
             )
