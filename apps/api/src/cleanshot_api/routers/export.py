@@ -21,6 +21,10 @@ from cleanshot_api.models.schemas import (
     ExportZipRequest,
 )
 from cleanshot_api.services import gcs as gcs_service
+from cleanshot_api.services.captioning import (
+    caption_image_for_filename,
+    make_filename_unique,
+)
 from cleanshot_api.services.image_processing import export_custom, export_pro
 
 router = APIRouter(prefix="/api/v1", tags=["export"])
@@ -129,6 +133,7 @@ async def export_pro_preset(
 )
 async def export_pro_preview(
     body: ExportProRequest,
+    request: Request,
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> ExportProPreviewResponse:
     """
@@ -138,6 +143,11 @@ async def export_pro_preview(
     before pulling the bundle. Also writes a ZIP of all outputs to GCS and
     returns its signed URL — the "Download all" button is just a hyperlink,
     no second round of pyvips work.
+
+    Each output is named by a short AI-generated slug describing the image
+    (via services/captioning.py against gemini-2.5-flash on Vertex). On
+    captioning failure the filename falls back to the source stem so the
+    operator never sees a hex asset-id in the ZIP.
 
     GCS layout (cleanshot-derivatives-prod):
       session/{session_id}/pro/{asset_id}.jpg   ← per-image previews
@@ -153,7 +163,11 @@ async def export_pro_preview(
     gcs_client = gcs_lib.Client(project=settings.gcp_project)
     derivatives_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
 
+    # Vertex Gemini client (proven path for vision — used by scan worker too)
+    genai_client = request.app.state.genai
+
     items: list[ExportProPreviewItem] = []
+    used_slugs: set[str] = set()
     zip_buf = io.BytesIO()
     any_warning = False
 
@@ -173,10 +187,18 @@ async def export_pro_preview(
             if result.size_warning:
                 any_warning = True
 
-            # Derive output filename + GCS path
+            # Generate a human-readable filename slug from the source image
+            # (NOT the resized output — full-res preserves more visual
+            # detail for captioning, and saves us re-running vision on a
+            # quality-degraded JPEG).
+            caption_slug = await caption_image_for_filename(
+                input_bytes, genai_client=genai_client,
+            )
             src_filename = src_obj.rsplit("/", 1)[-1]
             src_stem = src_filename.rsplit(".", 1)[0] if "." in src_filename else src_filename
-            out_filename = f"{src_stem}_pro.jpg"
+            base_name = caption_slug or src_stem
+            unique_name = make_filename_unique(base_name, used_slugs)
+            out_filename = f"{unique_name}.jpg"
             out_object   = f"session/{body.session_id}/pro/{asset_id}.jpg"
             out_uri      = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"
 
