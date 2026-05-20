@@ -1094,7 +1094,10 @@ export function EnhancePanel({
             </div>
           )}
 
-          <div className="space-y-3 pb-4">
+          {/* 2-column on xl+ so 10-image batches don't force a long
+              vertical scroll. On smaller screens cards still stack
+              full-width — the variant strip needs the room. */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 pb-4">
             {files.map((f) => {
               const variants = variantsByFile.get(f.id);
               if (!variants) return null;
