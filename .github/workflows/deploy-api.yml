@@ -68,7 +68,7 @@ jobs:
             --memory=1Gi \
             --concurrency=80 \
             --min-instances=2 \
-            --max-instances=20 \
+            --max-instances=50 \
             --timeout=900 \
             --cpu-boost \
             --allow-unauthenticated \

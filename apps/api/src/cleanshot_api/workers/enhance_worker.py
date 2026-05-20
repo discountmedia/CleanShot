@@ -68,8 +68,19 @@ ENHANCE_MODEL_OPENAI = "gpt-image-2-2026-04-21"
 # for the same field — the rename was a breaking change between the
 # two endpoints.
 FLUX_GENERATE_URL = "https://api.bfl.ai/v1/flux-2-max"
-FLUX_POLL_INTERVAL_S = 1.5         # seconds between poll requests
-FLUX_POLL_MAX_ATTEMPTS = 60        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
+# Polling cadence: ramp from 0.5s up to 2.0s instead of a flat 1.5s.
+# Median FLUX 2 MAX finish is 15-25s — the prior flat 1.5s spent ~10
+# poll-intervals at the start of every job rounding up to the next 1.5s
+# tick, wasting 1-4s per call. Front-loading the polls with sub-second
+# checks catches the rare 8-12s finishers immediately; the long tail
+# settles at 2s so we don't hammer BFL on slow jobs.
+# After the explicit ramp we hold at 2.0s for the remainder; the total
+# budget (max attempts × 2.0s ceiling) is sized for ~90s same as before.
+FLUX_POLL_INTERVALS_S: tuple[float, ...] = (
+    0.5, 0.5, 0.75, 1.0, 1.25, 1.5, 1.5, 1.75,
+)
+FLUX_POLL_STEADY_INTERVAL_S = 2.0
+FLUX_POLL_MAX_ATTEMPTS = 50        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
 
 # Reve endpoint — synchronous JSON request, returns base64-encoded PNG +
 # credit accounting in the same response. Auth via Bearer token in
@@ -412,6 +423,10 @@ async def _enhance_with_openai(
     """
     image_bytes, ct = await _load_image_bytes(gcs_uri)
 
+    # quality="medium" instead of "high": ~3x faster wall-time per call with
+    # marginal quality cost on listing-style edits, and we crop to 1024×731
+    # for export anyway so the high-detail end gets thrown away downstream.
+    # Keeping size="auto" so landscape sources still get a landscape output.
     response = await openai_client.images.edit(
         model=ENHANCE_MODEL_OPENAI,
         # tuple form: (filename, content, content_type) for httpx multipart
@@ -419,7 +434,7 @@ async def _enhance_with_openai(
         prompt=prompt,
         n=1,
         size="auto",
-        quality="high",
+        quality="medium",
     )
 
     if not response.data:
@@ -446,8 +461,10 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
     BFL terminal statuses to surface as job failures:
       "Error" | "Content Moderated" | "Request Moderated" | "Task not found"
 
-    Typical latency: 10-30s. Budget ceiling is
-    FLUX_POLL_INTERVAL_S × FLUX_POLL_MAX_ATTEMPTS (~90s today).
+    Typical latency: 10-30s. Budget ceiling is the sum of
+    FLUX_POLL_INTERVALS_S plus
+    (FLUX_POLL_MAX_ATTEMPTS - len(FLUX_POLL_INTERVALS_S)) ×
+    FLUX_POLL_STEADY_INTERVAL_S (~90s today).
     """
     settings = get_settings()
     if not settings.bfl_api_key:
@@ -479,8 +496,13 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
             raise ValueError(f"BFL submit returned no polling_url: {submit_data}")
 
         # ── 2. Poll ──────────────────────────────────────────────────
-        for _attempt in range(FLUX_POLL_MAX_ATTEMPTS):
-            await asyncio.sleep(FLUX_POLL_INTERVAL_S)
+        for attempt in range(FLUX_POLL_MAX_ATTEMPTS):
+            interval = (
+                FLUX_POLL_INTERVALS_S[attempt]
+                if attempt < len(FLUX_POLL_INTERVALS_S)
+                else FLUX_POLL_STEADY_INTERVAL_S
+            )
+            await asyncio.sleep(interval)
             poll = await client.get(polling_url, headers=auth_headers)
             if poll.status_code >= 400:
                 raise ValueError(
@@ -511,10 +533,14 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
                 raise ValueError(f"BFL returned terminal status '{status}': {detail}")
             # Otherwise still "Pending" / transient — keep polling.
 
+        budget_s = (
+            sum(FLUX_POLL_INTERVALS_S)
+            + max(0, FLUX_POLL_MAX_ATTEMPTS - len(FLUX_POLL_INTERVALS_S))
+              * FLUX_POLL_STEADY_INTERVAL_S
+        )
         raise TimeoutError(
-            f"BFL FLUX 2 PRO did not finish within "
-            f"{FLUX_POLL_INTERVAL_S * FLUX_POLL_MAX_ATTEMPTS:.0f}s "
-            f"({FLUX_POLL_MAX_ATTEMPTS} polls)"
+            f"BFL FLUX 2 MAX did not finish within "
+            f"{budget_s:.0f}s ({FLUX_POLL_MAX_ATTEMPTS} polls)"
         )
 
 
