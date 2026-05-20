@@ -15,13 +15,16 @@
 
 export const MAX_BYTES = 4.5 * 1024 * 1024; // 4.5 MB
 const TARGET_BYTES = 4.0 * 1024 * 1024;     // 4.0 MB target after compression
-// Long-edge cap for the image we hand to the model. 2048 is the sweet spot:
-// large enough that detail / decals / fork colours survive the round-trip,
-// small enough that Gemini's response time drops ~30-40% vs 4K input, and
-// small enough that the JPEG re-encode finishes in under a second on most
-// devices. Was 3840 (4K). Bump back up if you ever see visible loss in
-// the enhanced output.
-const MAX_LONG_EDGE = 2048;
+// Long-edge cap for the image we hand to the model. 1024 was chosen as
+// the upload cap so every downstream AI provider (Gemini AI Studio image
+// preview, OpenAI gpt-image-2, BFL flux-2-max) sees a uniformly-sized
+// input and request latency stays predictable. OpenAI /v1/images/edits
+// with quality="high" on full-res smartphone photos (3-4 MP) was reliably
+// blowing past a 90s server-side timeout; capping at 1024 keeps the
+// model's preprocessing budget small. Bump back up if decals/text in
+// scan output start reading as illegible — but verify against all three
+// providers before changing.
+const MAX_LONG_EDGE = 1024;
 
 /**
  * Compress a File to under TARGET_BYTES using Canvas + iterative JPEG quality reduction.
