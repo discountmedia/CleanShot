@@ -23,15 +23,42 @@
 // operator needs day-to-day. Add an "Advanced" disclosure later if usage
 // data shows they're wanted.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { v4 as uuidv4 } from "uuid";
 import {
   approveSet,
   exportCollageAsBlob,
   exportProPreviewStream,
+  getSignedUploadUrl,
   saveProject,
+  uploadToGcs,
   type ExportProPreviewItem,
 } from "../../lib/api";
+import { convertToJpeg, formatBytes } from "../../lib/compress";
 import type { ForkliftMeta, ResizeResult } from "../../lib/types";
+
+const MAX_UPLOADS = 10;
+
+/**
+ * Local state for a file the operator dropped directly onto the Resize
+ * tab (standalone mode — bypasses the Enhance / Scan pipeline). Each
+ * file is JPEG-converted client-side, uploaded to GCS via a signed PUT,
+ * then registered as an asset that the export endpoints can consume.
+ *
+ * Status machine:
+ *   uploading → done  (happy path; `assetId` set)
+ *   uploading → error ('error' string set)
+ */
+interface StandaloneUpload {
+  id:         string;        // local UUID, used as React key
+  filename:   string;        // post-convertToJpeg name
+  previewUrl: string;        // createObjectURL on the original File
+  size:       number;        // post-convertToJpeg bytes
+  status:     "uploading" | "done" | "error";
+  progress:   number;        // 0-100 during upload, 100 when done
+  assetId?:   string;        // populated when status flips to done
+  error?:     string;        // populated when status flips to error
+}
 
 export interface ResizePanelProps {
   sessionId: string;
@@ -191,6 +218,138 @@ export function ResizePanel({
   const [isExportingCollage, setIsExportingCollage] = useState(false);
   const [error,              setError]              = useState<string | null>(null);
 
+  // Standalone-upload state. Each entry is a file the operator dropped
+  // directly on the Resize tab (vs. routed through Enhance/Scan first).
+  // Once an upload's status flips to "done" + has assetId, it merges
+  // with `enhancedAssets` (the prop) to form the export set.
+  const [uploads, setUploads] = useState<StandaloneUpload[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const patchUpload = useCallback((id: string, patch: Partial<StandaloneUpload>) => {
+    setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+  }, []);
+
+  const removeUpload = useCallback((id: string) => {
+    setUploads((prev) => {
+      const target = prev.find((u) => u.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((u) => u.id !== id);
+    });
+  }, []);
+
+  // Upload pipeline: client-side JPEG conversion (≤4.5 MB target +
+  // optional long-edge cap from compress.ts), signed PUT to GCS,
+  // register asset_id on success. Identical pattern to EnhancePanel.addFiles
+  // minus the enqueueEnhance step — standalone Resize doesn't run any AI.
+  const runUpload = useCallback(
+    async (id: string, file: File) => {
+      const targetFilename = file.name.replace(/\.[^./\\]+$/, "") + ".jpg";
+      let jpegFile: File;
+      try {
+        jpegFile = await convertToJpeg(file, targetFilename);
+        patchUpload(id, { filename: jpegFile.name, size: jpegFile.size });
+      } catch (err) {
+        patchUpload(id, {
+          status: "error",
+          error: err instanceof Error ? err.message : "JPEG conversion failed",
+        });
+        return;
+      }
+
+      let signed: Awaited<ReturnType<typeof getSignedUploadUrl>>;
+      try {
+        signed = await getSignedUploadUrl({
+          sessionId,
+          filename:    jpegFile.name,
+          contentType: "image/jpeg",
+        });
+      } catch (err) {
+        patchUpload(id, {
+          status: "error",
+          error: err instanceof Error ? `Upload URL: ${err.message}` : "Upload URL failed",
+        });
+        return;
+      }
+
+      try {
+        await uploadToGcs(signed.uploadUrl, jpegFile, (pct) =>
+          patchUpload(id, { progress: pct }),
+        );
+        patchUpload(id, { status: "done", progress: 100, assetId: signed.assetId });
+      } catch (err) {
+        patchUpload(id, {
+          status: "error",
+          error: err instanceof Error ? `GCS PUT: ${err.message}` : "GCS PUT failed",
+        });
+      }
+    },
+    [sessionId, patchUpload],
+  );
+
+  const addFiles = useCallback(
+    (incoming: FileList | File[]) => {
+      const list = Array.from(incoming).filter((f) => f.type.startsWith("image/"));
+      if (list.length === 0) return;
+
+      // Reserve a slot in `uploads` for each file before kicking off
+      // async work so the UI shows them immediately. `previewUrl` uses
+      // the original File (pre-JPEG conversion) — for display only, so
+      // format consistency doesn't matter.
+      const allowed = Math.max(0, MAX_UPLOADS - uploads.length);
+      const accepted = list.slice(0, allowed);
+      const next: StandaloneUpload[] = accepted.map((file) => ({
+        id:         uuidv4(),
+        filename:   file.name,
+        previewUrl: URL.createObjectURL(file),
+        size:       file.size,
+        status:     "uploading",
+        progress:   0,
+      }));
+      setUploads((prev) => [...prev, ...next]);
+
+      // Fire upload pipelines in parallel — getSignedUploadUrl is cheap
+      // and uploadToGcs is bandwidth-bound, so concurrency helps.
+      next.forEach((u, i) => {
+        void runUpload(u.id, accepted[i]);
+      });
+    },
+    [uploads.length, runUpload],
+  );
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files) addFiles(e.target.files);
+      // Reset so picking the same file twice still fires onChange.
+      e.target.value = "";
+    },
+    [addFiles],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
+    },
+    [addFiles],
+  );
+
+  // Done uploads merged with the prop-supplied enhanced assets — both
+  // feed into the same export endpoints. Pre-Enhance assets carry their
+  // `provider` (Gemini / OpenAI / etc.) so the backend filename suffix
+  // can disambiguate variants; standalone uploads don't have a provider.
+  const standaloneAssets = uploads
+    .filter((u) => u.status === "done" && u.assetId)
+    .map((u) => ({
+      assetId:      u.assetId as string,
+      filename:     u.filename,
+      thumbnailUrl: u.previewUrl,
+      provider:     undefined as string | undefined,
+    }));
+  const allAssets = [...enhancedAssets, ...standaloneAssets];
+  const anyUploadInFlight = uploads.some((u) => u.status === "uploading");
+
   // Preview state: populated by the /api/export/pro/preview response.
   // When non-null the grid renders, the operator visually verifies the
   // 7:5 zoom-to-fill output, then clicks "Download ZIP" (a direct GCS
@@ -209,10 +368,12 @@ export function ResizePanel({
   const [progressFilename, setProgressFilename] = useState<string>("");
 
   const { valid: formValid, yearNum } = validateForm(form);
-  const hasAssets = enhancedAssets.length > 0;
+  // `allAssets` = the prop-supplied curated set + standalone uploads.
+  // Use this for export gating and submission, NOT the raw prop.
+  const hasAssets = allAssets.length > 0;
   const canSave   = formValid && !isSaving;
-  const canExport        = isSaved && hasAssets && !isExporting && !isExportingCollage;
-  const canExportCollage = isSaved && hasAssets && !isExporting && !isExportingCollage;
+  const canExport        = isSaved && hasAssets && !isExporting && !isExportingCollage && !anyUploadInFlight;
+  const canExportCollage = isSaved && hasAssets && !isExporting && !isExportingCollage && !anyUploadInFlight;
 
   const updateField = <K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -262,10 +423,10 @@ export function ResizePanel({
       // single trigger that does both — there is no separate "Approve
       // All" action. Skips silently if no assets are queued; the user
       // can still save the project metadata without an image set yet.
-      if (enhancedAssets.length > 0) {
+      if (allAssets.length > 0) {
         await approveSet({
           sessionId,
-          assetIds: enhancedAssets.map((a) => a.assetId),
+          assetIds: allAssets.map((a) => a.assetId),
           projectMeta: {
             make:  form.make.trim()  || "unknown",
             model: form.model.trim() || "unknown",
@@ -300,12 +461,14 @@ export function ResizePanel({
       await exportProPreviewStream(
         {
           sessionId,
-          assetIds:  enhancedAssets.map((a) => a.assetId),
+          assetIds:  allAssets.map((a) => a.assetId),
           // Parallel list so the backend can suffix each output's
           // filename with the model name — e.g. when the operator
           // resizes Gemini + OpenAI variants of the same source they
           // both end up in the ZIP under distinguishable names.
-          providers: enhancedAssets.map((a) => a.provider ?? null),
+          // Standalone uploads have provider=undefined; backend
+          // collapses those to no suffix.
+          providers: allAssets.map((a) => a.provider ?? null),
         },
         {
           onStarted: (total) => {
@@ -347,8 +510,8 @@ export function ResizePanel({
     try {
       const { blob, filename, warning } = await exportCollageAsBlob({
         sessionId,
-        assetIds:  enhancedAssets.map((a) => a.assetId),
-        providers: enhancedAssets.map((a) => a.provider ?? null),
+        assetIds:  allAssets.map((a) => a.assetId),
+        providers: allAssets.map((a) => a.provider ?? null),
       });
       if (warning) setAnyWarning(true);
       // Trigger browser download. Object URL is revoked once the click
@@ -402,13 +565,145 @@ export function ResizePanel({
         </div>
       </div>
 
+      {/* ── Upload (standalone) ── */}
+      {/* Drop zone for resize-as-a-standalone-tool. Files dropped here
+          skip Enhance/Scan entirely — they go straight to GCS and join
+          the export set. Same MAX_UPLOADS cap as EnhancePanel. */}
+      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+        <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
+          <div className="flex flex-col gap-0.5">
+            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+              Upload images
+            </span>
+            <span className="text-[10px] text-zinc-500">
+              Use this when you want to resize a photo without running it through Enhance or Scan first.
+              Files are auto-converted to JPEG client-side.
+            </span>
+          </div>
+          <span className="text-[10px] uppercase tracking-[0.18em] font-mono text-zinc-500">
+            {uploads.length} / {MAX_UPLOADS}
+          </span>
+        </header>
+
+        <div
+          onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={handleDrop}
+          onClick={() => fileInputRef.current?.click()}
+          role="button"
+          tabIndex={0}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
+          className={`
+            m-4 p-6 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-center
+            ${isDragging
+              ? "border-blue-500 bg-blue-950/30"
+              : uploads.length >= MAX_UPLOADS
+                ? "border-zinc-800 bg-zinc-900/40 cursor-not-allowed opacity-60"
+                : "border-zinc-700 bg-zinc-900/40 hover:border-zinc-500"}
+          `}
+          aria-disabled={uploads.length >= MAX_UPLOADS}
+        >
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={handleFileInputChange}
+            className="sr-only"
+            disabled={uploads.length >= MAX_UPLOADS}
+          />
+          <p className="text-sm text-zinc-300">
+            {uploads.length >= MAX_UPLOADS
+              ? `Maximum ${MAX_UPLOADS} uploads reached`
+              : isDragging
+                ? "Drop to upload"
+                : "Click or drop image files here"}
+          </p>
+          <p className="text-[11px] text-zinc-500 mt-1">
+            JPEG, PNG, WebP · auto-converted to JPEG before upload
+          </p>
+        </div>
+
+        {/* Thumbnail grid for in-flight + completed standalone uploads */}
+        {uploads.length > 0 && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 p-4 pt-0">
+            {uploads.map((u) => (
+              <div
+                key={u.id}
+                className={`
+                  relative rounded-lg overflow-hidden border bg-zinc-900
+                  ${u.status === "error" ? "border-red-700" : "border-zinc-800"}
+                `}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={u.previewUrl}
+                  alt={u.filename}
+                  className="w-full aspect-square object-cover"
+                />
+                {u.status !== "done" && (
+                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-2 gap-1">
+                    {u.status === "uploading" && (
+                      <>
+                        <div className="w-full bg-zinc-700 rounded-full h-1.5">
+                          <div
+                            className="bg-blue-500 h-1.5 rounded-full transition-all"
+                            style={{ width: `${u.progress}%` }}
+                          />
+                        </div>
+                        <span className="text-[10px] text-blue-300">{u.progress}%</span>
+                      </>
+                    )}
+                    {u.status === "error" && (
+                      <span className="text-[10px] text-red-400 text-center">{u.error ?? "Upload failed"}</span>
+                    )}
+                  </div>
+                )}
+                {u.status === "done" && (
+                  <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5" aria-label="Uploaded">
+                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                    </svg>
+                  </div>
+                )}
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeUpload(u.id); }}
+                  className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full w-5 h-5 flex items-center justify-center text-zinc-300 hover:text-white text-xs leading-none"
+                  aria-label={`Remove ${u.filename}`}
+                  title="Remove"
+                >
+                  ×
+                </button>
+                <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
+                  <p className="text-[10px] text-zinc-200 truncate">{u.filename}</p>
+                  <p className="text-[9px] text-zinc-500">{formatBytes(u.size)}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
       {/* ── Asset count ── */}
       <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 flex items-center justify-between">
-        <span className="text-xs uppercase tracking-[0.18em] text-zinc-500 font-semibold">
-          Assets queued
-        </span>
+        <div className="flex flex-col">
+          <span className="text-xs uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+            Assets queued
+          </span>
+          {standaloneAssets.length > 0 && enhancedAssets.length > 0 && (
+            <span className="text-[10px] text-zinc-500 mt-0.5">
+              {enhancedAssets.length} from Enhance/Scan + {standaloneAssets.length} uploaded directly
+            </span>
+          )}
+        </div>
         <span className={`text-sm font-mono tabular-nums ${hasAssets ? "text-zinc-200" : "text-zinc-500"}`}>
-          {enhancedAssets.length}
+          {allAssets.length}
         </span>
       </div>
 
@@ -539,8 +834,8 @@ export function ResizePanel({
               : !hasAssets
                 ? "No assets queued"
                 : previewItems.length > 0
-                  ? `Re-resize ${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""} (PRO)`
-                  : `PRO export — 1024×731 (${enhancedAssets.length})`}
+                  ? `Re-resize ${allAssets.length} image${allAssets.length !== 1 ? "s" : ""} (PRO)`
+                  : `PRO export — 1024×731 (${allAssets.length})`}
         </button>
 
         <button
@@ -560,7 +855,7 @@ export function ResizePanel({
               ? "Save project first"
               : !hasAssets
                 ? "No assets queued"
-                : `Collage export — 1024 long edge (${enhancedAssets.length})`}
+                : `Collage export — 1024 long edge (${allAssets.length})`}
         </button>
       </div>
 
