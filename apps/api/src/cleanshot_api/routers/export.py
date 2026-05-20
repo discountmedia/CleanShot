@@ -22,10 +22,6 @@ from cleanshot_api.models.schemas import (
     ExportZipRequest,
 )
 from cleanshot_api.services import gcs as gcs_service
-from cleanshot_api.services.captioning import (
-    caption_image_for_filename,
-    make_filename_unique,
-)
 from cleanshot_api.services.image_processing import export_custom, export_pro
 
 logger = logging.getLogger(__name__)
@@ -40,6 +36,54 @@ def _require_saved_project(project):
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Project must be saved before export",
         )
+
+
+_FILENAME_PART_RE = __import__("re").compile(r"[^a-zA-Z0-9_-]+")
+
+
+def _sanitize_filename_part(s: str) -> str:
+    """
+    Filesystem-safe version of a free-text field. Mirrors the
+    `sanitize` helper in apps/web/lib/compress.buildEnhanceFilename
+    so resize output filenames feel like a natural successor to the
+    upload filenames the operator already sees on the Enhance tab.
+    """
+    import re
+    s = (s or "").strip()
+    s = _FILENAME_PART_RE.sub("_", s)
+    s = re.sub(r"_+", "_", s)
+    return s.strip("_")
+
+
+def _build_pro_filename(
+    *, make: str, model: str, year: int, index: int, total: int,
+) -> str:
+    """
+    Deterministic PRO-export filename built from the saved project
+    metadata + a 1-indexed sequence number. Examples:
+
+      Toyota_8FGU25_2019_01.jpg
+      Hyster_H50FT_2018_07.jpg
+
+    The padding width grows with the batch size so sequencing sorts
+    correctly in any file explorer (1-9 → 1-digit, 10-99 → 2-digit, etc.).
+    Falls back to 'forklift_NN.jpg' if every part sanitizes to empty.
+    """
+    parts = [
+        _sanitize_filename_part(make),
+        _sanitize_filename_part(model),
+        _sanitize_filename_part(str(year)),
+    ]
+    parts = [p for p in parts if p]
+    base = "_".join(parts) if parts else "forklift"
+    if total >= 100:
+        width = 3
+    elif total >= 10:
+        width = 2
+    else:
+        width = 1
+    seq = str(index + 1).zfill(width)
+    return f"{base}_{seq}.jpg"
 
 
 @router.post(
@@ -146,12 +190,15 @@ async def export_pro_preview(
       {"event": "result",   "items": [...], "zip_url": "...", ...}
       {"event": "error",    "message": "..."}
 
-    Captioning + GCS downloads + GCS uploads run in parallel; the pyvips
-    resize loop and ZIP-builder are sequential (CPU-bound and single-
-    writer respectively). Streaming the events lets the BFF / browser
-    paint a real progress bar instead of staring at a spinner, and also
-    keeps the Vercel function from hitting its idle timeout on large
-    batches — bytes are flowing the whole time.
+    Filenames are built deterministically from the saved project's
+    make / model / year + a 1-indexed sequence number — no AI captioning.
+    Captioning was tried but added ~2s per image of Vertex Gemini round-
+    trips for no operator-visible benefit; the saved project metadata is
+    the canonical source for naming anyway, and the operator has already
+    typed it on the Save Project form.
+
+    GCS downloads + uploads run in parallel; the pyvips resize loop and
+    ZIP-builder are sequential (CPU-bound and single-writer respectively).
 
     GCS layout (cleanshot-derivatives-prod):
       session/{session_id}/pro/{asset_id}.jpg   ← per-image previews
@@ -166,14 +213,6 @@ async def export_pro_preview(
     settings = get_settings()
     gcs_client = gcs_lib.Client(project=settings.gcp_project)
     derivatives_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
-
-    # Vertex Gemini client (proven path for vision — used by scan worker too)
-    genai_client = request.app.state.genai
-
-    # Cap concurrent caption requests so a 22-image batch doesn't fire
-    # 22 simultaneous Vertex calls. Vertex Gemini's per-minute quotas
-    # are generous on the paid tier but bursts can still spike.
-    caption_sem = asyncio.Semaphore(5)
 
     async def event_stream():
         try:
@@ -197,30 +236,18 @@ async def export_pro_preview(
 
             yield json.dumps({"event": "started", "total": total}) + "\n"
 
-            # ── Phase 1: caption in parallel (semaphore-throttled) ──
-            async def caption_one(input_bytes):
-                async with caption_sem:
-                    return await caption_image_for_filename(
-                        input_bytes, genai_client=genai_client,
-                    )
-
-            captions = await asyncio.gather(
-                *[caption_one(b) for _, b, _ in assets_data]
-            )
-
-            # ── Phase 2: per-image resize + write (sequential — ZIP is single-writer
-            # and pyvips is CPU-bound; parallelising would only fight the GIL) ──
+            # ── Phase 1: per-image resize + write (sequential — ZIP is
+            # single-writer and pyvips is CPU-bound; parallelising would
+            # only fight the GIL). Captioning is gone — filenames are
+            # built from project.make / .model / .year + sequence number.
             items: list[dict] = []
-            used_slugs: set[str] = set()
             zip_buf = io.BytesIO()
             any_warning = False
 
             import pyvips
 
             with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-                for i, ((asset_id, input_bytes, src_obj), caption_slug) in enumerate(
-                    zip(assets_data, captions)
-                ):
+                for i, (asset_id, input_bytes, _src_obj) in enumerate(assets_data):
                     # Run pyvips in a worker thread so the event loop stays
                     # responsive (the yielded progress events should keep
                     # flowing even on slow images).
@@ -228,13 +255,15 @@ async def export_pro_preview(
                     if result.size_warning:
                         any_warning = True
 
-                    src_filename = src_obj.rsplit("/", 1)[-1]
-                    src_stem = src_filename.rsplit(".", 1)[0] if "." in src_filename else src_filename
-                    base_name = caption_slug or src_stem
-                    unique_name = make_filename_unique(base_name, used_slugs)
-                    out_filename = f"{unique_name}.jpg"
-                    out_object   = f"session/{body.session_id}/pro/{asset_id}.jpg"
-                    out_uri      = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"
+                    out_filename = _build_pro_filename(
+                        make=project.make,
+                        model=project.model,
+                        year=project.year,
+                        index=i,
+                        total=total,
+                    )
+                    out_object = f"session/{body.session_id}/pro/{asset_id}.jpg"
+                    out_uri    = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"
 
                     # Upload (I/O bound) — thread it so we don't block.
                     out_blob = derivatives_bucket.blob(out_object)

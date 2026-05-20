@@ -444,7 +444,7 @@ export function ResizePanel({
           <div className="flex items-center justify-between text-xs">
             <span className="font-semibold uppercase tracking-[0.18em] text-zinc-300">
               {progressTotal === 0
-                ? "Captioning images…"
+                ? "Downloading…"
                 : progressCurrent >= progressTotal && progressTotal > 0
                   ? "Bundling ZIP…"
                   : `Resizing ${progressCurrent} of ${progressTotal}`}
