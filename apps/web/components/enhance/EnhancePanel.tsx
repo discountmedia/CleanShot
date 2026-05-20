@@ -14,7 +14,7 @@
 // Models: gemini-2.5-flash-image (default) | gpt-image-2-2026-04-21 (opt-in via
 // "Use ChatGPT instead" checkbox). Pinned server-side in enhance_worker.py.
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
 
 // Honest per-provider time estimates used to drive the progress bar on
@@ -30,7 +30,24 @@ import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
 //   openai  — gpt-image-2-2026-04-21, ~30-90s (limited by 5/min throttle
 //             so the 6th+ image in a batch waits longer)
 //   flux    — flux-2-max polling loop, ~15-30s typical
-const EXPECTED_ENHANCE_DURATIONS_S: Record<"gemini" | "openai" | "flux" | "reve", number> = {
+type Provider = "gemini" | "openai" | "flux" | "reve";
+const ALL_PROVIDERS: readonly Provider[] = ["gemini", "openai", "flux", "reve"] as const;
+
+const PROVIDER_LABELS: Record<Provider, string> = {
+  gemini: "Gemini",
+  openai: "OpenAI",
+  flux:   "Flux",
+  reve:   "Reve",
+};
+
+const PROVIDER_BADGE_CLASSES: Record<Provider, string> = {
+  gemini: "bg-blue-950/60 text-blue-300 border-blue-800",
+  openai: "bg-green-950/60 text-green-300 border-green-800",
+  flux:   "bg-purple-950/60 text-purple-300 border-purple-800",
+  reve:   "bg-fuchsia-950/60 text-fuchsia-300 border-fuchsia-800",
+};
+
+const EXPECTED_ENHANCE_DURATIONS_S: Record<Provider, number> = {
   gemini: 20,
   openai: 75,
   flux:   25,
@@ -238,6 +255,8 @@ function JobStatusRow({
   jobId,
   sent,
   provider,
+  selected,
+  onToggleSelect,
   onComplete,
   onSend,
   onRegenerate,
@@ -248,20 +267,26 @@ function JobStatusRow({
   sent: boolean;
   /**
    * Provider this job was enqueued with — drives the progress-bar
-   * duration estimate. Falls back to "gemini" if the caller passes
-   * something unknown.
+   * duration estimate and the visible badge. With multi-select on the
+   * Enhance tab, the same source file can produce up to 4 rows (one
+   * per provider).
    */
-  provider: "gemini" | "openai" | "flux" | "reve";
+  provider: Provider;
+  /** Checkbox state — toggled by the operator's row checkbox click. */
+  selected: boolean;
+  /** Flips the row's checkbox in the parent's selectedJobIds set. */
+  onToggleSelect: () => void;
   // Resolved by the parent into a thumbnailUrl appended to the pipeline.
   // Called once, after a successful job has its signed URL minted.
   onComplete: (job: JobRecord, outputUrl: string) => void;
   /** Per-row "Send to Scan" click handler. */
   onSend: () => void;
   /**
-   * Re-runs enhance on this file's original GCS asset with the CURRENT
-   * toggle / provider / custom-prompt state. Only enabled once the
-   * existing job has reached a terminal state — re-enqueueing while a
-   * job is mid-flight would just double-up the Cloud Tasks queue.
+   * Re-runs enhance on this (file, provider) result row only — other
+   * providers' jobs for the same source file are untouched. Only
+   * enabled once the existing job has reached a terminal state —
+   * re-enqueueing while a job is mid-flight would just double-up the
+   * Cloud Tasks queue.
    */
   onRegenerate: () => void;
 }) {
@@ -327,6 +352,23 @@ function JobStatusRow({
     <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
       {/* Header row */}
       <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-900 gap-3">
+        {/* Selection checkbox — disabled until the row has a completed
+            output, and locks once the operator's already sent it to
+            Scan. Keeps the "no duplicates" invariant honest. */}
+        <input
+          type="checkbox"
+          checked={selected}
+          onChange={onToggleSelect}
+          disabled={!outputUrl || sent}
+          aria-label={sent ? "Already sent to Scan" : `Select for sending to Scan (${PROVIDER_LABELS[provider]})`}
+          className="w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-red-500 focus:ring-2 focus:ring-red-500 focus:ring-offset-0 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+        />
+        <span
+          className={`text-[10px] uppercase tracking-[0.18em] font-bold px-2 py-0.5 rounded border shrink-0 ${PROVIDER_BADGE_CLASSES[provider]}`}
+          aria-label={`Provider: ${PROVIDER_LABELS[provider]}`}
+        >
+          {PROVIDER_LABELS[provider]}
+        </span>
         <div className="min-w-0 flex-1">
           <p
             className="text-sm text-zinc-200 font-mono truncate"
@@ -492,12 +534,17 @@ function JobStatusRow({
 
 export interface CompletedEnhanceItem {
   /**
-   * UploadFile id (stable across regens). Used as the dedupe key in the
-   * `completed` map so a regenerated enhance overwrites the prior result
-   * for the same source file instead of accumulating alongside it.
+   * UploadFile id (stable across regens). With multi-provider enhance,
+   * one fileId can have multiple completed items (one per selected
+   * provider). The (fileId, provider) pair uniquely identifies a row;
+   * the `completed` map is keyed by jobId now so each AI run has its
+   * own row, but we still carry fileId so callers can group results
+   * by source image.
    */
   fileId: string;
   jobId: string;
+  /** Which AI provider produced this result. */
+  provider: Provider;
   outputAssetId: string;
   filename: string;
   /** Signed GET URL for the enhanced image (works as both preview and full-size). */
@@ -541,12 +588,20 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
   // reference the old local-state names. Forwarded to the controlled
   // props from Workspace.
   const setMeta = onMetaChange;
-  const [enhanceJobs, setEnhanceJobs] = useState<Map<string, string>>(new Map()); // fileId → jobId
+  // Map<fileId, Map<Provider, jobId>>. Each source file can have up
+  // to 4 concurrent enhance jobs running — one per checked provider.
+  const [enhanceJobs, setEnhanceJobs] = useState<Map<string, Map<Provider, string>>>(new Map());
   const [isRunning, setIsRunning]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
-  /** Provider for image generation. Mutually-exclusive checkboxes in UI:
-   * "Use ChatGPT instead" / "Use Flux instead". Default is Gemini. */
-  const [provider, setProvider] = useState<"gemini" | "openai" | "flux" | "reve">("gemini");
+  /**
+   * Set of providers to enqueue enhance jobs against. Multi-select; at
+   * least one must stay checked. Default = just Gemini (lowest cost,
+   * matches the pre-multi-select behaviour so single-provider users
+   * don't see surprise cost multipliers on first run).
+   */
+  const [selectedProviders, setSelectedProviders] = useState<Set<Provider>>(
+    () => new Set<Provider>(["gemini"]),
+  );
 
   /** "Custom prompt (advanced)" disclosure state + textarea contents. */
   const [customPromptOpen, setCustomPromptOpen] = useState(false);
@@ -560,45 +615,113 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
   const customPromptActive = customPrompt.trim().length > 0;
 
   // Completed-but-not-yet-sent state for the explicit "Send to Scan" flow.
-  // Keyed by fileId (NOT jobId) so a regenerated enhance overwrites the
-  // prior result for the same source file. With jobId keying, "Send all"
-  // would push BOTH the original (e.g. with an artifact) and the regen
-  // (clean) to Scan; the user's regen would effectively be ignored.
-  const [completed, setCompleted]   = useState<Map<string, CompletedEnhanceItem>>(new Map());
-  const [sentJobIds, setSentJobIds] = useState<Set<string>>(new Set());
+  // Keyed by jobId since each (fileId × provider) is its own row now —
+  // multiple jobs per file coexist (one per provider) and the operator
+  // picks which to forward. Dedupe at send time via sentJobIds.
+  const [completed, setCompleted]     = useState<Map<string, CompletedEnhanceItem>>(new Map());
+  const [sentJobIds, setSentJobIds]   = useState<Set<string>>(new Set());
+  // Per-row checkbox selection. Cleared after a send to keep the UI
+  // truthful — selecting a row that's already been sent (sentJobIds)
+  // is a no-op at send time.
+  const [selectedJobIds, setSelectedJobIds] = useState<Set<string>>(new Set());
 
   const markCompleted = useCallback((item: CompletedEnhanceItem) => {
     setCompleted((prev) => {
-      // Dedupe only against the SAME job re-emitting completion (e.g.
-      // poll race on remount). A different job for the same fileId
-      // (i.e. a regen) is allowed to overwrite.
-      const existing = prev.get(item.fileId);
-      if (existing?.jobId === item.jobId) return prev;
+      if (prev.has(item.jobId)) return prev;
       const next = new Map(prev);
-      next.set(item.fileId, item);
+      next.set(item.jobId, item);
       return next;
     });
   }, []);
 
+  // Per-row check toggle. Already-sent rows can't be re-selected.
+  const toggleSelect = useCallback((jobId: string) => {
+    if (sentJobIds.has(jobId)) return;
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(jobId)) next.delete(jobId);
+      else next.add(jobId);
+      return next;
+    });
+  }, [sentJobIds]);
+
+  // "Select all from {provider}" — adds every completed-and-unsent row
+  // of that provider to the selection.
+  const selectAllFromProvider = useCallback((p: Provider) => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      for (const item of completed.values()) {
+        if (item.provider === p && !sentJobIds.has(item.jobId)) {
+          next.add(item.jobId);
+        }
+      }
+      return next;
+    });
+  }, [completed, sentJobIds]);
+
+  const clearSelection = useCallback(() => setSelectedJobIds(new Set()), []);
+
+  // Provider checkboxes are true multi-select. Toggling tries to add or
+  // remove the provider from the set but refuses to remove the last one
+  // — at least one provider must stay checked for Enhance to do anything.
+  const toggleProvider = useCallback((p: Provider) => {
+    setSelectedProviders((prev) => {
+      const next = new Set(prev);
+      if (next.has(p)) {
+        if (next.size === 1) return prev;     // refuse to leave zero providers checked
+        next.delete(p);
+      } else {
+        next.add(p);
+      }
+      return next;
+    });
+  }, []);
+
+  // Per-row Send still works for one-off forwards. Adds to sentJobIds
+  // so the row flips to "✓ Sent" and the checkbox locks.
   const sendOne = useCallback((item: CompletedEnhanceItem) => {
     if (sentJobIds.has(item.jobId)) return;
     onSendToScan([item]);
     setSentJobIds((prev) => new Set(prev).add(item.jobId));
-  }, [onSendToScan, sentJobIds]);
-
-  const unsentItems = Array.from(completed.values()).filter(
-    (it) => !sentJobIds.has(it.jobId)
-  );
-
-  const sendAll = useCallback(() => {
-    if (unsentItems.length === 0) return;
-    onSendToScan(unsentItems);
-    setSentJobIds((prev) => {
+    setSelectedJobIds((prev) => {
+      if (!prev.has(item.jobId)) return prev;
       const next = new Set(prev);
-      for (const it of unsentItems) next.add(it.jobId);
+      next.delete(item.jobId);
       return next;
     });
-  }, [onSendToScan, unsentItems]);
+  }, [onSendToScan, sentJobIds]);
+
+  // Items currently checked AND not yet sent — these are what the
+  // big bottom button will forward.
+  const selectedItems = useMemo(() => {
+    const out: CompletedEnhanceItem[] = [];
+    for (const jobId of selectedJobIds) {
+      if (sentJobIds.has(jobId)) continue;
+      const item = completed.get(jobId);
+      if (item) out.push(item);
+    }
+    return out;
+  }, [selectedJobIds, sentJobIds, completed]);
+
+  const sendSelected = useCallback(() => {
+    if (selectedItems.length === 0) return;
+    onSendToScan(selectedItems);
+    setSentJobIds((prev) => {
+      const next = new Set(prev);
+      for (const it of selectedItems) next.add(it.jobId);
+      return next;
+    });
+    setSelectedJobIds(new Set());
+  }, [selectedItems, onSendToScan]);
+
+  // Per-provider unsent-counts power the bulk-select bar's button labels.
+  const unsentCountByProvider = useMemo(() => {
+    const counts: Record<Provider, number> = { gemini: 0, openai: 0, flux: 0, reve: 0 };
+    for (const item of completed.values()) {
+      if (!sentJobIds.has(item.jobId)) counts[item.provider]++;
+    }
+    return counts;
+  }, [completed, sentJobIds]);
 
 
   // ─── File picker ──────────────────────────────────────────────────────────
@@ -699,42 +822,61 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
       return;
     }
 
-    // Step 4: enqueue enhance job
-    try {
-      const { jobId } = await enqueueEnhance({
-        sessionId,
-        assetId: signedResp.assetId,
-        toggles,
-        forkliftMeta: meta,
-        provider,
-        // Custom prompt (when active) takes precedence over toggles on the
-        // backend. We still send toggles for telemetry/job-row context.
-        customPrompt: customPromptActive ? customPrompt : undefined,
-        idempotencyKey: `enhance-${id}`,
-      });
-      setEnhanceJobs((prev) => new Map(prev).set(id, jobId));
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      console.error("[upload] enqueue enhance failed", err);
-      updateFile(id, { status: "error", error: `Enqueue: ${detail}` });
+    // Step 4: enqueue one enhance job per selected provider. Each (file,
+    // provider) pair gets its own jobId so the operator can compare
+    // results side-by-side. Idempotency keys include the provider so a
+    // re-run after a partial failure doesn't dedupe.
+    const providerList: Provider[] = Array.from(selectedProviders);
+    const perProviderJobIds = new Map<Provider, string>();
+    const enqueueErrors: string[] = [];
+
+    for (const p of providerList) {
+      try {
+        const { jobId } = await enqueueEnhance({
+          sessionId,
+          assetId: signedResp.assetId,
+          toggles,
+          forkliftMeta: meta,
+          provider: p,
+          customPrompt: customPromptActive ? customPrompt : undefined,
+          idempotencyKey: `enhance-${id}-${p}`,
+        });
+        perProviderJobIds.set(p, jobId);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        console.error(`[upload] enqueue enhance failed for provider=${p}`, err);
+        enqueueErrors.push(`${p}: ${detail}`);
+      }
     }
+
+    if (perProviderJobIds.size === 0) {
+      // Every provider failed to enqueue — surface that as the row's
+      // error so the operator knows nothing's running.
+      updateFile(id, { status: "error", error: `Enqueue: ${enqueueErrors.join("; ")}` });
+      return;
+    }
+
+    setEnhanceJobs((prev) => {
+      const next = new Map(prev);
+      next.set(id, perProviderJobIds);
+      return next;
+    });
   };
 
   /**
-   * Re-run enhance on an already-uploaded image with the CURRENT toggle /
-   * provider / custom-prompt state. No re-upload — we reuse the asset id
-   * that the original upload created. Lets the operator iterate by
-   * tweaking toggles without losing their workspace.
+   * Re-run enhance on a single (file, provider) result row. No
+   * re-upload — the source asset is reused. The row's existing jobId
+   * is REPLACED in enhanceJobs[fileId][provider], so JobStatusRow's
+   * React key (which includes jobId) forces a remount with fresh
+   * poller state.
    *
-   * Side-effects:
-   *   • Replaces enhanceJobs[fileId] with the new jobId — JobStatusRow's
-   *     React key uses this so the row remounts with fresh poller state.
-   *   • When the new job completes, markCompleted overwrites the prior
-   *     `completed[fileId]` entry (keyed by fileId, not jobId). This
-   *     ensures "Send all to Scan" sends only the latest enhance per
-   *     source file, not both the original and every regen.
+   * The previous jobId's CompletedEnhanceItem (if any) gets evicted
+   * from `completed` + `selectedJobIds` so the operator doesn't see
+   * stale results lingering after a regen. sentJobIds is left alone —
+   * if the operator already sent the prior version to Scan, that's a
+   * historical fact we don't try to retract.
    */
-  const regenerateEnhance = async (file: UploadFile) => {
+  const regenerateEnhance = async (file: UploadFile, regenProvider: Provider) => {
     if (!file.assetId) {
       setGlobalError("Can't regenerate — original upload didn't complete.");
       return;
@@ -746,14 +888,41 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
         assetId:        file.assetId,
         toggles,
         forkliftMeta:   meta,
-        provider,
+        provider:       regenProvider,
         customPrompt:   customPromptActive ? customPrompt : undefined,
         // New idempotency key per regen so the backend doesn't dedupe
-        // against the prior job. Bump the ref counter in this handler
-        // (purity-safe; Date.now() during render is not).
-        idempotencyKey: `enhance-${file.id}-regen-${++regenSeqRef.current}`,
+        // against the prior job. Bump the ref counter (purity-safe;
+        // Date.now() during render is not).
+        idempotencyKey: `enhance-${file.id}-${regenProvider}-regen-${++regenSeqRef.current}`,
       });
-      setEnhanceJobs((prev) => new Map(prev).set(file.id, jobId));
+
+      // Identify the old jobId for this (file, provider) — needed for
+      // cleanup of the completed / selectedJobIds entries.
+      let oldJobId: string | undefined;
+      setEnhanceJobs((prev) => {
+        const next = new Map(prev);
+        const fileMap = new Map(next.get(file.id) ?? []);
+        oldJobId = fileMap.get(regenProvider);
+        fileMap.set(regenProvider, jobId);
+        next.set(file.id, fileMap);
+        return next;
+      });
+
+      if (oldJobId) {
+        const stale = oldJobId;
+        setCompleted((prev) => {
+          if (!prev.has(stale)) return prev;
+          const next = new Map(prev);
+          next.delete(stale);
+          return next;
+        });
+        setSelectedJobIds((prev) => {
+          if (!prev.has(stale)) return prev;
+          const next = new Set(prev);
+          next.delete(stale);
+          return next;
+        });
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to regenerate";
       setGlobalError(msg);
@@ -930,14 +1099,19 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           already-checked openai/flux unchecks it and reverts to Gemini.
           Gemini's onChange is unconditional — clicking it just keeps Gemini. */}
       <div className="space-y-2">
-        <h3 className="text-sm font-semibold text-zinc-200 mb-1">Model</h3>
+        <div className="flex items-baseline justify-between mb-1">
+          <h3 className="text-sm font-semibold text-zinc-200">Models</h3>
+          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+            {selectedProviders.size} of {ALL_PROVIDERS.length} selected · each adds a separate job per image
+          </span>
+        </div>
 
-        {/* Gemini checkbox (default) */}
+        {/* Gemini checkbox */}
         <label
           htmlFor="provider-gemini"
           className={`
             flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
-            ${provider === "gemini"
+            ${selectedProviders.has("gemini")
               ? "bg-blue-950/40 border-blue-800 hover:border-blue-700"
               : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
           `}
@@ -945,8 +1119,8 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           <input
             id="provider-gemini"
             type="checkbox"
-            checked={provider === "gemini"}
-            onChange={() => setProvider("gemini")}
+            checked={selectedProviders.has("gemini")}
+            onChange={() => toggleProvider("gemini")}
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
@@ -967,7 +1141,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           htmlFor="provider-openai"
           className={`
             flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
-            ${provider === "openai"
+            ${selectedProviders.has("openai")
               ? "bg-green-950/40 border-green-800 hover:border-green-700"
               : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
           `}
@@ -975,8 +1149,8 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           <input
             id="provider-openai"
             type="checkbox"
-            checked={provider === "openai"}
-            onChange={(e) => setProvider(e.target.checked ? "openai" : "gemini")}
+            checked={selectedProviders.has("openai")}
+            onChange={() => toggleProvider("openai")}
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-green-500 focus:ring-2 focus:ring-green-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
@@ -997,7 +1171,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           htmlFor="provider-flux"
           className={`
             flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
-            ${provider === "flux"
+            ${selectedProviders.has("flux")
               ? "bg-purple-950/40 border-purple-800 hover:border-purple-700"
               : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
           `}
@@ -1005,8 +1179,8 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           <input
             id="provider-flux"
             type="checkbox"
-            checked={provider === "flux"}
-            onChange={(e) => setProvider(e.target.checked ? "flux" : "gemini")}
+            checked={selectedProviders.has("flux")}
+            onChange={() => toggleProvider("flux")}
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-purple-500 focus:ring-2 focus:ring-purple-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
@@ -1032,7 +1206,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           htmlFor="provider-reve"
           className={`
             flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
-            ${provider === "reve"
+            ${selectedProviders.has("reve")
               ? "bg-fuchsia-950/40 border-fuchsia-800 hover:border-fuchsia-700"
               : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
           `}
@@ -1040,8 +1214,8 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           <input
             id="provider-reve"
             type="checkbox"
-            checked={provider === "reve"}
-            onChange={(e) => setProvider(e.target.checked ? "reve" : "gemini")}
+            checked={selectedProviders.has("reve")}
+            onChange={() => toggleProvider("reve")}
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
@@ -1213,56 +1387,101 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
             </div>
           )}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {files
-            .filter((f) => enhanceJobs.has(f.id))
-            .map((f) => (
-              <JobStatusRow
-                // Including jobId in the key forces a remount when the
-                // user clicks Regenerate (new jobId is swapped in via
-                // setEnhanceJobs). Fresh useJobPoller, fresh internal
-                // state — no leftover "after" thumbnail or status from
-                // the prior run.
-                key={`${f.id}-${enhanceJobs.get(f.id)!}`}
-                file={f}
-                jobId={enhanceJobs.get(f.id)!}
-                sent={sentJobIds.has(enhanceJobs.get(f.id)!)}
-                provider={provider}
-                onComplete={(job, outputUrl) => {
-                  if (job.outputAssetId) {
-                    markCompleted({
-                      fileId: f.id,
-                      jobId: job.id,
-                      outputAssetId: job.outputAssetId,
-                      filename: f.file.name,
-                      outputUrl,
-                    });
-                  }
-                }}
-                onSend={() => {
-                  const item = completed.get(enhanceJobs.get(f.id)!);
-                  if (item) sendOne(item);
-                }}
-                onRegenerate={() => regenerateEnhance(f)}
-              />
-            ))}
+          {files.flatMap((f) => {
+            const providerMap = enhanceJobs.get(f.id);
+            if (!providerMap) return [];
+            // Stable order so re-renders don't shuffle rows: follow the
+            // canonical ALL_PROVIDERS ordering, only including the
+            // providers that actually have a job for this file.
+            return ALL_PROVIDERS
+              .filter((p) => providerMap.has(p))
+              .map((p) => {
+                const jobId = providerMap.get(p)!;
+                const isSent = sentJobIds.has(jobId);
+                const isSelected = selectedJobIds.has(jobId);
+                return (
+                  <JobStatusRow
+                    // jobId in the key forces a remount on Regenerate
+                    // (new jobId is swapped in via setEnhanceJobs).
+                    key={`${f.id}-${p}-${jobId}`}
+                    file={f}
+                    jobId={jobId}
+                    sent={isSent}
+                    provider={p}
+                    selected={isSelected}
+                    onToggleSelect={() => toggleSelect(jobId)}
+                    onComplete={(job, outputUrl) => {
+                      if (job.outputAssetId) {
+                        markCompleted({
+                          fileId:        f.id,
+                          jobId:         job.id,
+                          provider:      p,
+                          outputAssetId: job.outputAssetId,
+                          filename:      f.file.name,
+                          outputUrl,
+                        });
+                      }
+                    }}
+                    onSend={() => {
+                      const item = completed.get(jobId);
+                      if (item) sendOne(item);
+                    }}
+                    onRegenerate={() => regenerateEnhance(f, p)}
+                  />
+                );
+              });
+          })}
           </div>
         </div>
       )}
 
-      {/* ── Send-all-to-Scan batch button ── */}
+      {/* ── Bulk-select bar (per-provider Select-all buttons) ── */}
+      {completed.size > 0 && (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 flex flex-wrap items-center gap-2">
+          <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 mr-2">
+            Bulk select
+          </span>
+          {ALL_PROVIDERS.map((p) => {
+            const n = unsentCountByProvider[p];
+            return (
+              <button
+                key={p}
+                onClick={() => selectAllFromProvider(p)}
+                disabled={n === 0}
+                className={`text-[11px] uppercase tracking-[0.18em] font-semibold px-2.5 py-1 rounded border transition-colors ${
+                  n === 0
+                    ? "border-zinc-800 text-zinc-700 cursor-not-allowed"
+                    : `${PROVIDER_BADGE_CLASSES[p]} hover:opacity-80`
+                }`}
+              >
+                + {PROVIDER_LABELS[p]} ({n})
+              </button>
+            );
+          })}
+          <button
+            onClick={clearSelection}
+            disabled={selectedJobIds.size === 0}
+            className="ml-auto text-[11px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white border border-zinc-800 hover:border-zinc-600 px-2.5 py-1 rounded transition-colors disabled:opacity-40 disabled:hover:text-zinc-400 disabled:hover:border-zinc-800"
+          >
+            Clear selection ({selectedJobIds.size})
+          </button>
+        </div>
+      )}
+
+      {/* ── Send-selected-to-Scan batch button ── */}
       {completed.size > 0 && (
         <button
-          onClick={sendAll}
-          disabled={unsentItems.length === 0}
+          onClick={sendSelected}
+          disabled={selectedItems.length === 0}
           className={`
             w-full py-4 px-6 rounded-xl font-bold text-sm uppercase tracking-[0.18em] transition-all border-2
-            ${unsentItems.length > 0
+            ${selectedItems.length > 0
               ? "bg-red-600 hover:bg-red-500 border-red-500 text-white shadow-lg shadow-red-900/40"
               : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"}
           `}
         >
-          {unsentItems.length > 0
-            ? <>Send {unsentItems.length} image{unsentItems.length !== 1 ? "s" : ""} to Scan tab →</>
+          {selectedItems.length > 0
+            ? <>Send {selectedItems.length} selected image{selectedItems.length !== 1 ? "s" : ""} to Scan tab →</>
             : <>✓ All sent to Scan</>}
         </button>
       )}
