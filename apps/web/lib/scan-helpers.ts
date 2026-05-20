@@ -205,15 +205,19 @@ function buildSpine(
   const sections: string[] = [];
 
   sections.push(
-    `A photorealistic depiction of a USED ${eq} that has just received a CHEAP shop-grade spray paint job. THIS IS A USED VEHICLE — not a restoration, not a factory finish, not a brand-new unit. Visible signs of age, wear, and prior use MUST remain visible in the final image.`,
+    `A photorealistic depiction of a USED ${eq} that has just received a CHEAP shop-grade spray paint job. This is a real shop respray — quick, inexpensive, and effective at making a used unit listing-ready. It is NOT a restoration and NOT a factory finish, but the fresh paint clearly improves the unit's appearance.`,
   );
 
   sections.push(
-    "MANDATORY IMPERFECTIONS — these stay visible in the output:\n• Dents, panel damage, and bent hardware stay.\n• Deep scratches and gouges stay.\n• Significant rust pitting still shows through the fresh paint — only surface dust and dirt get covered, not the pitting itself.\n• Worn-through paint patches in deep corners and high-wear edges stay visible.\n• Missing parts, broken hardware, and cracked components stay.",
+    "WHAT THE FRESH PAINT COVERS (these are gone in the output):\n• Surface paint chips, scuffs, scratches, and faded patches — covered by the new paint.\n• Light surface rust and oxidation — covered.\n• Dirt, grime, dust, and surface staining — cleaned off before the paint pass.\n• Dull, worn-out colour — restored to the saturated original factory colour.",
   );
 
   sections.push(
-    `PAINT JOB CHARACTER: a single quick coat from a shop spray gun in the precise original factory colour scheme. It looks CHEAP — light orange-peel texture, slightly uneven coverage on complex surfaces, thin spots in tight corners, occasional overspray. Apply this respray to the ${parts}. Match the original panel-to-colour mapping exactly; do not change which panel is which colour.`,
+    "WHAT THE FRESH PAINT DOES NOT COVER (these stay clearly visible in the output):\n• Dents, panel deformation, and bent hardware.\n• Deep gouges THROUGH the metal (not surface scratches — actual metal damage).\n• Missing parts, broken hardware, cracked components.\n• Severe rust-through holes and large rust pitting craters that have eaten into the panel.\n• Replaced / mismatched panels, aftermarket non-OEM parts — leave them as-is, do not unify them.",
+  );
+
+  sections.push(
+    `PAINT JOB CHARACTER: a quick coat from a shop spray gun in the precise original factory colour scheme. It looks CHEAP-but-CLEAN — even coverage in most places, slight orange-peel texture on close inspection, maybe minor overspray edges in tight corners. Apply this respray to the ${parts}. Match the original panel-to-colour mapping exactly; do not change which panel is which colour.`,
   );
 
   sections.push(
@@ -227,7 +231,7 @@ function buildSpine(
   }
 
   sections.push(
-    "TIRES retain their full used character — tread wear, cuts, gouges, aging cracks, dry rot, and chunks all stay visible. Only the tire sidewalls have been wiped with a light tire shine; the tread is untreated.",
+    "TIRES: keep the SAME tires — do not replace them, and existing tread wear, cuts, gouges, and aging cracks on the tread itself stay visible. But the SIDEWALLS have been treated with a generous coat of glossy tire shine — the sidewalls read as wet-look, deep black, noticeably glossy and contrasted against the dry, dusty, untreated tread. Apply tire shine ONLY to the sidewall, never the tread.",
   );
 
   sections.push(
@@ -235,7 +239,7 @@ function buildSpine(
   );
 
   sections.push(
-    `FAILURE CRITERIA — if the final image looks brand-new, factory-fresh, restored, or noticeably "better than the original," you have failed the task. The ${eq} must still look unmistakably USED. If you're unsure whether a defect should be covered, LEAVE IT VISIBLE.`,
+    `DUAL FAILURE CRITERIA:\n• If the final image looks brand-new, factory-fresh, restored, or like the unit was never used, you have failed (too perfect).\n• If the final image looks unchanged from the source — same scuffs, same chips, same dull paint, same dusty tires — you have ALSO failed (no respray applied).\nThe right answer is: clearly a used ${eq}, clearly freshly resprayed in a cheap-but-clean shop paint job, with glossy tire-shined sidewalls; only structural damage and severe rust-through still visible.`,
   );
 
   return sections.join("\n\n");

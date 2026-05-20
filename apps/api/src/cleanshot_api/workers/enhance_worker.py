@@ -182,39 +182,56 @@ def _build_enhance_prompt(
         and equipment_type in ("forklift", "telehandler")
     )
 
-    # ── Spine — honesty-first cheap-respray framing ─────────────────────
-    # The earlier "completely covering all previous paint chips and rust"
-    # wording read as restoration instructions and made the model render
-    # near-factory-new lifts. Now leads with a mandatory-defects list +
-    # "cheap shop-grade respray" framing + an explicit FAILURE CRITERIA
-    # bookend so the model treats "looks too new" as a hard fail.
+    # ── Spine — balanced cheap-respray framing ───────────────────────────
+    # Earlier honesty-first prompt overshot — model left scuffs, gashes,
+    # and dull tires intact even with the paint/rust toggles on, because
+    # "MANDATORY IMPERFECTIONS — Worn-through paint patches stay visible"
+    # told the model to preserve cosmetic wear that a cheap respray
+    # would actually cover. Split into two explicit lists ("covers" vs
+    # "does NOT cover") so the model knows surface scuffs/chips/light
+    # rust are fair game, and only structural defects stay. Dual failure
+    # criteria at the end: too-new AND unchanged both fail.
     sections: list[str] = []
 
     sections.append(
         f"A photorealistic depiction of a USED {eq_display} that has just "
-        f"received a CHEAP shop-grade spray paint job. THIS IS A USED "
-        f"VEHICLE — not a restoration, not a factory finish, not a "
-        f"brand-new unit. Visible signs of age, wear, and prior use MUST "
-        f"remain visible in the final image."
+        f"received a CHEAP shop-grade spray paint job. This is a real "
+        f"shop respray — quick, inexpensive, and effective at making a "
+        f"used unit listing-ready. It is NOT a restoration and NOT a "
+        f"factory finish, but the fresh paint clearly improves the unit's "
+        f"appearance."
     )
 
     sections.append(
-        "MANDATORY IMPERFECTIONS — these stay visible in the output:\n"
-        "• Dents, panel damage, and bent hardware stay.\n"
-        "• Deep scratches and gouges stay.\n"
-        "• Significant rust pitting still shows through the fresh paint "
-        "— only surface dust and dirt get covered, not the pitting itself.\n"
-        "• Worn-through paint patches in deep corners and high-wear "
-        "edges stay visible.\n"
-        "• Missing parts, broken hardware, and cracked components stay."
+        "WHAT THE FRESH PAINT COVERS (these are gone in the output):\n"
+        "• Surface paint chips, scuffs, scratches, and faded patches — "
+        "covered by the new paint.\n"
+        "• Light surface rust and oxidation — covered.\n"
+        "• Dirt, grime, dust, and surface staining — cleaned off before "
+        "the paint pass.\n"
+        "• Dull, worn-out colour — restored to the saturated original "
+        "factory colour."
     )
 
     sections.append(
-        f"PAINT JOB CHARACTER: a single quick coat from a shop spray gun "
-        f"in the precise original factory colour scheme. It looks CHEAP "
-        f"— light orange-peel texture, slightly uneven coverage on "
-        f"complex surfaces, thin spots in tight corners, occasional "
-        f"overspray. Apply this respray to the {eq_parts}. Match the "
+        "WHAT THE FRESH PAINT DOES NOT COVER (these stay clearly "
+        "visible in the output):\n"
+        "• Dents, panel deformation, and bent hardware.\n"
+        "• Deep gouges THROUGH the metal (not surface scratches — actual "
+        "metal damage).\n"
+        "• Missing parts, broken hardware, cracked components.\n"
+        "• Severe rust-through holes and large rust pitting craters that "
+        "have eaten into the panel.\n"
+        "• Replaced / mismatched panels, aftermarket non-OEM parts — "
+        "leave them as-is, do not unify them."
+    )
+
+    sections.append(
+        f"PAINT JOB CHARACTER: a quick coat from a shop spray gun in the "
+        f"precise original factory colour scheme. It looks CHEAP-but-"
+        f"CLEAN — even coverage in most places, slight orange-peel "
+        f"texture on close inspection, maybe minor overspray edges in "
+        f"tight corners. Apply this respray to the {eq_parts}. Match the "
         f"original panel-to-colour mapping exactly; do not change which "
         f"panel is which colour."
     )
@@ -243,10 +260,13 @@ def _build_enhance_prompt(
         )
 
     sections.append(
-        "TIRES retain their full used character — tread wear, cuts, "
-        "gouges, aging cracks, dry rot, and chunks all stay visible. "
-        "Only the tire sidewalls have been wiped with a light tire "
-        "shine; the tread is untreated."
+        "TIRES: keep the SAME tires — do not replace them, and existing "
+        "tread wear, cuts, gouges, and aging cracks on the tread itself "
+        "stay visible. But the SIDEWALLS have been treated with a "
+        "generous coat of glossy tire shine — the sidewalls read as "
+        "wet-look, deep black, noticeably glossy and contrasted against "
+        "the dry, dusty, untreated tread. Apply tire shine ONLY to the "
+        "sidewall, never the tread."
     )
 
     sections.append(
@@ -256,11 +276,17 @@ def _build_enhance_prompt(
     )
 
     sections.append(
-        f"FAILURE CRITERIA — if the final image looks brand-new, "
-        f"factory-fresh, restored, or noticeably \"better than the "
-        f"original,\" you have failed the task. The {eq_display} must "
-        f"still look unmistakably USED. If you're unsure whether a "
-        f"defect should be covered, LEAVE IT VISIBLE."
+        f"DUAL FAILURE CRITERIA:\n"
+        f"• If the final image looks brand-new, factory-fresh, restored, "
+        f"or like the unit was never used, you have failed (too "
+        f"perfect).\n"
+        f"• If the final image looks unchanged from the source — same "
+        f"scuffs, same chips, same dull paint, same dusty tires — you "
+        f"have ALSO failed (no respray applied).\n"
+        f"The right answer is: clearly a used {eq_display}, clearly "
+        f"freshly resprayed in a cheap-but-clean shop paint job, with "
+        f"glossy tire-shined sidewalls; only structural damage and "
+        f"severe rust-through still visible."
     )
 
     # ── Toggle-driven additions ────────────────────────────────────────
@@ -268,29 +294,31 @@ def _build_enhance_prompt(
 
     if toggles.new_paint_job:
         extras.append(
-            "EXTRA EMPHASIS — paint coverage. This image has rough "
-            "surface paint; lean a bit harder on covering surface dirt "
-            "and small scuffs. Still respect the FAILURE CRITERIA: no "
-            "restoration, no factory-new finish, mandatory imperfections "
-            "stay visible."
+            "EXTRA EMPHASIS — paint coverage. This image's surface paint "
+            "is particularly rough. Lean hard on the cheap respray — "
+            "ALL surface scuffs, chips, scratches, and faded patches "
+            "should be CLEARLY covered by the new factory-colour paint. "
+            "Only structural damage (dents, deep gouges through metal, "
+            "broken parts) stays visible."
         )
     if toggles.remove_rust:
         extras.append(
-            "EXTRA EMPHASIS — surface dirt. Clean off light surface dust "
-            "and dirt a bit more thoroughly before the cheap respray. "
-            "Significant rust pitting still shows through the new paint."
+            "EXTRA EMPHASIS — rust. This image has visible rust. Cover "
+            "ALL surface rust and light oxidation under the fresh paint. "
+            "Only deep rust-through holes and large pitting craters that "
+            "have eaten into the panel stay visible."
+        )
+    if toggles.shine_tires:
+        extras.append(
+            "EXTRA EMPHASIS — tire shine. The sidewalls should read as "
+            "wet-look, glossy black, with strong contrast against the "
+            "dry untreated tread. Push the gloss harder than the default."
         )
     if toggles.restore_decals:
         extras.append(
             "EXTRA EMPHASIS — decals. Pay extra attention to decal "
             "restoration; every label should read perfectly crisp in the "
             "output."
-        )
-    if toggles.shine_tires:
-        extras.append(
-            "EXTRA EMPHASIS — tire shine on the SIDEWALLS only (not the "
-            "tread). Visible wear, cuts, gouges, and aging cracks on the "
-            "tires still stay."
         )
     if toggles.improve_lighting:
         extras.append(
