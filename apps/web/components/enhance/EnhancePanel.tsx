@@ -1057,7 +1057,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
               Reve image-edit (latest) — synchronous /v1/image/edit; auto-enhances the instruction internally.
             </p>
             <p className="text-[11px] text-amber-400 mt-1">
-              ⏱ ~10-30s per image · credit-billed (~$0.03 per edit baseline; varies with postprocessing).
+              ⏱ ~10-30s per image · no published per-minute cap — synchronous, throughput bounded by your Reve key&apos;s server-side quota.
             </p>
           </div>
         </label>
