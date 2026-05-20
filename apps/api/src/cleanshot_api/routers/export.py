@@ -56,18 +56,29 @@ def _sanitize_filename_part(s: str) -> str:
 
 
 def _build_pro_filename(
-    *, make: str, model: str, year: int, index: int, total: int,
+    *,
+    make: str,
+    model: str,
+    year: int,
+    index: int,
+    total: int,
+    provider: str | None = None,
 ) -> str:
     """
     Deterministic PRO-export filename built from the saved project
-    metadata + a 1-indexed sequence number. Examples:
+    metadata + a 1-indexed sequence number, optionally suffixed with
+    the AI provider that produced the output. Examples:
 
-      Toyota_8FGU25_2019_01.jpg
-      Hyster_H50FT_2018_07.jpg
+      Toyota_8FGU25_2019_01.jpg               (single-provider batch)
+      Toyota_8FGU25_2019_01_Gemini.jpg        (multi-provider; Gemini variant)
+      Toyota_8FGU25_2019_01_Openai.jpg        (multi-provider; OpenAI variant)
 
     The padding width grows with the batch size so sequencing sorts
     correctly in any file explorer (1-9 → 1-digit, 10-99 → 2-digit, etc.).
-    Falls back to 'forklift_NN.jpg' if every part sanitizes to empty.
+    Provider suffix lets the operator tell duplicate variants apart in
+    the ZIP — see ExportProRequest.providers (parallel to asset_ids).
+    Falls back to 'forklift_NN[.jpg|_Provider.jpg]' if every meta part
+    sanitizes to empty.
     """
     parts = [
         _sanitize_filename_part(make),
@@ -83,7 +94,13 @@ def _build_pro_filename(
     else:
         width = 1
     seq = str(index + 1).zfill(width)
-    return f"{base}_{seq}.jpg"
+    provider_part = ""
+    if provider:
+        # Capitalise just the first letter — easier to read in a file
+        # explorer than ALL CAPS, and consistent with the brand chips
+        # in the Enhance tab UI.
+        provider_part = f"_{_sanitize_filename_part(provider).capitalize()}"
+    return f"{base}_{seq}{provider_part}.jpg"
 
 
 @router.post(
@@ -214,6 +231,15 @@ async def export_pro_preview(
     gcs_client = gcs_lib.Client(project=settings.gcp_project)
     derivatives_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
 
+    # Build a per-asset_id → provider lookup before the stream starts.
+    # `body.providers` is a parallel list to `body.asset_ids`; missing /
+    # short / None entries default to None so the filename builder
+    # falls back to the un-suffixed form.
+    provider_by_asset_id: dict[uuid.UUID, str | None] = {}
+    if body.providers is not None:
+        for aid, p in zip(body.asset_ids, body.providers):
+            provider_by_asset_id[aid] = p if p else None
+
     async def event_stream():
         try:
             # ── Phase 0: resolve + download all source bytes in parallel ──
@@ -261,6 +287,7 @@ async def export_pro_preview(
                         year=project.year,
                         index=i,
                         total=total,
+                        provider=provider_by_asset_id.get(asset_id),
                     )
                     out_object = f"session/{body.session_id}/pro/{asset_id}.jpg"
                     out_uri    = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"

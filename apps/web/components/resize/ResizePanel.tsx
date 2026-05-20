@@ -34,8 +34,15 @@ import type { ForkliftMeta, ResizeResult } from "../../lib/types";
 
 export interface ResizePanelProps {
   sessionId: string;
-  /** Curated list of assets the user "Send to Resize"'d from the Scan tab. */
-  enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string }>;
+  /**
+   * Curated list of assets the user "Send to Resize"'d from the Scan tab.
+   * `provider` is carried so the backend export endpoint can append the
+   * model name to each output filename — when the operator sends the
+   * same source image's Gemini + OpenAI variants both to Resize, the
+   * ZIP entries become `..._01_Gemini.jpg` and `..._01_Openai.jpg`
+   * instead of two same-named files.
+   */
+  enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string; provider?: string }>;
   /**
    * Kept for prop compatibility with Workspace. The current PRO flow returns a
    * single ZIP blob and does not produce per-asset ResizeResult rows, so this
@@ -289,7 +296,12 @@ export function ResizePanel({
       await exportProPreviewStream(
         {
           sessionId,
-          assetIds: enhancedAssets.map((a) => a.assetId),
+          assetIds:  enhancedAssets.map((a) => a.assetId),
+          // Parallel list so the backend can suffix each output's
+          // filename with the model name — e.g. when the operator
+          // resizes Gemini + OpenAI variants of the same source they
+          // both end up in the ZIP under distinguishable names.
+          providers: enhancedAssets.map((a) => a.provider ?? null),
         },
         {
           onStarted: (total) => {

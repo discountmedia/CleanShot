@@ -512,6 +512,12 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
         )}
         {tab === "usage" && <UsageTab />}
       </main>
+
+      <footer className="px-6 py-6 text-center">
+        <p className="text-[10px] text-zinc-800 select-none">
+          Developed by Stephen Cunningham © AI App Integrations LLC 2026
+        </p>
+      </footer>
     </div>
   );
 }

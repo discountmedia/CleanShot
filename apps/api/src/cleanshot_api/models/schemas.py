@@ -264,6 +264,12 @@ class ExportProRequest(BaseModel):
     """PRO preset: 1024px, 7×5 crop, JPEG ≤100 kb."""
     session_id: uuid.UUID
     asset_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    # Parallel list to asset_ids — entry [i] is the AI provider that
+    # produced asset_ids[i] (or None when unknown). When present, the
+    # export endpoint suffixes each output filename with the model name
+    # so duplicate variants of the same source image stay distinguishable
+    # in the ZIP (e.g. "..._01_Gemini.jpg" vs "..._01_Openai.jpg").
+    providers: list[str | None] | None = None
 
 
 class ExportCustomRequest(BaseModel):

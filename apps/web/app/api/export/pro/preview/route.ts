@@ -28,6 +28,8 @@ export const dynamic = "force-dynamic";
 interface ClientRequest {
   sessionId: string;
   assetIds: string[];
+  /** Optional parallel list — entry [i] is the AI provider for assetIds[i]. */
+  providers?: (string | null)[];
 }
 
 export async function POST(request: NextRequest) {
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({
       session_id: body.sessionId,
       asset_ids:  body.assetIds,
+      providers:  body.providers,
     }),
     signal: request.signal,
     cache: "no-store",

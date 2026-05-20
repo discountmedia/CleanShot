@@ -28,6 +28,28 @@ interface PipelineAsset {
   filename: string;
   thumbnailUrl: string;
   outputUrl?: string;
+  /**
+   * Which AI provider produced this enhance output. Carried through
+   * the Scan and Resize pipelines so duplicate variants of the same
+   * source image (one per provider) can be distinguished by name +
+   * baked into the export filename.
+   */
+  provider?: string;
+}
+
+// `filename` lives in the UI as "Toyota_8FGU25_2019_01.jpg" today. When
+// the same source image is enhanced through 2+ providers and sent to
+// Scan, every variant ends up with the same filename — confusing. This
+// helper suffixes the basename with the provider so the operator can
+// tell them apart in the Scan / Resize lists:
+//
+//   "Toyota_8FGU25_2019_01.jpg" + "gemini" → "Toyota_8FGU25_2019_01_Gemini.jpg"
+function providerSuffixedFilename(name: string, provider?: string): string {
+  if (!provider) return name;
+  const cap = provider.charAt(0).toUpperCase() + provider.slice(1);
+  const idx = name.lastIndexOf(".");
+  if (idx < 0) return `${name}_${cap}`;
+  return `${name.slice(0, idx)}_${cap}${name.slice(idx)}`;
 }
 
 interface WorkspaceProps {
@@ -92,17 +114,21 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     outputAssetId: string;
     filename: string;
     outputUrl: string;
+    provider?: string;
   }>) => {
     setEnhancedAssets((prev) => {
-      const existing = new Set(prev.map((a) => a.assetId));
-      const additions = items
-        .filter((it) => !existing.has(it.outputAssetId))
-        .map((it): PipelineAsset => ({
-          assetId:      it.outputAssetId,
-          filename:     it.filename,
-          thumbnailUrl: it.outputUrl,
-          outputUrl:    it.outputUrl,
-        }));
+      // Duplicates are now allowed by design — the same source image
+      // can land in Scan multiple times if the operator wants to scan
+      // each provider's variant separately, or re-run a scan on the
+      // same item. Filenames carry a provider suffix so the operator
+      // can tell variants apart in the Scan tab list.
+      const additions = items.map((it): PipelineAsset => ({
+        assetId:      it.outputAssetId,
+        filename:     providerSuffixedFilename(it.filename, it.provider),
+        thumbnailUrl: it.outputUrl,
+        outputUrl:    it.outputUrl,
+        provider:     it.provider,
+      }));
       return additions.length > 0 ? [...prev, ...additions] : prev;
     });
     // Switch to the Scan tab so the user sees the result of their action.
@@ -120,11 +146,13 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
 
   // Explicit user action from the Scan tab. Mirror of handleSendToScan,
   // but feeds the resizeAssets pipeline + switches to the Resize tab.
+  // Duplicates are intentionally allowed — the operator may want to
+  // resize the same source image through multiple providers' variants
+  // and download them all (filenames carry provider suffixes so the
+  // ZIP entries are distinguishable).
   const handleSendToResize = (items: PipelineAsset[]) => {
     setResizeAssets((prev) => {
-      const existing = new Set(prev.map((a) => a.assetId));
-      const additions = items.filter((it) => !existing.has(it.assetId));
-      return additions.length > 0 ? [...prev, ...additions] : prev;
+      return items.length > 0 ? [...prev, ...items] : prev;
     });
     setActiveTab("resize");
   };
@@ -198,6 +226,14 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           )}
         </div>
       </main>
+
+      {/* App-wide attribution footer — intentionally low-contrast.
+          Visible on every tab below the active panel content. */}
+      <footer className="px-6 py-6 text-center">
+        <p className="text-[10px] text-zinc-800 select-none">
+          Developed by Stephen Cunningham © AI App Integrations LLC 2026
+        </p>
+      </footer>
     </div>
   );
 }

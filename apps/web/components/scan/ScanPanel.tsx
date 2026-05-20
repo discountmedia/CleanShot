@@ -55,7 +55,7 @@
 // This component only reads the results from the BFF polling endpoint.
 // ──────────────────────────────────────────────────────────────────────────────
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import {
@@ -552,7 +552,7 @@ function ImageScanCard({
 
 export interface ScanPanelProps {
   sessionId: string;
-  enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }>;
+  enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string; provider?: string }>;
   onScanComplete?: (scans: ImageScanState[]) => void;
   /**
    * Called by "Reset scan" — wipes the workspace's enhancedAssets pipeline
@@ -567,7 +567,7 @@ export interface ScanPanelProps {
    * latest version of the image (regen output if a regen has run,
    * otherwise the enhanced thumbnail URL).
    */
-  onSendToResize: (items: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }>) => void;
+  onSendToResize: (items: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string; provider?: string }>) => void;
 }
 
 export function ScanPanel({
@@ -587,13 +587,21 @@ export function ScanPanel({
   // the card itself decides whether to send regen or original payload.
   const [sentToResizeAssetIds, setSentToResizeAssetIds] = useState<Set<string>>(new Set());
 
+  // Quick lookup of provider per assetId so per-card and bulk sends
+  // can attach the provider tag the Workspace → Resize → export
+  // pipeline needs to differentiate duplicate variants.
+  const providerByAssetId = useMemo(
+    () => new Map(enhancedAssets.map((a) => [a.assetId, a.provider])),
+    [enhancedAssets],
+  );
+
   const sendOneToResize = useCallback(
     (item: { assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }, scanAssetId: string) => {
       if (sentToResizeAssetIds.has(scanAssetId)) return;
-      onSendToResize([item]);
+      onSendToResize([{ ...item, provider: providerByAssetId.get(item.assetId) }]);
       setSentToResizeAssetIds((prev) => new Set(prev).add(scanAssetId));
     },
-    [onSendToResize, sentToResizeAssetIds]
+    [onSendToResize, sentToResizeAssetIds, providerByAssetId]
   );
 
   const unsentScans = scanStates.filter(
@@ -606,6 +614,7 @@ export function ScanPanel({
       unsentScans.map((s) => ({
         assetId:      s.assetId,
         filename:     s.filename,
+        provider:     providerByAssetId.get(s.assetId),
         thumbnailUrl: s.thumbnailUrl,
         outputUrl:    s.outputUrl,
       }))
@@ -869,9 +878,15 @@ export function ScanPanel({
       {/* ── Model attribution ── */}
       {scanStates.length > 0 && (
         <p className="text-[11px] text-zinc-700 text-center">
-          Primary scan:{" "}
+          Scanned by{" "}
           <code className="font-mono">gemini-2.5-flash</code>
-          {" "}· Additional providers active when enabled on backend
+          {" · "}
+          <code className="font-mono">gpt-5.4</code>
+          {" · "}
+          <code className="font-mono">claude-sonnet-4-6</code>
+          {" "}(plus{" "}
+          <code className="font-mono">claude-opus-4-7</code>
+          {" "}on hard cases)
         </p>
       )}
     </div>

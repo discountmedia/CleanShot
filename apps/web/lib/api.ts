@@ -257,7 +257,18 @@ export interface ExportProPreviewCallbacks {
  * event before the `result` event. Callers should wrap in try/catch.
  */
 export async function exportProPreviewStream(
-  params: { sessionId: string; assetIds: string[] },
+  params: {
+    sessionId: string;
+    assetIds: string[];
+    /**
+     * Parallel list to `assetIds` — each entry is the AI provider that
+     * produced the matching output asset, or null when unknown. The
+     * backend uses it to suffix each ZIP filename with the model name
+     * so the operator can distinguish duplicate variants of the same
+     * source image (Gemini vs OpenAI vs Flux vs Reve).
+     */
+    providers?: (string | null)[];
+  },
   callbacks: ExportProPreviewCallbacks,
   signal?: AbortSignal,
 ): Promise<void> {
