@@ -75,7 +75,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   restoreDecals: false,
   removePeople: false,
   removeBackgroundSignage: false,
-  paintForksRedYellowTips: false,
+  paintForksRedYellowTips: true, // default ON — Discount Forklift signature treatment
   shineTires: false,
   improveLighting: false,
   removeRentalBranding: true,    // default ON — most batches are ex-rental units

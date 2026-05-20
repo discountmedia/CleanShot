@@ -205,7 +205,10 @@ class EnhanceToggles(BaseModel):
     restore_decals: bool = Field(False, alias="restoreDecals")
     remove_people: bool = Field(False, alias="removePeople")
     remove_background_signage: bool = Field(False, alias="removeBackgroundSignage")
-    paint_forks_red_yellow_tips: bool = Field(False, alias="paintForksRedYellowTips")
+    # Default ON — painted forks (red w/ yellow tips, LBR stays black) are
+    # part of Discount Forklift's standard treatment. Operators can
+    # uncheck for special cases (e.g. when forks should stay as-is).
+    paint_forks_red_yellow_tips: bool = Field(True, alias="paintForksRedYellowTips")
     shine_tires: bool = Field(False, alias="shineTires")
     improve_lighting: bool = Field(False, alias="improveLighting")
     # Default ON — most batches are ex-rental units. Surfaces as a
