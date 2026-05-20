@@ -127,3 +127,72 @@ export async function enqueueRegen(params: {
 }): Promise<{ jobId: string }> {
   return post("/api/enhance/regen", params);
 }
+
+// ─── Save project (precondition for any /api/export/* endpoint) ─────────────
+
+export interface SaveProjectInput {
+  sessionId: string;
+  title: string;
+  make: string;
+  year: number;
+  model: string;
+  tireType: string;
+  capacity: string;
+  fuelType: string;
+  username: string;
+  photoType: "auction" | "studio";
+}
+
+export async function saveProject(input: SaveProjectInput): Promise<{ projectId: string }> {
+  return post("/api/projects/save", input);
+}
+
+// ─── Export (PRO preset: 1024×731 7:5 JPEG ≤99 KB) ───────────────────────────
+
+export interface ExportProResult {
+  blob: Blob;
+  /** Filename parsed from Content-Disposition. ZIP for batches, JPEG for single. */
+  filename: string;
+  /** Set by FastAPI when the ≤100 KB target was unachievable on at least one image. */
+  warning: string | null;
+}
+
+/**
+ * POST /api/export/pro → returns the binary response as a Blob so the caller
+ * can trigger a browser download. Throws on non-2xx with the response body
+ * text as the error message (so save-project 403s surface cleanly).
+ */
+export async function exportProAsBlob(params: {
+  sessionId: string;
+  assetIds: string[];
+}): Promise<ExportProResult> {
+  const res = await fetch("/api/export/pro", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`POST /api/export/pro → ${res.status}: ${text}`);
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] ?? "cleanshot_pro_export.zip";
+  const warning = res.headers.get("x-warning");
+  const blob = await res.blob();
+  return { blob, filename, warning };
+}
+
+/** Programmatically trigger a browser download for a Blob. */
+export function triggerBrowserDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Defer revoke so Safari etc. can still resolve the URL through the click.
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
