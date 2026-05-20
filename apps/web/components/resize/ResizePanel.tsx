@@ -26,6 +26,7 @@
 import { useEffect, useState } from "react";
 import {
   approveSet,
+  exportCollageAsBlob,
   exportProPreviewStream,
   saveProject,
   type ExportProPreviewItem,
@@ -184,10 +185,11 @@ export function ResizePanel({
   // gated on it. Editing the form after a successful Save does NOT unset
   // isSaved (the backend project row is still saved); we re-enable Save so
   // the user can push the updated metadata in (it's an UPSERT server-side).
-  const [isSaving,    setIsSaving]    = useState(false);
-  const [isSaved,     setIsSaved]     = useState(false);
-  const [isExporting, setIsExporting] = useState(false);
-  const [error,       setError]       = useState<string | null>(null);
+  const [isSaving,           setIsSaving]           = useState(false);
+  const [isSaved,            setIsSaved]            = useState(false);
+  const [isExporting,        setIsExporting]        = useState(false);
+  const [isExportingCollage, setIsExportingCollage] = useState(false);
+  const [error,              setError]              = useState<string | null>(null);
 
   // Preview state: populated by the /api/export/pro/preview response.
   // When non-null the grid renders, the operator visually verifies the
@@ -209,7 +211,8 @@ export function ResizePanel({
   const { valid: formValid, yearNum } = validateForm(form);
   const hasAssets = enhancedAssets.length > 0;
   const canSave   = formValid && !isSaving;
-  const canExport = isSaved && hasAssets && !isExporting;
+  const canExport        = isSaved && hasAssets && !isExporting && !isExportingCollage;
+  const canExportCollage = isSaved && hasAssets && !isExporting && !isExportingCollage;
 
   const updateField = <K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -331,6 +334,40 @@ export function ResizePanel({
     }
   };
 
+  // Collage export — fit-to-long-edge at 1024 px, no crop, ≤99 KB JPEG.
+  // Simpler than PRO: no streaming progress + no preview grid, just a
+  // straight blob download. The image's original aspect ratio is
+  // preserved, so there's nothing to "preview" the way the 7:5 crop
+  // needs — the operator already composed the layout upstream and just
+  // wants the downsized JPEG.
+  const handleExportCollage = async () => {
+    if (!hasAssets) return;
+    setError(null);
+    setIsExportingCollage(true);
+    try {
+      const { blob, filename, warning } = await exportCollageAsBlob({
+        sessionId,
+        assetIds:  enhancedAssets.map((a) => a.assetId),
+        providers: enhancedAssets.map((a) => a.provider ?? null),
+      });
+      if (warning) setAnyWarning(true);
+      // Trigger browser download. Object URL is revoked once the click
+      // completes so we don't pin the blob in memory.
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Collage export failed");
+    } finally {
+      setIsExportingCollage(false);
+    }
+  };
+
   // Format bytes as KB or MB for the status badges.
   const formatBytes = (b: number): string => {
     if (b < 1024) return `${b} B`;
@@ -344,14 +381,25 @@ export function ResizePanel({
     <div className="space-y-6">
 
       {/* ── Spec card ── */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-2">
-        <h3 className="text-sm font-semibold text-zinc-200">PRO Export Spec</h3>
-        <ul className="text-xs text-zinc-400 space-y-1" role="list">
-          <li>• <strong className="text-zinc-300">1024 × 731 px</strong> — 7:5 aspect ratio</li>
-          <li>• <strong className="text-zinc-300">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
-          <li>• <strong className="text-zinc-300">≤ 99 KB JPEG</strong> — quality iterated until target</li>
-          <li>• Batch returns as a single ZIP; single asset returns as JPEG</li>
-        </ul>
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
+        <div className="space-y-2">
+          <h3 className="text-sm font-semibold text-zinc-200">PRO Export Spec</h3>
+          <ul className="text-xs text-zinc-400 space-y-1" role="list">
+            <li>• <strong className="text-zinc-300">1024 × 731 px</strong> — 7:5 aspect ratio</li>
+            <li>• <strong className="text-zinc-300">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
+            <li>• <strong className="text-zinc-300">≤ 99 KB JPEG</strong> — quality iterated until target</li>
+            <li>• Batch returns as a single ZIP; single asset returns as JPEG</li>
+          </ul>
+        </div>
+        <div className="space-y-2 pt-3 border-t border-zinc-800">
+          <h3 className="text-sm font-semibold text-zinc-200">Collage Export Spec</h3>
+          <ul className="text-xs text-zinc-400 space-y-1" role="list">
+            <li>• <strong className="text-zinc-300">1024 px long edge</strong> — original aspect ratio preserved</li>
+            <li>• <strong className="text-zinc-300">No crop</strong> — fits to long edge; output is whatever the input's shape calls for</li>
+            <li>• <strong className="text-zinc-300">≤ 99 KB JPEG</strong> — same quality-iteration loop as PRO</li>
+            <li>• Use for pre-composed multi-image listing collages where the layout is already decided</li>
+          </ul>
+        </div>
       </div>
 
       {/* ── Asset count ── */}
@@ -446,29 +494,34 @@ export function ResizePanel({
         </p>
       )}
 
-      {/* ── Save + Export actions ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <button
-          onClick={handleSave}
-          disabled={!canSave}
-          className={`
-            py-3 px-6 rounded-xl font-semibold text-sm transition-all
-            ${canSave
-              ? isSaved
-                ? "bg-green-700 hover:bg-green-600 text-white"
-                : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-              : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
-          `}
-        >
-          {isSaving
-            ? "Saving project…"
-            : isSaved
-              ? "Re-save Project"
-              : !formValid
-                ? "Fill all fields to save"
-                : "Save Project"}
-        </button>
+      {/* ── Save action ── */}
+      <button
+        onClick={handleSave}
+        disabled={!canSave}
+        className={`
+          w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+          ${canSave
+            ? isSaved
+              ? "bg-green-700 hover:bg-green-600 text-white"
+              : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
+            : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+        `}
+      >
+        {isSaving
+          ? "Saving project…"
+          : isSaved
+            ? "Re-save Project"
+            : !formValid
+              ? "Fill all fields to save"
+              : "Save Project"}
+      </button>
 
+      {/* ── Export actions (PRO + Collage) ── */}
+      {/* Collage path uses a different resize semantic (1024 long-edge
+          fit, no crop) than PRO (1024×731 7:5 cover-crop). Same upstream
+          assets, different output preset — wired as a sibling button so
+          the operator picks at export time which target they need. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
         <button
           onClick={handleExport}
           disabled={!canExport}
@@ -486,8 +539,28 @@ export function ResizePanel({
               : !hasAssets
                 ? "No assets queued"
                 : previewItems.length > 0
-                  ? `Re-resize ${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""}`
-                  : `Resize & preview (${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""})`}
+                  ? `Re-resize ${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""} (PRO)`
+                  : `PRO export — 1024×731 (${enhancedAssets.length})`}
+        </button>
+
+        <button
+          onClick={handleExportCollage}
+          disabled={!canExportCollage}
+          className={`
+            py-3 px-6 rounded-xl font-semibold text-sm transition-all
+            ${canExportCollage
+              ? "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/40"
+              : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+          `}
+          title="Collage preset: 1024px long edge, no crop, ≤99 KB JPEG. Use for pre-composed multi-image listing collages."
+        >
+          {isExportingCollage
+            ? "Resizing collage(s)…"
+            : !isSaved
+              ? "Save project first"
+              : !hasAssets
+                ? "No assets queued"
+                : `Collage export — 1024 long edge (${enhancedAssets.length})`}
         </button>
       </div>
 

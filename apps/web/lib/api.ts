@@ -209,6 +209,49 @@ export async function exportProAsBlob(params: {
   return { blob, filename, warning };
 }
 
+// ─── Export (COLLAGE preset: 1024 long edge, no crop, JPEG ≤99 KB) ──────────
+
+export interface ExportCollageResult {
+  blob: Blob;
+  /** Filename parsed from Content-Disposition. ZIP for batches, JPEG for single. */
+  filename: string;
+  /** Set by FastAPI when the ≤99 KB target was unachievable on at least one image. */
+  warning: string | null;
+}
+
+/**
+ * POST /api/export/collage → returns the binary response as a Blob so the
+ * caller can trigger a browser download. Used for pre-composed multi-image
+ * listing collages where the layout has already been decided upstream and
+ * the operator just needs a marketing-target-sized JPEG under the listing-
+ * site upload cap.
+ *
+ * Same shape as exportProAsBlob — the only difference is the server-side
+ * resize semantics (fit-to-long-edge instead of 7:5 cover-crop).
+ */
+export async function exportCollageAsBlob(params: {
+  sessionId: string;
+  assetIds: string[];
+  providers?: (string | null)[];
+}): Promise<ExportCollageResult> {
+  const res = await fetch("/api/export/collage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`POST /api/export/collage → ${res.status}: ${text}`);
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] ?? "cleanshot_collage_export.zip";
+  const warning = res.headers.get("x-warning");
+  const blob = await res.blob();
+  return { blob, filename, warning };
+}
+
 // ─── Export (PRO preview: per-image signed URLs + ZIP signed URL) ───────────
 
 export interface ExportProPreviewItem {

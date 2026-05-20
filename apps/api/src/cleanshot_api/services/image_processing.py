@@ -72,6 +72,45 @@ def export_pro(input_bytes: bytes) -> ExportResult:
     return ExportResult(data=data, content_type="image/jpeg", size_warning=size_warning)
 
 
+def export_collage(input_bytes: bytes) -> ExportResult:
+    """
+    COLLAGE preset: 1024px LONG EDGE (fit, NOT crop), JPEG ≤99 kb.
+
+    Unlike PRO (1024×731 7:5 zoom-to-fill), collage images preserve the
+    source aspect ratio entirely — the operator has already composed the
+    layout, we just downsize so it fits the marketing target. Output is
+    whatever (≤1024 × ≤1024) preserves the original shape.
+
+    Quality iteration mirrors export_pro: start at Q=85, drop by 8 each
+    miss, stop at Q<20 with size_warning=True. Same ≤100 kb-class
+    behaviour, just one kilobyte tighter at 99 kb so collages reliably
+    fit under listing-site upload caps that quote "100 kb max".
+    """
+    img = pyvips.Image.new_from_buffer(input_bytes, "")
+
+    long_edge = max(img.width, img.height)
+    if long_edge > 1024:
+        scale = 1024 / long_edge
+        img = img.resize(scale, kernel="lanczos3")
+    # else: input is already at-or-below target, no upscale — keep as-is.
+
+    quality = 85
+    max_size = 99 * 1024  # 99 kb (cushion below the 100 kb listing cap)
+    data = b""
+    size_warning = False
+
+    for _attempt in range(10):
+        data = img.write_to_buffer(".jpg", Q=quality, optimize_coding=True)
+        if len(data) <= max_size:
+            break
+        quality -= 8
+        if quality < 20:
+            size_warning = True
+            break
+
+    return ExportResult(data=data, content_type="image/jpeg", size_warning=size_warning)
+
+
 def export_custom(
     input_bytes: bytes,
     *,

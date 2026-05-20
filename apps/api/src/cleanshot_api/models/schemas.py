@@ -272,6 +272,20 @@ class ExportProRequest(BaseModel):
     providers: list[str | None] | None = None
 
 
+class ExportCollageRequest(BaseModel):
+    """
+    COLLAGE preset: 1024px LONG EDGE (fit, NOT crop), JPEG ≤99 kb.
+    Same input shape as ExportProRequest; difference is server-side —
+    no 7:5 crop, just downsize to fit the long edge.
+    """
+    session_id: uuid.UUID
+    asset_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
+    # Parallel list to asset_ids — entry [i] is the AI provider that
+    # produced asset_ids[i]. Same semantics as ExportProRequest.providers
+    # (filename suffix for distinguishing duplicate variants in ZIPs).
+    providers: list[str | None] | None = None
+
+
 class ExportCustomRequest(BaseModel):
     """Custom export — crop-not-letterbox enforced absolutely."""
     session_id: uuid.UUID
