@@ -486,7 +486,7 @@ gcloud run services update-traffic cleanshot-api \
 
 ### Enhance tab
 
-1. Drop up to 22 images into the upload zone (drag-and-drop or file picker)
+1. Drop up to 10 images into the upload zone (drag-and-drop or file picker)
 2. Files over 4.5 MB are automatically compressed client-side before upload (Vercel limit)
 3. Optionally fill in forklift metadata: Make, Model, Year, Tire Type, Capacity, Fuel Type — helps Gemini cross-reference the captioned library
 4. Toggle the enhancements you want:
@@ -580,7 +580,7 @@ The browser needs a `<canvas>` element to compress images. This fails in some he
 
 **Enhance job stuck at "queued" for more than 2 minutes**
 
-At Tier 1 IPM, Cloud Tasks dispatches one enhance job every 10 seconds. A batch of 22 images takes approximately 3–4 minutes to fully dispatch. The QueueStatusBar shows estimated time remaining. If a job is stuck for more than 10 minutes, check Cloud Run logs for `gemini-2.5-flash-image` quota errors (429s). The Dynamic Shared Quota on this model is subject to global congestion.
+Cloud Tasks dispatches enhance jobs at the rate configured on the `cleanshot-image-gen` queue's `max-dispatches-per-second` setting. A batch of 10 images at 0.1 dps takes ~100s to fully dispatch; at 1.0 dps it's ~10s. Check the current queue rate with `gcloud tasks queues describe cleanshot-image-gen --location=us-central1` and raise it with `gcloud tasks queues update ... --max-dispatches-per-second=N` if batches feel slow. The QueueStatusBar shows estimated time remaining. If a job is stuck for more than 10 minutes, check Cloud Run logs for quota errors (429s) from the active image-gen provider.
 
 **Scan shows no results after job completes**
 

@@ -39,17 +39,26 @@
 //  Anthropic claude-sonnet-4-6 (backend):
 //    client.messages.create(
 //      model='claude-sonnet-4-6',    ← or 'claude-opus-4-7' for hard scans
+//      max_tokens=3048,
+//      system=SCAN_SYSTEM_PROMPT,    ← prompt goes top-level, NOT in user content
+//      tools=[{                       ← tool-forced JSON pattern (NOT output_config —
+//        'name': 'report_scan',      that param does not exist in Messages API and
+//        'description': '...',        causes HTTP 400)
+//        'input_schema': ScanResult.model_json_schema(),
+//      }],
+//      tool_choice={'type':'tool', 'name':'report_scan'},
 //      messages=[{'role':'user','content':[
 //        {'type':'image','source':{
 //          'type':'base64',
 //          'media_type': media_type,
 //          'data': image_b64,         ← raw base64, NO "data:…;base64," PREFIX
 //        }},
-//        {'type':'text','text': SCAN_SYSTEM_PROMPT}
+//        // user content carries only the image — instructions are in `system`
 //      ]}],
-//      output_config={'format': {'type':'json_schema',   ← GA structured output (NOT legacy messages.parse)
-//                                'schema': ScanResult.model_json_schema()}},
 //    )
+//    # Result lives in the tool_use content block, NOT in a parseable text:
+//    # tool_block = next(b for b in response.content if b.type == 'tool_use')
+//    # result = ScanResult.model_validate(tool_block.input)
 //
 // These format differences are handled entirely on the FastAPI side.
 // This component only reads the results from the BFF polling endpoint.
