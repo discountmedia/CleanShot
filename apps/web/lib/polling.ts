@@ -3,7 +3,7 @@
 // Adaptive polling hook — intervals match Phase 2 v2.5 Tier 1 IPM reality.
 // 3s while processing, 10s while queued (matches dispatch rate), 15s after 2 min.
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { pollJob } from "./api";
 import type { JobRecord } from "./types";
 
@@ -12,12 +12,30 @@ const QUEUED_MS  = 10_000;  // job is queued (matches Cloud Tasks 0.1 dps)
 const SLOW_MS    = 15_000;  // >2 min elapsed (large batch cleanup)
 const ERROR_MS   = 5_000;   // network error — retry delay
 
+/**
+ * Adaptive poller. Callers usually pass inline arrow functions (e.g.
+ * `(j) => setJob(j)`) which get fresh identities on every render — if
+ * those identities were in the effect's deps array, the effect would
+ * re-run on every render and spin up a fresh poll loop while the old
+ * one was still mid-flight. We've seen that bug manifest as doubled
+ * polls in the access logs and jobs that never visually transition
+ * from "processing" because each render kept restarting the loop
+ * before the old one could call `onComplete`.
+ *
+ * To stay robust we stash the callbacks in a ref and depend only on
+ * `jobId`. The ref is updated on every render so the loop always
+ * sees the latest closures, but the effect itself never re-runs
+ * mid-poll.
+ */
 export function useJobPoller(
   jobId: string | null,
   onUpdate:   (job: JobRecord) => void,
   onComplete: (job: JobRecord) => void,
   onError:    (job: JobRecord) => void
 ) {
+  const cbRef = useRef({ onUpdate, onComplete, onError });
+  cbRef.current = { onUpdate, onComplete, onError };
+
   useEffect(() => {
     if (!jobId) return;
 
@@ -40,6 +58,7 @@ export function useJobPoller(
         try {
           const job = await pollJob(jobId, abort.signal);
           if (cancelled) return;
+          const { onUpdate, onComplete, onError } = cbRef.current;
           onUpdate(job);
 
           if (job.status === "complete")  { onComplete(job); return; }
@@ -64,5 +83,5 @@ export function useJobPoller(
       cancelled = true;
       abort.abort();
     };
-  }, [jobId, onUpdate, onComplete, onError]);
+  }, [jobId]);
 }
