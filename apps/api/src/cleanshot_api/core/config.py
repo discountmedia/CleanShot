@@ -79,6 +79,14 @@ class Settings(BaseSettings):
     # GCP Secret Manager (cleanshot-bfl-key) on Cloud Run; absent locally
     # unless the developer also sets BFL_API_KEY in their .env.
     bfl_api_key: str = Field("", alias="BFL_API_KEY")
+    # Google AI Studio API key — used for the enhance pipeline's Gemini
+    # calls so we can access preview image-gen models (e.g.
+    # gemini-3.1-flash-image-preview) that aren't yet published in this
+    # project's Vertex AI catalog. Scan continues to use Vertex AI (IAM)
+    # via the existing genai client; this key only feeds the second
+    # AI-Studio-backed genai client built in main.py's lifespan.
+    # Mounted from GCP Secret Manager (cleanshot-gemini-key) on Cloud Run.
+    gemini_api_key: str = Field("", alias="GEMINI_API_KEY")
 
     # -------------------------------------------------------------------------
     # Operational

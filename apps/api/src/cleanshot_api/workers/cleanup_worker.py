@@ -25,6 +25,10 @@ from cleanshot_api.models.schemas import (
     JobStatusEnum,
     OperationEnum,
 )
+# Shared helper — third worker needing this download utility (scan, enhance,
+# now cleanup). TODO: extract to cleanshot_api.services.gcs.download_image
+# once we're ready for the 3-file refactor.
+from cleanshot_api.workers.enhance_worker import _load_image_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +76,22 @@ async def _run_cleanup(
     payload: CleanupTaskPayload,
 ) -> None:
     pool = request.app.state.pool
-    genai_client = request.app.state.genai
+    # Cleanup uses the AI Studio Gemini client (same reason as enhance:
+    # preview image-gen models live on AI Studio first, may never reach
+    # Vertex's Publisher catalog).
+    genai_client = request.app.state.genai_aistudio
+    if not genai_client:
+        async with pool.acquire() as conn:
+            await queries.update_job_status(
+                conn,
+                payload.job_id,
+                JobStatusEnum.failed,
+                error=(
+                    "Cleanup requires the AI Studio Gemini client but "
+                    "GEMINI_API_KEY is not set."
+                ),
+            )
+        return
     semaphore: asyncio.Semaphore = request.app.state.gemini_semaphore
     settings = get_settings()
 
@@ -83,12 +102,11 @@ async def _run_cleanup(
         async with semaphore:
             prompt = _build_cleanup_prompt(payload.anomaly_context)
 
-            # Gemini file_data requires mime_type. Derive from filename in URI.
+            # AI Studio doesn't accept GCS URIs — download bytes and inline
+            # via Part.from_bytes. Derive mime from the URI filename.
             mime_type = mimetypes.guess_type(payload.input_gcs_uri)[0] or "image/jpeg"
-            file_part = types.Part.from_uri(
-                file_uri=payload.input_gcs_uri,
-                mime_type=mime_type,
-            )
+            image_bytes, _ct = await _load_image_bytes(payload.input_gcs_uri)
+            file_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
             text_part = types.Part.from_text(text=prompt)
 
             response = await genai_client.aio.models.generate_content(

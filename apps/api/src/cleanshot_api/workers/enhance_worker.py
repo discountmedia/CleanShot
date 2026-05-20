@@ -285,9 +285,20 @@ async def _enhance_with_gemini(
     gcs_uri: str,
     prompt: str,
 ) -> bytes:
-    """Call Gemini 2.5 Flash Image. Returns raw PNG bytes."""
+    """
+    Call Gemini image-edit via the AI Studio backend. Returns raw PNG bytes.
+
+    The genai_client here must be the AI Studio variant
+    (genai.Client(api_key=...)). AI Studio does NOT accept GCS URIs as
+    image input — Part.from_uri(file_uri="gs://...") would 400 — so we
+    download the bytes from GCS first and inline them via Part.from_bytes.
+
+    Scan stays on the Vertex client (app.state.genai) where Part.from_uri
+    still works; only the enhance/cleanup flow uses AI Studio.
+    """
     mime_type = mimetypes.guess_type(gcs_uri)[0] or "image/jpeg"
-    file_part = types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
+    image_bytes, _ct = await _load_image_bytes(gcs_uri)
+    file_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
     text_part = types.Part.from_text(text=prompt)
 
     response = await genai_client.aio.models.generate_content(
@@ -439,7 +450,9 @@ async def _run_enhance(
 ) -> None:
     """Background coroutine — runs after HTTP 200 has been returned."""
     pool = request.app.state.pool
-    genai_client = request.app.state.genai
+    # Enhance uses the AI Studio Gemini client (preview image-gen models);
+    # scan still uses the Vertex client on app.state.genai.
+    genai_aistudio_client = request.app.state.genai_aistudio
     openai_client = request.app.state.openai
     gemini_semaphore: asyncio.Semaphore = request.app.state.gemini_semaphore
 
@@ -456,9 +469,11 @@ async def _run_enhance(
         else:
             prompt = _build_enhance_prompt(payload.toggles)
 
-        # Dispatch to the requested provider. Gemini calls go through the
-        # per-instance semaphore (Vertex AI quota is the binding cap). OpenAI
-        # and Flux have their own vendor-side rate limits and don't share
+        # Dispatch to the requested provider. The Gemini semaphore is
+        # still useful for cost control on the AI Studio key (the key has
+        # a per-minute rate limit we don't want to blow through), but
+        # the binding cap is AI Studio's quota, not Vertex's. OpenAI and
+        # Flux have their own vendor-side rate limits and don't share
         # ours.
         if payload.provider == "openai":
             if not openai_client:
@@ -474,9 +489,15 @@ async def _run_enhance(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default
+            if not genai_aistudio_client:
+                raise RuntimeError(
+                    "Gemini provider requested but the AI Studio client is "
+                    "not initialized. Mount cleanshot-gemini-key:latest as "
+                    "GEMINI_API_KEY via Cloud Run --set-secrets."
+                )
             async with gemini_semaphore:
                 output_bytes = await _enhance_with_gemini(
-                    genai_client, payload.input_gcs_uri, prompt
+                    genai_aistudio_client, payload.input_gcs_uri, prompt
                 )
 
         if not output_bytes:

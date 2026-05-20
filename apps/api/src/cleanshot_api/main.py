@@ -75,12 +75,32 @@ async def lifespan(app: FastAPI):
     logger.info("Auth schema migrations applied")
 
     # --- Gemini via Vertex AI IAM (ADC — no static key) ---
+    # Used by the scan worker. Scan stays on Vertex because gemini-2.5-flash
+    # (vision/JSON) is published there, and Vertex's GCS-URI image input
+    # (Part.from_uri) saves us downloading bytes per request.
     app.state.genai = genai.Client(
         vertexai=True,
         project=settings.gcp_project,
         location=settings.gcp_region,
     )
-    logger.info("Gemini client initialised (Vertex AI ADC)")
+    logger.info("Gemini Vertex client initialised (Vertex AI ADC)")
+
+    # --- Gemini via AI Studio (static API key) ---
+    # Used by the enhance / cleanup workers. Image-gen preview models
+    # like gemini-3.1-flash-image-preview ship to AI Studio first and may
+    # never reach Vertex's Publisher Models catalog. AI Studio requires a
+    # static API key (mounted via Secret Manager as GEMINI_API_KEY) and
+    # accepts image input only as inline base64 — see _enhance_with_gemini
+    # which now downloads from GCS and inlines via Part.from_bytes.
+    if settings.gemini_api_key:
+        app.state.genai_aistudio = genai.Client(api_key=settings.gemini_api_key)
+        logger.info("Gemini AI Studio client initialised (static API key)")
+    else:
+        app.state.genai_aistudio = None
+        logger.warning(
+            "GEMINI_API_KEY not set — enhance/cleanup Gemini calls will fail. "
+            "Mount cleanshot-gemini-key:latest via Cloud Run --set-secrets."
+        )
 
     # --- OpenAI (feature-flagged) ---
     if settings.scan_provider_openai:
