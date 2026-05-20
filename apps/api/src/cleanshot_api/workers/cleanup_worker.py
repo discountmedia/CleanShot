@@ -122,7 +122,10 @@ async def _run_cleanup(
                     # inputs + targeted anomaly prompts don't need the
                     # full reasoning budget. Bump back to "High" if you
                     # see cleanup outputs missing flagged issues.
-                    thinking_config=types.ThinkingConfig(thinking_level="Low"),
+                    # gemini-3.1-flash-image-preview only accepts "High"
+                    # (Medium and Low both return 400 INVALID_ARGUMENT).
+                    # Not a perf knob on this model.
+                    thinking_config=types.ThinkingConfig(thinking_level="High"),
                 ),
             )
 

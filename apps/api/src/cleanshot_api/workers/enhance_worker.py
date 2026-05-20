@@ -372,7 +372,12 @@ async def _enhance_with_gemini(
             # standard treatment + emphasis stack is long and the model
             # benefits from planning the edit before generating. Capital
             # "High" matches the official Python SDK enum exactly.
-            thinking_config=types.ThinkingConfig(thinking_level="Low"),
+            # gemini-3.1-flash-image-preview only accepts "High" — both
+            # "Medium" and "Low" return 400 INVALID_ARGUMENT. So this
+            # isn't really a perf knob on the current model. Reassess
+            # when image-gen models with a real thinking-level spectrum
+            # ship to AI Studio.
+            thinking_config=types.ThinkingConfig(thinking_level="High"),
         ),
     )
 
