@@ -481,6 +481,11 @@ async def _run_enhance(
                     "OpenAI provider requested but client is not initialized. "
                     "Set OPENAI_API_KEY and ensure the lifespan picked it up."
                 )
+            # Pace OpenAI requests against the org's per-minute cap
+            # (Tier-1 gpt-image-2 = 5 input-images/min). The limiter
+            # blocks here until a slot opens, so 10-image batches queue
+            # instead of failing with 429.
+            await request.app.state.openai_image_rate_limiter.acquire()
             output_bytes = await _enhance_with_openai(
                 openai_client, payload.input_gcs_uri, prompt
             )

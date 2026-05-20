@@ -50,6 +50,7 @@ from cleanshot_api.routers import (
     upload,
     worker,
 )
+from cleanshot_api.services.rate_limit import AsyncRateLimiter
 
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
 logger = logging.getLogger(__name__)
@@ -108,7 +109,11 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("SCAN_PROVIDER_OPENAI=true but OPENAI_API_KEY is not set")
         app.state.openai = openai.AsyncOpenAI(
             api_key=settings.openai_api_key,
-            max_retries=3,
+            # Bumped 3 → 8 so the SDK's built-in 429 backoff can ride out
+            # OpenAI's per-minute rate windows (Tier-1 gpt-image-2 is
+            # capped at 5 input-images/min). Safety net on top of the
+            # explicit rate limiter below.
+            max_retries=8,
             # 300s budget. /v1/responses (scan, GPT-5.4) returns in ~5s
             # so the higher ceiling is harmless there, but /v1/images/edits
             # with quality="high" on full-res forklift photos was reliably
@@ -151,6 +156,19 @@ async def lifespan(app: FastAPI):
     # Bumped 2 → 4 to roughly halve batch wall-clock time. Vertex AI quota
     # is the next ceiling; back off here if you start seeing 429s.
     app.state.gemini_semaphore = asyncio.Semaphore(4)
+
+    # --- OpenAI image-edit rate limiter ---
+    # OpenAI Tier-1 gpt-image-2 caps /v1/images/edits at 5 input-images
+    # per minute per organisation. The limiter serialises enhance jobs
+    # through a 5-per-60s sliding window so 10-image batches queue
+    # instead of erroring with 429. See services/rate_limit.py for the
+    # cross-instance caveat (it's process-local; bump to Valkey-backed
+    # if max-instances > 1 and you run heavy OpenAI batches).
+    app.state.openai_image_rate_limiter = AsyncRateLimiter(
+        max_events=5,
+        interval_seconds=60.0,
+        name="openai_image_edit",
+    )
 
     logger.info("CleanShot API ready")
     yield
