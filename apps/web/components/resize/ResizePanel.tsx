@@ -166,6 +166,7 @@ export function ResizePanel({
   // operator edits the Enhance form while the Resize panel is mounted
   // but hidden). Only fills in fields the operator hasn't already
   // touched locally — once they've typed something we don't clobber it.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional sync from upstream prop to local form state; uses functional setForm so prior input survives.
   useEffect(() => {
     setForm((prev) => ({
       ...prev,

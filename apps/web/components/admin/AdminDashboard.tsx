@@ -7,6 +7,7 @@
 // Data is fetched once and cached per-tab in component state — the
 // admin can click Refresh to pull fresh data.
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 import { KpiCard } from "../workspace/KpiCard";
@@ -229,6 +230,7 @@ function ProjectsTab({
   const [error,   setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch pattern: reset loading/error then fetch and write back. Refactor to SWR/React Query later if this grows.
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -310,6 +312,7 @@ function UsageTab() {
   const [loading, setLoading] = useState(true);
   const [days,    setDays]    = useState(30);
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch pattern: reset loading/error then fetch and write back.
   useEffect(() => {
     setLoading(true);
     setError(null);
@@ -474,6 +477,7 @@ function SupportTab() {
       .finally(() => setLoading(false));
   };
 
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- refresh() is the data-fetch pattern (reset loading/error then fetch); passing it directly to useEffect is intentional.
   useEffect(refresh, [filter]);
 
   const updateTicket = async (id: string, patch: { status?: SupportTicket["status"]; adminNotes?: string }) => {
@@ -637,9 +641,9 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
           </div>
           <div className="flex items-center gap-4 text-xs text-zinc-500">
             <span className="font-mono">{userEmail}</span>
-            <a href="/" className="text-blue-400 hover:text-blue-300 font-semibold">
+            <Link href="/" className="text-blue-400 hover:text-blue-300 font-semibold">
               ← Back to workspace
-            </a>
+            </Link>
           </div>
         </div>
         <nav className="max-w-screen-2xl mx-auto px-6 flex gap-1">

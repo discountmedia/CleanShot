@@ -34,7 +34,13 @@ export function useJobPoller(
   onError:    (job: JobRecord) => void
 ) {
   const cbRef = useRef({ onUpdate, onComplete, onError });
-  cbRef.current = { onUpdate, onComplete, onError };
+  // Refresh the latest callbacks after each render. Doing this in an
+  // effect (not during render) satisfies React Compiler's purity rule.
+  // Polls fire seconds apart, so the one-frame lag vs. assigning during
+  // render is irrelevant in practice.
+  useEffect(() => {
+    cbRef.current = { onUpdate, onComplete, onError };
+  });
 
   useEffect(() => {
     if (!jobId) return;

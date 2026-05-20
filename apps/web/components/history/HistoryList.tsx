@@ -334,6 +334,7 @@ export function HistoryList({
   // Refresh button is clicked. Workspace keeps all four panels mounted
   // simultaneously (visibility-only toggle), so without this the
   // history list would forever show whatever it loaded on first paint.
+  // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch pattern: reset loading/error then fetch and write back.
   useEffect(() => {
     if (!active) return;
     setLoading(true);

@@ -294,7 +294,6 @@ export async function exportProPreviewStream(
 
   // Read until the stream closes. The backend emits one final event
   // (`result` or `error`) and then closes the stream.
-  // eslint-disable-next-line no-constant-condition
   while (true) {
     const { done, value } = await reader.read();
     if (value) buffer += value;
