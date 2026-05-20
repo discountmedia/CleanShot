@@ -43,7 +43,7 @@ export default async function LoginPage({ searchParams }: Props) {
           <h1 className="text-2xl font-bold text-white tracking-[0.18em] uppercase">
             CleanShot
           </h1>
-          <p className="text-sm text-zinc-500">AI-powered forklift image processing</p>
+          <p className="text-sm text-zinc-400">by Discount Forklift</p>
         </div>
 
         {/* Sign-in card — black with a red top accent matching the
