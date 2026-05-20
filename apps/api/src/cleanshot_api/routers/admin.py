@@ -19,7 +19,7 @@ from typing import Any
 import uuid
 
 import asyncpg
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from cleanshot_api.core.security import require_api_key
 from cleanshot_api.db import queries
@@ -28,6 +28,7 @@ from cleanshot_api.models.schemas import (
     SupportTicketRecord,
     UpdateSupportTicketRequest,
 )
+from cleanshot_api.services.gcs import mint_read_url
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -201,6 +202,112 @@ async def list_projects(
             }
             for r in rows
         ],
+    }
+
+
+# ─── Project drill-down: approval sets + assets ──────────────────────────────
+
+
+@router.get(
+    "/projects/{project_id}/sets",
+    dependencies=[Depends(require_api_key)],
+)
+async def get_project_sets(
+    project_id: uuid.UUID,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> dict:
+    """
+    Drill-down view for the admin Projects tab — returns every approval
+    set tied to this project's session, with per-asset signed GET URLs
+    so the admin UI can render thumbnails directly.
+
+    Bypasses the email-match check the user-facing /api/v1/history
+    endpoint enforces — this route is admin-gated upstream by the BFF.
+    """
+    async with pool.acquire() as conn:
+        project_row = await conn.fetchrow(
+            """
+            SELECT  p.id, p.session_id, p.title, p.make, p.model, p.year,
+                    COALESCE(s.user_email, 'unknown') AS user_email
+            FROM    projects p
+            LEFT JOIN sessions s ON s.id = p.session_id
+            WHERE   p.id = $1
+            """,
+            project_id,
+        )
+
+    if project_row is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Project not found"
+        )
+
+    session_id = project_row["session_id"]
+
+    async with pool.acquire() as conn:
+        set_rows = await conn.fetch(
+            """
+            SELECT id, user_email, gcs_dir, make, model, image_count,
+                   created_at, expires_at
+            FROM   approval_sets
+            WHERE  session_id = $1
+            ORDER  BY created_at DESC
+            """,
+            session_id,
+        )
+
+    result_sets: list[dict[str, Any]] = []
+
+    for s in set_rows:
+        set_id   = s["id"]
+        dir_name = s["gcs_dir"].split("/")[-1] if s["gcs_dir"] else ""
+
+        async with pool.acquire() as conn:
+            asset_rows = await conn.fetch(
+                """
+                SELECT asset_id, gcs_path, filename
+                FROM   approval_set_assets
+                WHERE  approval_set_id = $1
+                ORDER  BY created_at
+                """,
+                set_id,
+            )
+
+        assets_out = []
+        for a in asset_rows:
+            try:
+                signed_url, _ = mint_read_url(a["gcs_path"])
+            except Exception:
+                signed_url = ""
+            assets_out.append({
+                "assetId":      str(a["asset_id"]),
+                "filename":     a["filename"],
+                "thumbnailUrl": signed_url,
+                "gcsPath":      a["gcs_path"],
+            })
+
+        result_sets.append({
+            "id":         str(set_id),
+            "userEmail":  s["user_email"],
+            "createdAt":  s["created_at"].isoformat(),
+            "expiresAt":  s["expires_at"].isoformat() if s["expires_at"] else None,
+            "dirName":    dir_name,
+            "make":       s["make"],
+            "model":      s["model"],
+            "imageCount": s["image_count"],
+            "assets":     assets_out,
+        })
+
+    return {
+        "project": {
+            "id":        str(project_row["id"]),
+            "userEmail": project_row["user_email"],
+            "title":     project_row["title"],
+            "make":      project_row["make"],
+            "model":     project_row["model"],
+            "year":      project_row["year"],
+        },
+        "sets":      result_sets,
+        "totalSets": len(result_sets),
     }
 
 

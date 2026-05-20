@@ -8,7 +8,7 @@
 // admin can click Refresh to pull fresh data.
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { KpiCard } from "../workspace/KpiCard";
 
@@ -219,6 +219,38 @@ function UsersTab({ onSelectUser }: { onSelectUser: (email: string) => void }) {
 
 // ─── Projects tab ─────────────────────────────────────────────────────────────
 
+interface ProjectSetAsset {
+  assetId:      string;
+  filename:     string;
+  thumbnailUrl: string;
+  gcsPath:      string;
+}
+
+interface ProjectSet {
+  id:         string;
+  userEmail:  string;
+  createdAt:  string;
+  expiresAt:  string | null;
+  dirName:    string;
+  make:       string | null;
+  model:      string | null;
+  imageCount: number;
+  assets:     ProjectSetAsset[];
+}
+
+interface ProjectSetsResponse {
+  project: {
+    id:        string;
+    userEmail: string;
+    title:     string;
+    make:      string;
+    model:     string;
+    year:      number;
+  };
+  sets:      ProjectSet[];
+  totalSets: number;
+}
+
 function ProjectsTab({
   filterEmail,
   onClearFilter,
@@ -229,9 +261,11 @@ function ProjectsTab({
   const [data,    setData]    = useState<AdminProject[] | null>(null);
   const [error,   setError]   = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  /** Project id currently expanded for image-set drill-down. */
+  const [expandedId, setExpandedId] = useState<string | null>(null);
 
-  // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch pattern: reset loading/error then fetch and write back. Refactor to SWR/React Query later if this grows.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch pattern: reset loading/error then fetch and write back. Refactor to SWR/React Query later if this grows.
     setLoading(true);
     setError(null);
     const qs = filterEmail ? `?user_email=${encodeURIComponent(filterEmail)}` : "";
@@ -269,6 +303,7 @@ function ProjectsTab({
           <table className="w-full text-sm">
             <thead className="bg-zinc-900/60 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
               <tr>
+                <th className="px-3 py-2 text-left font-semibold w-6" />
                 <th className="px-3 py-2 text-left font-semibold">Saved</th>
                 <th className="px-3 py-2 text-left font-semibold">User</th>
                 <th className="px-3 py-2 text-left font-semibold">Title</th>
@@ -282,24 +317,161 @@ function ProjectsTab({
               </tr>
             </thead>
             <tbody>
-              {data.map((p) => (
-                <tr key={p.id} className="border-t border-zinc-800 hover:bg-zinc-900/40">
-                  <td className="px-3 py-2 text-zinc-500">{isoDateShort(p.savedAt)}</td>
-                  <td className="px-3 py-2 font-mono text-zinc-200">{p.userEmail}</td>
-                  <td className="px-3 py-2 text-zinc-200">{p.title}</td>
-                  <td className="px-3 py-2 text-zinc-300">{p.make}</td>
-                  <td className="px-3 py-2 text-zinc-300">{p.model}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-zinc-400">{p.year}</td>
-                  <td className="px-3 py-2 text-zinc-400">{p.capacity}</td>
-                  <td className="px-3 py-2 text-zinc-400">{p.tireType}</td>
-                  <td className="px-3 py-2 text-zinc-400">{p.fuelType}</td>
-                  <td className="px-3 py-2 text-right tabular-nums text-zinc-400">{p.assetCount}</td>
-                </tr>
-              ))}
+              {data.map((p) => {
+                const expanded = expandedId === p.id;
+                return (
+                  <Fragment key={p.id}>
+                    <tr
+                      className={`border-t border-zinc-800 cursor-pointer transition-colors ${expanded ? "bg-blue-950/20" : "hover:bg-zinc-900/40"}`}
+                      onClick={() => setExpandedId(expanded ? null : p.id)}
+                      title={expanded ? "Hide image sets" : "View image sets"}
+                    >
+                      <td className="px-3 py-2 text-zinc-500">
+                        <svg
+                          className={`w-3 h-3 transition-transform ${expanded ? "rotate-90" : ""}`}
+                          fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+                        >
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                        </svg>
+                      </td>
+                      <td className="px-3 py-2 text-zinc-500">{isoDateShort(p.savedAt)}</td>
+                      <td className="px-3 py-2 font-mono text-zinc-200">{p.userEmail}</td>
+                      <td className="px-3 py-2 text-zinc-200">{p.title}</td>
+                      <td className="px-3 py-2 text-zinc-300">{p.make}</td>
+                      <td className="px-3 py-2 text-zinc-300">{p.model}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-zinc-400">{p.year}</td>
+                      <td className="px-3 py-2 text-zinc-400">{p.capacity}</td>
+                      <td className="px-3 py-2 text-zinc-400">{p.tireType}</td>
+                      <td className="px-3 py-2 text-zinc-400">{p.fuelType}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-zinc-400">{p.assetCount}</td>
+                    </tr>
+                    {expanded && (
+                      <tr className="border-t border-zinc-900 bg-zinc-950/40">
+                        <td colSpan={11} className="px-4 py-4">
+                          <ProjectSetsPanel projectId={p.id} />
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Loads + renders all approval sets (with thumbnails) for a project.
+ * Mounted lazily — only when the operator clicks a project row to expand.
+ * Each mount fetches once; closing + reopening re-fetches (signed URLs
+ * have a 1-hour expiry, so a stale cached result would 403 on click-out).
+ */
+function ProjectSetsPanel({ projectId }: { projectId: string }) {
+  const [data,    setData]    = useState<ProjectSetsResponse | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- data-fetch pattern: lazy load on expand; same shape as the parent's projects fetch.
+    setLoading(true);
+    setError(null);
+    fetch(`/api/admin/projects/${projectId}/sets`, { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((j: ProjectSetsResponse) => setData(j))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  }, [projectId]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-xs text-zinc-500">
+        <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
+          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+        </svg>
+        Loading image sets…
+      </div>
+    );
+  }
+
+  if (error) {
+    return <p className="text-xs text-red-400">{error}</p>;
+  }
+
+  if (!data || data.sets.length === 0) {
+    return (
+      <p className="text-xs text-zinc-500 italic">
+        No image sets have been approved for this project yet.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {data.sets.map((s) => (
+        <section
+          key={s.id}
+          className="rounded-lg border border-zinc-800 bg-zinc-950/40 overflow-hidden"
+        >
+          <header className="flex items-center justify-between gap-3 px-3 py-2 bg-zinc-900/40 border-b border-zinc-800 flex-wrap">
+            <div className="flex items-center gap-3 min-w-0 flex-wrap">
+              <span className="font-mono text-xs text-zinc-200 truncate">
+                {s.dirName}
+              </span>
+              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 tabular-nums">
+                {s.imageCount} image{s.imageCount !== 1 ? "s" : ""}
+              </span>
+            </div>
+            <span className="text-[10px] text-zinc-600 tabular-nums">
+              approved {isoDateShort(s.createdAt)}
+              {s.expiresAt && (
+                <> · expires {isoDateShort(s.expiresAt)}</>
+              )}
+            </span>
+          </header>
+
+          {s.assets.length === 0 ? (
+            <p className="px-3 py-3 text-xs text-zinc-500 italic">
+              No assets recorded on this set.
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-2 p-3">
+              {s.assets.map((a) => (
+                <a
+                  key={a.assetId}
+                  href={a.thumbnailUrl || "#"}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="relative aspect-square rounded overflow-hidden border border-zinc-800 hover:border-zinc-600 transition-colors bg-zinc-900 block"
+                  title={a.filename}
+                >
+                  {a.thumbnailUrl ? (
+                    /* eslint-disable-next-line @next/next/no-img-element -- inline thumbnail of an approval-set asset; we have a signed GCS URL and don't need next/image transformations */
+                    <img
+                      src={a.thumbnailUrl}
+                      alt={a.filename}
+                      className="w-full h-full object-cover"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex items-center justify-center text-[10px] text-zinc-600">
+                      no preview
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 bg-linear-to-t from-black/80 to-transparent px-1.5 py-1">
+                    <p className="text-[9px] font-mono text-zinc-200 truncate">
+                      {a.filename}
+                    </p>
+                  </div>
+                </a>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
     </div>
   );
 }
