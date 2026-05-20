@@ -1124,9 +1124,14 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-blue-500 focus:ring-2 focus:ring-blue-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-zinc-200">
-              Google Gemini
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-zinc-200">
+                Google Gemini
+              </p>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-emerald-300 bg-emerald-950/60 border border-emerald-800 rounded px-1.5 py-0.5">
+                Fast
+              </span>
+            </div>
             <p className="text-xs text-zinc-500 mt-0.5">
               Fastest and cheapest. Routes through gemini-3.1-flash-image-preview.
             </p>
@@ -1154,9 +1159,14 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-green-500 focus:ring-2 focus:ring-green-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-zinc-200">
-              OpenAI ChatGPT
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-zinc-200">
+                OpenAI ChatGPT
+              </p>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-red-300 bg-red-950/60 border border-red-800 rounded px-1.5 py-0.5">
+                Slowest
+              </span>
+            </div>
             <p className="text-xs text-zinc-500 mt-0.5">
               Slower but can be more literal. Routes through gpt-image-2-2026-04-21.
             </p>
@@ -1184,10 +1194,13 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-purple-500 focus:ring-2 focus:ring-purple-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-zinc-200">
                 Black Forest Labs Flux
               </p>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-950/60 border border-amber-800 rounded px-1.5 py-0.5">
+                Moderate
+              </span>
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-purple-100 bg-purple-600 rounded px-1.5 py-0.5 shadow-sm shadow-purple-900/60 animate-pulse">
                 New
               </span>
@@ -1219,10 +1232,13 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
             className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500 focus:ring-offset-0"
           />
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <p className="text-sm font-semibold text-zinc-200">
                 Reve
               </p>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-emerald-200 bg-emerald-900/70 border border-emerald-600 rounded px-1.5 py-0.5">
+                Fastest
+              </span>
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-fuchsia-100 bg-fuchsia-600 rounded px-1.5 py-0.5 shadow-sm shadow-fuchsia-900/60 animate-pulse">
                 New
               </span>
