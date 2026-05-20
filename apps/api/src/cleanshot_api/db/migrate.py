@@ -142,6 +142,48 @@ CREATE INDEX IF NOT EXISTS idx_usage_events_provider_model_created
 CREATE INDEX IF NOT EXISTS idx_usage_events_created
     ON usage_events(created_at DESC);
 
+-- user_profiles: per-user editable details + a single signed-in user's
+-- avatar override. Keyed by lowercased email (matches how the BFF
+-- forwards X-User-Email + how Better Auth normalises session email).
+-- Created lazily on first GET /api/profile so the row appears as soon
+-- as the user visits their profile page.
+CREATE TABLE IF NOT EXISTS user_profiles (
+    user_email      TEXT PRIMARY KEY,
+    full_name       TEXT,
+    work_phone      TEXT,
+    location        TEXT,
+    avatar_uri      TEXT,                          -- gs:// path; signed GET URL minted on read
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- support_tickets: feature requests + bug reports submitted from
+-- /profile. Surfaced in /admin's Support tab so the owner sees them
+-- without leaving the tool.
+DO $$ BEGIN
+    CREATE TYPE support_ticket_type_enum AS ENUM ('support', 'feature');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+DO $$ BEGIN
+    CREATE TYPE support_ticket_status_enum AS ENUM ('open', 'in_progress', 'closed');
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS support_tickets (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_email      TEXT NOT NULL,
+    type            support_ticket_type_enum NOT NULL,
+    subject         TEXT NOT NULL,
+    body            TEXT NOT NULL,
+    status          support_ticket_status_enum NOT NULL DEFAULT 'open',
+    admin_notes     TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_user_email
+    ON support_tickets(user_email);
+CREATE INDEX IF NOT EXISTS idx_support_tickets_status_created
+    ON support_tickets(status, created_at DESC);
+
 -- consensus_results (multi-model)
 CREATE TABLE IF NOT EXISTS consensus_results (
     id                          UUID PRIMARY KEY DEFAULT gen_random_uuid(),

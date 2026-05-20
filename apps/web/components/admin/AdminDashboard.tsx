@@ -11,7 +11,19 @@ import { useEffect, useMemo, useState } from "react";
 
 import { KpiCard } from "../workspace/KpiCard";
 
-type TabId = "users" | "projects" | "usage";
+type TabId = "users" | "projects" | "usage" | "support";
+
+interface SupportTicket {
+  id:         string;
+  userEmail:  string;
+  type:       "support" | "feature";
+  subject:    string;
+  body:       string;
+  status:     "open" | "in_progress" | "closed";
+  adminNotes: string | null;
+  createdAt:  string;
+  updatedAt:  string;
+}
 
 interface AdminKpis {
   enhancedToday:     number;
@@ -442,6 +454,162 @@ function UsageTab() {
   );
 }
 
+// ─── Support tab ──────────────────────────────────────────────────────────────
+
+function SupportTab() {
+  const [tickets, setTickets] = useState<SupportTicket[] | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [filter,  setFilter]  = useState<"all" | "open" | "in_progress" | "closed">("all");
+  const [savingId, setSavingId] = useState<string | null>(null);
+
+  const refresh = () => {
+    setLoading(true);
+    setError(null);
+    const qs = filter === "all" ? "" : `?status=${filter}`;
+    fetch(`/api/admin/support${qs}`, { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+      .then((j: { tickets: SupportTicket[] }) => setTickets(j.tickets))
+      .catch((e: Error) => setError(e.message))
+      .finally(() => setLoading(false));
+  };
+
+  useEffect(refresh, [filter]);
+
+  const updateTicket = async (id: string, patch: { status?: SupportTicket["status"]; adminNotes?: string }) => {
+    setSavingId(id);
+    try {
+      const res = await fetch(`/api/admin/support/${id}`, {
+        method:  "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify(patch),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Optimistic-ish: replace in place from the server response.
+      const updated = (await res.json()) as {
+        id: string; user_email: string; type: "support" | "feature";
+        subject: string; body: string; status: SupportTicket["status"];
+        admin_notes: string | null; created_at: string; updated_at: string;
+      };
+      setTickets((prev) =>
+        prev
+          ? prev.map((t) => (t.id === id ? {
+              id:         updated.id,
+              userEmail:  updated.user_email,
+              type:       updated.type,
+              subject:    updated.subject,
+              body:       updated.body,
+              status:     updated.status,
+              adminNotes: updated.admin_notes,
+              createdAt:  updated.created_at,
+              updatedAt:  updated.updated_at,
+            } : t))
+          : prev,
+      );
+    } catch {
+      // Re-fetch on failure so the UI doesn't show stale state.
+      refresh();
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <div className="space-y-3">
+      <header className="flex items-center justify-between gap-3 flex-wrap">
+        <label className="flex items-center gap-2 text-xs text-zinc-400">
+          Status:
+          <select
+            value={filter}
+            onChange={(e) => setFilter(e.target.value as typeof filter)}
+            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+          >
+            <option value="all">All</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In progress</option>
+            <option value="closed">Closed</option>
+          </select>
+        </label>
+        <button
+          onClick={refresh}
+          className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-2 py-1 rounded transition-colors"
+        >
+          Refresh
+        </button>
+      </header>
+
+      {loading ? (
+        <p className="text-sm text-zinc-500">Loading tickets…</p>
+      ) : error ? (
+        <p className="text-sm text-red-400">{error}</p>
+      ) : !tickets || tickets.length === 0 ? (
+        <p className="text-sm text-zinc-500">No tickets in this view.</p>
+      ) : (
+        <div className="space-y-3">
+          {tickets.map((t) => (
+            <article
+              key={t.id}
+              className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden"
+            >
+              <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-900">
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className={`text-[10px] uppercase tracking-[0.18em] font-bold px-2 py-0.5 rounded border ${
+                    t.type === "feature"
+                      ? "text-violet-300 bg-violet-950/60 border-violet-800"
+                      : "text-amber-300 bg-amber-950/60 border-amber-800"
+                  }`}>
+                    {t.type === "feature" ? "Feature" : "Support"}
+                  </span>
+                  <p className="text-sm font-semibold text-zinc-200 truncate" title={t.subject}>
+                    {t.subject}
+                  </p>
+                </div>
+                <span className="text-[10px] text-zinc-500 font-mono shrink-0">
+                  {new Date(t.createdAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
+                </span>
+              </header>
+              <div className="px-4 py-3 space-y-2">
+                <p className="text-[11px] text-zinc-500 font-mono">{t.userEmail}</p>
+                <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{t.body}</p>
+                {t.adminNotes && (
+                  <p className="text-xs text-zinc-500 border-l-2 border-zinc-700 pl-3 mt-2 whitespace-pre-wrap">
+                    <span className="font-semibold text-zinc-400">Admin notes:</span> {t.adminNotes}
+                  </p>
+                )}
+              </div>
+              <footer className="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900/40 border-t border-zinc-800">
+                <label className="flex items-center gap-2 text-xs text-zinc-400">
+                  Status:
+                  <select
+                    value={t.status}
+                    onChange={(e) => updateTicket(t.id, { status: e.target.value as SupportTicket["status"] })}
+                    disabled={savingId === t.id}
+                    className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
+                  >
+                    <option value="open">Open</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="closed">Closed</option>
+                  </select>
+                </label>
+                <button
+                  onClick={() => {
+                    const note = window.prompt("Admin notes (visible only to admins):", t.adminNotes ?? "");
+                    if (note !== null) updateTicket(t.id, { adminNotes: note });
+                  }}
+                  disabled={savingId === t.id}
+                  className="text-[10px] uppercase tracking-[0.18em] font-semibold text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+                >
+                  {t.adminNotes ? "Edit notes" : "Add notes"}
+                </button>
+              </footer>
+            </article>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 export function AdminDashboard({ userEmail }: { userEmail: string }) {
@@ -454,6 +622,7 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
     { id: "users",    label: "Users"    },
     { id: "projects", label: "Projects" },
     { id: "usage",    label: "Usage"    },
+    { id: "support",  label: "Support"  },
   ];
 
   return (
@@ -511,6 +680,7 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
           />
         )}
         {tab === "usage" && <UsageTab />}
+        {tab === "support" && <SupportTab />}
       </main>
 
       <footer className="px-6 py-6 text-center">

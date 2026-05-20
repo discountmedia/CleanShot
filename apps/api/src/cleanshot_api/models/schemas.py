@@ -325,6 +325,67 @@ class SessionState(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# User profiles + support tickets
+# ---------------------------------------------------------------------------
+
+
+class UserProfile(BaseModel):
+    user_email: str
+    full_name:  str | None = None
+    work_phone: str | None = None
+    location:   str | None = None
+    avatar_uri: str | None = None        # gs:// path; UI receives signed GET URL
+    avatar_url: str | None = None        # populated by API when reading (signed)
+    created_at: datetime
+    updated_at: datetime
+
+
+class UpdateProfileRequest(BaseModel):
+    full_name:  str | None = Field(default=None, max_length=120)
+    work_phone: str | None = Field(default=None, max_length=40)
+    location:   str | None = Field(default=None, max_length=120)
+
+
+class AvatarUploadUrlResponse(BaseModel):
+    upload_url: str
+    gcs_uri:    str
+
+
+class SupportTicketType(StrEnum):
+    support = "support"
+    feature = "feature"
+
+
+class SupportTicketStatus(StrEnum):
+    open        = "open"
+    in_progress = "in_progress"
+    closed      = "closed"
+
+
+class CreateSupportTicketRequest(BaseModel):
+    type:    SupportTicketType
+    subject: str = Field(min_length=1, max_length=200)
+    body:    str = Field(min_length=1, max_length=4000)
+
+
+class SupportTicketRecord(BaseModel):
+    id:          uuid.UUID
+    user_email:  str
+    type:        SupportTicketType
+    subject:     str
+    body:        str
+    status:      SupportTicketStatus
+    admin_notes: str | None = None
+    created_at:  datetime
+    updated_at:  datetime
+
+
+class UpdateSupportTicketRequest(BaseModel):
+    status:      SupportTicketStatus | None = None
+    admin_notes: str | None = Field(default=None, max_length=4000)
+
+
+# ---------------------------------------------------------------------------
 # Worker task payloads (Cloud Tasks HTTP body)
 # ---------------------------------------------------------------------------
 

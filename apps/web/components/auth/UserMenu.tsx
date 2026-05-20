@@ -3,26 +3,46 @@
 // Shows authenticated user's email and a sign-out button.
 // Renders nothing when AUTH_ENABLED=false (no session exists).
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useSession, signOut } from "@/lib/auth-client";
 
-// Per-user avatar overrides. Email keys are lowercased to match how
-// Better Auth normalises the session. Add a row when a teammate wants
-// their own image; everyone else still gets the initials disc.
+// Per-user avatar fallback when the profile row doesn't have a custom
+// uploaded image yet. Email keys are lowercased to match how Better
+// Auth normalises the session. profile.avatarUrl from /api/profile
+// takes precedence — this map is just the "before the operator uploads
+// their own" default for a known account.
 const USER_AVATARS: Record<string, string> = {
   "stephen@discountforklift.us": "/sukuna-avatar.png",
 };
 
 export function UserMenu() {
   const { data: session } = useSession();
-  const [signingOut, setSigningOut]   = useState(false);
-  const [menuOpen, setMenuOpen]       = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [menuOpen,   setMenuOpen]   = useState(false);
+  const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null);
+
+  // Lazy-load the user's profile so we can show their uploaded avatar.
+  // /api/profile lazy-creates the row on first read, so this is safe
+  // to call as a side effect every mount.
+  useEffect(() => {
+    if (!session?.user) return;
+    let cancelled = false;
+    fetch("/api/profile", { cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((p: { avatarUrl?: string | null } | null) => {
+        if (!cancelled) setProfileAvatarUrl(p?.avatarUrl ?? null);
+      })
+      .catch(() => { /* keep silent — fall back to map / initials */ });
+    return () => { cancelled = true; };
+  }, [session?.user?.email]);
 
   if (!session?.user) return null;
 
-  const email     = session.user.email ?? "";
-  const initials  = email.split("@")[0].slice(0, 2).toUpperCase();
-  const avatarUrl = USER_AVATARS[email.toLowerCase()];
+  const email    = session.user.email ?? "";
+  const initials = email.split("@")[0].slice(0, 2).toUpperCase();
+  // Precedence: uploaded avatar (DB) → hardcoded fallback → initials.
+  const avatarUrl = profileAvatarUrl ?? USER_AVATARS[email.toLowerCase()];
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -67,6 +87,17 @@ export function UserMenu() {
               <p className="text-xs text-zinc-500">Signed in as</p>
               <p className="text-sm text-white font-medium truncate mt-0.5">{email}</p>
             </div>
+            <Link
+              href="/profile"
+              onClick={() => setMenuOpen(false)}
+              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 hover:bg-zinc-800 border-b border-zinc-800 transition-colors"
+            >
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              My profile
+            </Link>
             <button
               onClick={handleSignOut}
               disabled={signingOut}

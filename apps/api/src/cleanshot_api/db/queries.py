@@ -69,6 +69,177 @@ async def get_session_user_email(
     return row["user_email"] if row else None
 
 
+async def upsert_user_profile(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str,
+    full_name: str | None,
+    work_phone: str | None,
+    location: str | None,
+    avatar_uri: str | None,
+) -> dict:
+    """
+    Insert-or-update a user_profiles row. Nullable fields are stored as-is
+    so the operator can clear a value by sending null. Returns the row
+    as a dict (caller wraps in a Pydantic UserProfile).
+    """
+    row = await conn.fetchrow(
+        """
+        INSERT INTO user_profiles (user_email, full_name, work_phone, location, avatar_uri)
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (user_email) DO UPDATE SET
+            full_name  = EXCLUDED.full_name,
+            work_phone = EXCLUDED.work_phone,
+            location   = EXCLUDED.location,
+            avatar_uri = COALESCE(EXCLUDED.avatar_uri, user_profiles.avatar_uri),
+            updated_at = now()
+        RETURNING user_email, full_name, work_phone, location, avatar_uri, created_at, updated_at
+        """,
+        user_email.lower(), full_name, work_phone, location, avatar_uri,
+    )
+    assert row is not None
+    return dict(row)
+
+
+async def get_user_profile(
+    conn: asyncpg.Connection,
+    user_email: str,
+) -> dict | None:
+    row = await conn.fetchrow(
+        """
+        SELECT user_email, full_name, work_phone, location, avatar_uri,
+               created_at, updated_at
+        FROM   user_profiles
+        WHERE  user_email = $1
+        """,
+        user_email.lower(),
+    )
+    return dict(row) if row else None
+
+
+async def set_user_avatar(
+    conn: asyncpg.Connection,
+    user_email: str,
+    avatar_uri: str,
+) -> None:
+    """
+    Standalone avatar setter — called after a successful GCS upload so
+    the URI is written separately from the editable text fields.
+    Creates a profile row if one doesn't exist.
+    """
+    await conn.execute(
+        """
+        INSERT INTO user_profiles (user_email, avatar_uri)
+        VALUES ($1, $2)
+        ON CONFLICT (user_email) DO UPDATE SET
+            avatar_uri = EXCLUDED.avatar_uri,
+            updated_at = now()
+        """,
+        user_email.lower(), avatar_uri,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Support tickets
+# ---------------------------------------------------------------------------
+
+
+async def create_support_ticket(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str,
+    type_: str,
+    subject: str,
+    body: str,
+) -> dict:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO support_tickets (user_email, type, subject, body)
+        VALUES ($1, $2::support_ticket_type_enum, $3, $4)
+        RETURNING id, user_email, type, subject, body, status, admin_notes,
+                  created_at, updated_at
+        """,
+        user_email.lower(), type_, subject, body,
+    )
+    assert row is not None
+    return dict(row)
+
+
+async def list_support_tickets(
+    conn: asyncpg.Connection,
+    *,
+    status_filter: str | None = None,
+    user_email_filter: str | None = None,
+    limit: int = 200,
+) -> list[dict]:
+    where_clauses: list[str] = []
+    params: list[object] = []
+    if status_filter:
+        params.append(status_filter)
+        where_clauses.append(f"status = ${len(params)}::support_ticket_status_enum")
+    if user_email_filter:
+        params.append(user_email_filter.lower())
+        where_clauses.append(f"user_email = ${len(params)}")
+    where = ("WHERE " + " AND ".join(where_clauses)) if where_clauses else ""
+    params.append(limit)
+    rows = await conn.fetch(
+        f"""
+        SELECT id, user_email, type, subject, body, status, admin_notes,
+               created_at, updated_at
+        FROM   support_tickets
+        {where}
+        ORDER  BY created_at DESC
+        LIMIT  ${len(params)}
+        """,
+        *params,
+    )
+    return [dict(r) for r in rows]
+
+
+async def update_support_ticket(
+    conn: asyncpg.Connection,
+    ticket_id: uuid.UUID,
+    *,
+    status: str | None = None,
+    admin_notes: str | None = None,
+) -> dict | None:
+    """
+    Partial update — only the fields the admin actually changed. Returns
+    None if no ticket with that id exists.
+    """
+    sets: list[str] = []
+    params: list[object] = []
+    if status is not None:
+        params.append(status)
+        sets.append(f"status = ${len(params)}::support_ticket_status_enum")
+    if admin_notes is not None:
+        params.append(admin_notes)
+        sets.append(f"admin_notes = ${len(params)}")
+    if not sets:
+        # Nothing to update — return the current row.
+        params.append(ticket_id)
+        row = await conn.fetchrow(
+            "SELECT id, user_email, type, subject, body, status, admin_notes, "
+            "created_at, updated_at FROM support_tickets WHERE id = $1",
+            ticket_id,
+        )
+        return dict(row) if row else None
+
+    sets.append("updated_at = now()")
+    params.append(ticket_id)
+    row = await conn.fetchrow(
+        f"""
+        UPDATE support_tickets
+        SET    {", ".join(sets)}
+        WHERE  id = ${len(params)}
+        RETURNING id, user_email, type, subject, body, status, admin_notes,
+                  created_at, updated_at
+        """,
+        *params,
+    )
+    return dict(row) if row else None
+
+
 async def insert_usage_event(
     conn: asyncpg.Connection,
     *,

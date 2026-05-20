@@ -16,11 +16,18 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+import uuid
+
 import asyncpg
 from fastapi import APIRouter, Depends, Query
 
 from cleanshot_api.core.security import require_api_key
+from cleanshot_api.db import queries
 from cleanshot_api.db.pool import get_pool
+from cleanshot_api.models.schemas import (
+    SupportTicketRecord,
+    UpdateSupportTicketRequest,
+)
 
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
@@ -295,3 +302,68 @@ async def usage_summary(
             for r in daily_rows
         ],
     }
+
+
+# ─── Support tickets ──────────────────────────────────────────────────────────
+
+
+@router.get(
+    "/support",
+    dependencies=[Depends(require_api_key)],
+)
+async def list_tickets(
+    pool: asyncpg.Pool = Depends(get_pool),
+    status_filter: str | None = Query(default=None, alias="status"),
+) -> dict:
+    """
+    Return every support ticket in the system, newest first. Optional
+    `status` query param filters to open / in_progress / closed.
+    """
+    async with pool.acquire() as conn:
+        rows = await queries.list_support_tickets(
+            conn, status_filter=status_filter, limit=200,
+        )
+
+    return {
+        "tickets": [
+            {
+                "id":          str(r["id"]),
+                "userEmail":   r["user_email"],
+                "type":        r["type"],
+                "subject":     r["subject"],
+                "body":        r["body"],
+                "status":      r["status"],
+                "adminNotes":  r["admin_notes"],
+                "createdAt":   r["created_at"].isoformat(),
+                "updatedAt":   r["updated_at"].isoformat(),
+            }
+            for r in rows
+        ],
+    }
+
+
+@router.patch(
+    "/support/{ticket_id}",
+    response_model=SupportTicketRecord,
+    dependencies=[Depends(require_api_key)],
+)
+async def update_ticket(
+    ticket_id: uuid.UUID,
+    body: UpdateSupportTicketRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> SupportTicketRecord:
+    """
+    Partial update (status, admin_notes). Either field can be sent
+    alone; passing neither no-ops and returns the row unchanged.
+    """
+    async with pool.acquire() as conn:
+        row = await queries.update_support_ticket(
+            conn,
+            ticket_id,
+            status=body.status.value if body.status else None,
+            admin_notes=body.admin_notes,
+        )
+    if row is None:
+        from fastapi import HTTPException, status as http_status
+        raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Ticket not found")
+    return SupportTicketRecord(**row)
