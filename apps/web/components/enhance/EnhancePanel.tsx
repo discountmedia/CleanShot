@@ -659,6 +659,19 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
     });
   }, [completed, sentJobIds]);
 
+  // "+ All" — adds every completed-and-unsent row to the selection
+  // across every provider. Idempotent / additive (same as the
+  // per-provider buttons); use Clear to start over.
+  const selectAllUnsent = useCallback(() => {
+    setSelectedJobIds((prev) => {
+      const next = new Set(prev);
+      for (const item of completed.values()) {
+        if (!sentJobIds.has(item.jobId)) next.add(item.jobId);
+      }
+      return next;
+    });
+  }, [completed, sentJobIds]);
+
   const clearSelection = useCallback(() => setSelectedJobIds(new Set()), []);
 
   // Provider checkboxes are true multi-select. Toggling tries to add or
@@ -1457,6 +1470,25 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 mr-2">
             Bulk select
           </span>
+          {(() => {
+            const totalUnsent = ALL_PROVIDERS.reduce(
+              (s, p) => s + unsentCountByProvider[p],
+              0,
+            );
+            return (
+              <button
+                onClick={selectAllUnsent}
+                disabled={totalUnsent === 0}
+                className={`text-[11px] uppercase tracking-[0.18em] font-semibold px-2.5 py-1 rounded border transition-colors ${
+                  totalUnsent === 0
+                    ? "border-zinc-800 text-zinc-700 cursor-not-allowed"
+                    : "border-zinc-500 text-white bg-zinc-800 hover:bg-zinc-700"
+                }`}
+              >
+                + All ({totalUnsent})
+              </button>
+            );
+          })()}
           {ALL_PROVIDERS.map((p) => {
             const n = unsentCountByProvider[p];
             return (
