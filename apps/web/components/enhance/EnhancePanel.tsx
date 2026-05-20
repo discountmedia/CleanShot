@@ -1125,7 +1125,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-zinc-200">
-              Use Google (default)
+              Google Gemini
             </p>
             <p className="text-xs text-zinc-500 mt-0.5">
               Fastest and cheapest. Routes through gemini-3.1-flash-image-preview.
@@ -1155,7 +1155,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-zinc-200">
-              Use ChatGPT instead
+              OpenAI ChatGPT
             </p>
             <p className="text-xs text-zinc-500 mt-0.5">
               Slower but can be more literal. Routes through gpt-image-2-2026-04-21.
@@ -1186,7 +1186,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-zinc-200">
-                Use Flux instead
+                Black Forest Labs Flux
               </p>
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-purple-100 bg-purple-600 rounded px-1.5 py-0.5 shadow-sm shadow-purple-900/60 animate-pulse">
                 New
@@ -1221,7 +1221,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
               <p className="text-sm font-semibold text-zinc-200">
-                Use Reve instead
+                Reve
               </p>
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-fuchsia-100 bg-fuchsia-600 rounded px-1.5 py-0.5 shadow-sm shadow-fuchsia-900/60 animate-pulse">
                 New
