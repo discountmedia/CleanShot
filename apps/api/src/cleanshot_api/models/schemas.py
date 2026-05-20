@@ -281,6 +281,29 @@ class ExportZipRequest(BaseModel):
     asset_ids: list[uuid.UUID] = Field(min_length=1, max_length=200)
 
 
+class ExportProPreviewItem(BaseModel):
+    """One processed PRO image, ready for inline preview in the UI."""
+    asset_id: uuid.UUID
+    filename: str
+    url: str
+    width: int
+    height: int
+    size_bytes: int
+    size_warning: bool
+
+
+class ExportProPreviewResponse(BaseModel):
+    """
+    Returned by POST /api/v1/export/pro/preview. Lets the UI render every
+    resized image inline so the operator can verify zoom-to-fill before
+    downloading the bundle.
+    """
+    items: list[ExportProPreviewItem]
+    zip_url: str
+    zip_size_bytes: int
+    any_size_warning: bool
+
+
 # ---------------------------------------------------------------------------
 # Session state (full reconstruction payload for GET /sessions/{id})
 # ---------------------------------------------------------------------------

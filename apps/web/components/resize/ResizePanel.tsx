@@ -25,9 +25,9 @@
 
 import { useState } from "react";
 import {
-  exportProAsBlob,
+  exportProPreview,
   saveProject,
-  triggerBrowserDownload,
+  type ExportProPreviewItem,
 } from "../../lib/api";
 import type { ResizeResult } from "../../lib/types";
 
@@ -164,8 +164,15 @@ export function ResizePanel({
   const [isSaved,     setIsSaved]     = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [error,       setError]       = useState<string | null>(null);
-  const [warning,     setWarning]     = useState<string | null>(null);
-  const [lastDownloadedAt, setLastDownloadedAt] = useState<Date | null>(null);
+
+  // Preview state: populated by the /api/export/pro/preview response.
+  // When non-null the grid renders, the operator visually verifies the
+  // 7:5 zoom-to-fill output, then clicks "Download ZIP" (a direct GCS
+  // hyperlink — no second backend roundtrip).
+  const [previewItems, setPreviewItems] = useState<ExportProPreviewItem[]>([]);
+  const [zipUrl,       setZipUrl]       = useState<string | null>(null);
+  const [zipSizeBytes, setZipSizeBytes] = useState<number>(0);
+  const [anyWarning,   setAnyWarning]   = useState<boolean>(false);
 
   const { valid: formValid, yearNum } = validateForm(form);
   const hasAssets = enhancedAssets.length > 0;
@@ -208,21 +215,33 @@ export function ResizePanel({
   const handleExport = async () => {
     if (!hasAssets) return;
     setError(null);
-    setWarning(null);
     setIsExporting(true);
+    // Wipe stale preview so the loading state is unambiguous if we re-run.
+    setPreviewItems([]);
+    setZipUrl(null);
+    setZipSizeBytes(0);
+    setAnyWarning(false);
     try {
-      const { blob, filename, warning: w } = await exportProAsBlob({
+      const resp = await exportProPreview({
         sessionId,
         assetIds: enhancedAssets.map((a) => a.assetId),
       });
-      triggerBrowserDownload(blob, filename);
-      setLastDownloadedAt(new Date());
-      if (w) setWarning(w);
+      setPreviewItems(resp.items);
+      setZipUrl(resp.zipUrl);
+      setZipSizeBytes(resp.zipSizeBytes);
+      setAnyWarning(resp.anySizeWarning);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setIsExporting(false);
     }
+  };
+
+  // Format bytes as KB or MB for the status badges.
+  const formatBytes = (b: number): string => {
+    if (b < 1024) return `${b} B`;
+    if (b < 1024 * 1024) return `${(b / 1024).toFixed(0)} KB`;
+    return `${(b / (1024 * 1024)).toFixed(2)} MB`;
   };
 
   // ─── Render ─────────────────────────────────────────────────────────────────
@@ -334,12 +353,12 @@ export function ResizePanel({
           {error}
         </p>
       )}
-      {warning && (
+      {anyWarning && (
         <p
           className="text-sm text-amber-300 bg-amber-950/40 border border-amber-800 rounded-lg px-4 py-3"
           role="status"
         >
-          Some images could not be compressed under 99 KB — they were exported at the lowest JPEG quality the encoder allows. Inspect the ZIP and re-shoot any that look unacceptable.
+          Some images could not be compressed under 99 KB at acceptable quality — those tiles are flagged below. Inspect them before downloading; the ZIP still contains the lowest-quality version the encoder could produce.
         </p>
       )}
 
@@ -377,20 +396,110 @@ export function ResizePanel({
           `}
         >
           {isExporting
-            ? "Building PRO export…"
+            ? "Resizing & generating previews…"
             : !isSaved
               ? "Save project first"
               : !hasAssets
                 ? "No assets queued"
-                : `Export PRO (${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""})`}
+                : previewItems.length > 0
+                  ? `Re-resize ${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""}`
+                  : `Resize & preview (${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""})`}
         </button>
       </div>
 
-      {lastDownloadedAt && (
-        <p className="text-[11px] text-zinc-500 text-center">
-          Last download triggered at{" "}
-          {lastDownloadedAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
-        </p>
+      {/* ── Preview grid ── */}
+      {previewItems.length > 0 && (
+        <section className="space-y-3">
+          <header className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h3 className="text-sm font-semibold text-zinc-200">
+                Resized previews ({previewItems.length})
+              </h3>
+              <p className="text-[11px] text-zinc-500 mt-0.5">
+                Every tile renders at its exact pixel dimensions — if a tile&apos;s aspect doesn&apos;t match the 7:5 frame, the export is wrong.
+              </p>
+            </div>
+            {zipUrl && (
+              <a
+                href={zipUrl}
+                download="cleanshot_pro_export.zip"
+                className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg shadow-lg shadow-blue-900/40 transition-colors inline-flex items-center gap-2"
+              >
+                Download ZIP
+                <span className="text-[10px] font-mono opacity-80">{formatBytes(zipSizeBytes)}</span>
+              </a>
+            )}
+          </header>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {previewItems.map((item) => {
+              const aspectOk = item.width === 1024 && item.height === 731;
+              const dimensionsLabel = `${item.width}×${item.height}`;
+              return (
+                <figure
+                  key={item.assetId}
+                  className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden"
+                >
+                  {/*
+                    No object-fit on the img — we want to render at its
+                    intrinsic size so the operator can spot any wrong
+                    aspect ratio coming from the backend. The wrapping div
+                    has a 7:5 reference frame (with a thin border) so the
+                    eye has a comparator: if the image overflows or
+                    underfills the frame, the export is broken.
+                  */}
+                  <div
+                    className="relative bg-black mx-auto"
+                    style={{ aspectRatio: "1024 / 731", width: "100%" }}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={item.url}
+                      alt={`Resized: ${item.filename}`}
+                      className="absolute inset-0 w-full h-full"
+                      style={{ objectFit: "fill" }}
+                    />
+                    {/* Bottom-left: dimensions + size badge */}
+                    <div className="absolute bottom-2 left-2 flex items-center gap-1">
+                      <span
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                          aspectOk
+                            ? "bg-black/70 text-green-400"
+                            : "bg-red-950/90 text-red-300 border border-red-700"
+                        }`}
+                        title={aspectOk ? "Dimensions match spec" : "Wrong dimensions — letterboxing or wrong aspect"}
+                      >
+                        {dimensionsLabel}
+                      </span>
+                      <span
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded ${
+                          item.sizeWarning
+                            ? "bg-amber-950/90 text-amber-300 border border-amber-700"
+                            : "bg-black/70 text-zinc-300"
+                        }`}
+                        title={item.sizeWarning ? "Couldn't compress under 99 KB" : ""}
+                      >
+                        {formatBytes(item.sizeBytes)}
+                      </span>
+                    </div>
+                  </div>
+                  <figcaption className="flex items-center justify-between px-3 py-2 border-t border-zinc-800">
+                    <span className="text-xs text-zinc-400 truncate" title={item.filename}>
+                      {item.filename}
+                    </span>
+                    <a
+                      href={item.url}
+                      download={item.filename}
+                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium shrink-0"
+                    >
+                      Download
+                    </a>
+                  </figcaption>
+                </figure>
+              );
+            })}
+          </div>
+        </section>
       )}
     </div>
   );

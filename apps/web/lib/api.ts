@@ -184,6 +184,42 @@ export async function exportProAsBlob(params: {
   return { blob, filename, warning };
 }
 
+// ─── Export (PRO preview: per-image signed URLs + ZIP signed URL) ───────────
+
+export interface ExportProPreviewItem {
+  assetId:     string;
+  filename:    string;
+  /** V4 signed GET URL to the 1024×731 JPEG in GCS. ~1-hour expiry. */
+  url:         string;
+  width:       number;
+  height:      number;
+  sizeBytes:   number;
+  /** True when ≤100 kb couldn't be achieved after 10 quality iterations. */
+  sizeWarning: boolean;
+}
+
+export interface ExportProPreviewResponse {
+  items:          ExportProPreviewItem[];
+  /** V4 signed GET URL to the bundled ZIP in GCS — drop straight into <a href>. */
+  zipUrl:         string;
+  zipSizeBytes:   number;
+  /** Convenience flag: true if any item has sizeWarning=true. */
+  anySizeWarning: boolean;
+}
+
+/**
+ * POST /api/export/pro/preview — backend processes every asset, writes each
+ * resized JPEG + the bundled ZIP to GCS, returns signed URLs for inline
+ * preview rendering. No binary blob in the response; ZIP download is just
+ * a hyperlink to the signed URL.
+ */
+export async function exportProPreview(params: {
+  sessionId: string;
+  assetIds: string[];
+}): Promise<ExportProPreviewResponse> {
+  return post("/api/export/pro/preview", params);
+}
+
 /** Programmatically trigger a browser download for a Blob. */
 export function triggerBrowserDownload(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);

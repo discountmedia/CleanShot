@@ -32,17 +32,26 @@ class ExportResult:
 
 def export_pro(input_bytes: bytes) -> ExportResult:
     """
-    PRO preset: 1024px longest edge, 7×5 crop (1024×731), JPEG ≤100 kb.
+    PRO preset: 1024×731 (7:5), zoom-to-fill, JPEG ≤100 kb.
     Crop-not-letterbox: always fills the frame.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
-    # Step 1: Scale so longest edge = 1024
-    scale = 1024 / max(img.width, img.height)
+    target_w, target_h = 1024, 731
+
+    # Step 1: Cover-fit scale — pick the LARGER of the two ratios so the
+    # image is guaranteed to cover the target box in both dimensions.
+    # Previous version used `1024 / max(w, h)` (longest-edge fit), which
+    # for inputs already close to 7:5 produced a result smaller than
+    # 1024×731 on one axis. smartcrop then returned the full (sub-target)
+    # image and the final JPEG had the wrong aspect ratio — looked like
+    # letterboxing on listing platforms. Cover-fit matches what
+    # export_custom does and guarantees both target dimensions are
+    # achievable before cropping.
+    scale = max(target_w / img.width, target_h / img.height)
     img = img.resize(scale, kernel="lanczos3")
 
     # Step 2: Smart crop to 1024×731 (7:5 ratio)
-    target_w, target_h = 1024, 731
     img = img.smartcrop(target_w, target_h, interesting="attention")
 
     # Step 3: JPEG compression loop targeting ≤100 kb

@@ -15,6 +15,8 @@ from cleanshot_api.models.schemas import (
     ExportCustomRequest,
     ExportFullsizeRequest,
     ExportFullsizeResponse,
+    ExportProPreviewItem,
+    ExportProPreviewResponse,
     ExportProRequest,
     ExportZipRequest,
 )
@@ -117,6 +119,108 @@ async def export_pro_preset(
         content=buf.getvalue(),
         media_type="application/zip",
         headers=headers,
+    )
+
+
+@router.post(
+    "/export/pro/preview",
+    response_model=ExportProPreviewResponse,
+    dependencies=[Depends(require_api_key)],
+)
+async def export_pro_preview(
+    body: ExportProRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> ExportProPreviewResponse:
+    """
+    Like /export/pro but writes each resized JPEG to GCS and returns signed
+    GET URLs instead of a binary response. Lets the UI render every
+    1024×731 image inline so the operator can visually verify zoom-to-fill
+    before pulling the bundle. Also writes a ZIP of all outputs to GCS and
+    returns its signed URL — the "Download all" button is just a hyperlink,
+    no second round of pyvips work.
+
+    GCS layout (cleanshot-derivatives-prod):
+      session/{session_id}/pro/{asset_id}.jpg   ← per-image previews
+      session/{session_id}/pro/export_pro.zip   ← bundle (overwritten per call)
+    """
+    async with pool.acquire() as conn:
+        project = await queries.get_project_for_session(conn, body.session_id)
+        _require_saved_project(project)
+
+    from google.cloud import storage as gcs_lib
+    from cleanshot_api.core.config import get_settings
+    settings = get_settings()
+    gcs_client = gcs_lib.Client(project=settings.gcp_project)
+    derivatives_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
+
+    items: list[ExportProPreviewItem] = []
+    zip_buf = io.BytesIO()
+    any_warning = False
+
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for asset_id in body.asset_ids:
+            async with pool.acquire() as conn:
+                asset = await queries.get_asset(conn, asset_id)
+            if asset is None:
+                continue
+
+            # Download original from wherever it lives in GCS
+            without_scheme = asset.gcs_uri[len("gs://"):]
+            src_bucket_name, _, src_obj = without_scheme.partition("/")
+            input_bytes = gcs_client.bucket(src_bucket_name).blob(src_obj).download_as_bytes()
+
+            result = export_pro(input_bytes)
+            if result.size_warning:
+                any_warning = True
+
+            # Derive output filename + GCS path
+            src_filename = src_obj.rsplit("/", 1)[-1]
+            src_stem = src_filename.rsplit(".", 1)[0] if "." in src_filename else src_filename
+            out_filename = f"{src_stem}_pro.jpg"
+            out_object   = f"session/{body.session_id}/pro/{asset_id}.jpg"
+            out_uri      = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"
+
+            # Write the processed JPEG to GCS (overwrites on re-preview)
+            blob = derivatives_bucket.blob(out_object)
+            blob.upload_from_string(result.data, content_type="image/jpeg")
+
+            # Mint signed GET URL for inline preview rendering
+            preview_url, _ = gcs_service.mint_read_url(out_uri)
+
+            # Add to the ZIP
+            zf.writestr(out_filename, result.data)
+
+            # Read back actual dimensions for the response (verifies the
+            # cover-fit fix to export_pro is producing the expected
+            # 1024×731 output; pyvips loads metadata without decoding the
+            # full image, so this is cheap).
+            import pyvips
+            probe = pyvips.Image.new_from_buffer(result.data, "")
+
+            items.append(ExportProPreviewItem(
+                asset_id=asset_id,
+                filename=out_filename,
+                url=preview_url,
+                width=probe.width,
+                height=probe.height,
+                size_bytes=len(result.data),
+                size_warning=result.size_warning,
+            ))
+
+    # Write the ZIP to GCS and mint its signed URL
+    zip_bytes = zip_buf.getvalue()
+    zip_object = f"session/{body.session_id}/pro/export_pro.zip"
+    zip_uri    = f"gs://{settings.gcs_bucket_derivatives}/{zip_object}"
+    derivatives_bucket.blob(zip_object).upload_from_string(
+        zip_bytes, content_type="application/zip",
+    )
+    zip_url, _ = gcs_service.mint_read_url(zip_uri)
+
+    return ExportProPreviewResponse(
+        items=items,
+        zip_url=zip_url,
+        zip_size_bytes=len(zip_bytes),
+        any_size_warning=any_warning,
     )
 
 
