@@ -14,8 +14,27 @@
 // Models: gemini-2.5-flash-image (default) | gpt-image-2-2026-04-21 (opt-in via
 // "Use ChatGPT instead" checkbox). Pinned server-side in enhance_worker.py.
 
-import { useCallback, useId, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
+
+// Honest per-provider time estimates used to drive the progress bar on
+// each row. The AI APIs themselves don't expose intermediate progress
+// (Gemini / OpenAI return one blob; Flux's polling gives a status
+// without %), so the bar is computed from elapsed time vs. the
+// provider's typical wall-clock duration. Generous enough that fast
+// images don't undersell completion; capped at 95% so the bar never
+// claims success until the job actually flips to "complete".
+//
+// Calibrated on the current pipeline:
+//   gemini  — gemini-3.1-flash-image-preview, ~10-25s typical
+//   openai  — gpt-image-2-2026-04-21, ~30-90s (limited by 5/min throttle
+//             so the 6th+ image in a batch waits longer)
+//   flux    — flux-2-max polling loop, ~15-30s typical
+const EXPECTED_ENHANCE_DURATIONS_S: Record<"gemini" | "openai" | "flux", number> = {
+  gemini: 20,
+  openai: 75,
+  flux:   25,
+};
 
 import { buildEnhanceFilename, convertToJpeg, formatBytes } from "../../lib/compress";
 import {
@@ -217,6 +236,7 @@ function JobStatusRow({
   file,
   jobId,
   sent,
+  provider,
   onComplete,
   onSend,
   onRegenerate,
@@ -225,6 +245,12 @@ function JobStatusRow({
   jobId: string;
   /** True once the user has already "sent to Scan" — disables the per-row button. */
   sent: boolean;
+  /**
+   * Provider this job was enqueued with — drives the progress-bar
+   * duration estimate. Falls back to "gemini" if the caller passes
+   * something unknown.
+   */
+  provider: "gemini" | "openai" | "flux";
   // Resolved by the parent into a thumbnailUrl appended to the pipeline.
   // Called once, after a successful job has its signed URL minted.
   onComplete: (job: JobRecord, outputUrl: string) => void;
@@ -241,6 +267,29 @@ function JobStatusRow({
   const [job, setJob] = useState<JobRecord | null>(null);
   const [outputUrl, setOutputUrl] = useState<string | null>(null);
   const [outputError, setOutputError] = useState<string | null>(null);
+
+  // Time-based progress estimate. Ticks every second while the job is
+  // queued/processing so the bar advances. Stops when the job reaches
+  // a terminal state. Uses `Date.now()` rather than the polling cadence
+  // so the bar stays smooth between job-record updates.
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  useEffect(() => {
+    if (!job) return;
+    if (job.status !== "queued" && job.status !== "processing") return;
+    const handle = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(handle);
+  }, [job?.status]);
+
+  const expectedSeconds = EXPECTED_ENHANCE_DURATIONS_S[provider] ?? 30;
+  const startedMs = job ? new Date(job.createdAt).getTime() : nowMs;
+  const elapsedSeconds = Math.max(0, Math.floor((nowMs - startedMs) / 1000));
+  const estimatedPct = !job
+    ? 0
+    : job.status === "complete"
+      ? 100
+      : job.status === "failed" || job.status === "cancelled"
+        ? 0
+        : Math.min(95, Math.round((elapsedSeconds / expectedSeconds) * 100));
 
   useJobPoller(
     jobId,
@@ -291,19 +340,42 @@ function JobStatusRow({
           )}
         </div>
         {job ? (
-          <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${statusColor[job.status] ?? "text-zinc-400"}`}>
-            {job.status === "processing" && (
-              <svg className="inline animate-spin w-3.5 h-3.5 mr-1.5 -mt-0.5" viewBox="0 0 24 24" fill="none">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-              </svg>
+          <div className="flex items-center gap-2">
+            {isProcessing && (
+              <span
+                className="text-xs font-mono tabular-nums text-blue-300"
+                title={`Estimated based on average ${provider} duration (~${expectedSeconds}s)`}
+              >
+                {estimatedPct}%
+              </span>
             )}
-            {job.status}
-          </span>
+            <span className={`text-xs font-semibold uppercase tracking-[0.18em] ${statusColor[job.status] ?? "text-zinc-400"}`}>
+              {job.status}
+            </span>
+          </div>
         ) : (
           <span className="text-xs uppercase tracking-[0.18em] text-zinc-500">Waiting…</span>
         )}
       </div>
+
+      {/* Progress bar — only while the job is in flight. Capped at 95%
+          via estimatedPct so we never claim done until the status
+          actually flips, then snaps to 100% on complete. */}
+      {isProcessing && (
+        <div
+          className="h-1 w-full bg-zinc-900"
+          role="progressbar"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={estimatedPct}
+          aria-label="Enhance progress (estimated)"
+        >
+          <div
+            className="h-full bg-blue-500 transition-all duration-500 ease-out"
+            style={{ width: `${estimatedPct}%` }}
+          />
+        </div>
+      )}
 
       {/* Body — large before/after */}
       <div className="p-5">
@@ -1103,6 +1175,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
                 file={f}
                 jobId={enhanceJobs.get(f.id)!}
                 sent={sentJobIds.has(enhanceJobs.get(f.id)!)}
+                provider={provider}
                 onComplete={(job, outputUrl) => {
                   if (job.outputAssetId) {
                     markCompleted({
