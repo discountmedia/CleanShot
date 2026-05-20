@@ -547,6 +547,10 @@ export function ResizePanel({
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
         <div className="space-y-2">
           <h3 className="text-sm font-semibold text-zinc-200">PRO Export Spec</h3>
+          <p className="text-xs text-blue-300 leading-snug">
+            <strong className="text-blue-200">Use for:</strong> standard listing photos of a single forklift.
+            Every image gets a uniform 7:5 crop with the machine framed and centred — what most marketplaces expect.
+          </p>
           <ul className="text-xs text-zinc-400 space-y-1" role="list">
             <li>• <strong className="text-zinc-300">1024 × 731 px</strong> — 7:5 aspect ratio</li>
             <li>• <strong className="text-zinc-300">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
@@ -556,11 +560,15 @@ export function ResizePanel({
         </div>
         <div className="space-y-2 pt-3 border-t border-zinc-800">
           <h3 className="text-sm font-semibold text-zinc-200">Collage Export Spec</h3>
+          <p className="text-xs text-purple-300 leading-snug">
+            <strong className="text-purple-200">Use for:</strong> pre-composed multi-image collages where you've
+            already arranged the photos and just need the finished layout downsized — no cropping, original
+            aspect ratio preserved.
+          </p>
           <ul className="text-xs text-zinc-400 space-y-1" role="list">
             <li>• <strong className="text-zinc-300">1024 px long edge</strong> — original aspect ratio preserved</li>
             <li>• <strong className="text-zinc-300">No crop</strong> — fits to long edge; output is whatever the input's shape calls for</li>
             <li>• <strong className="text-zinc-300">≤ 99 KB JPEG</strong> — same quality-iteration loop as PRO</li>
-            <li>• Use for pre-composed multi-image listing collages where the layout is already decided</li>
           </ul>
         </div>
       </div>
