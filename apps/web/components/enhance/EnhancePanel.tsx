@@ -945,6 +945,9 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
             <p className="text-xs text-zinc-500 mt-0.5">
               Fastest and cheapest. Routes through gemini-3.1-flash-image-preview.
             </p>
+            <p className="text-[11px] text-amber-400 mt-1">
+              ⏱ ~10-20s per image · No practical rate limit on the paid AI Studio tier.
+            </p>
           </div>
         </label>
 
@@ -973,7 +976,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
               Slower but can be more literal. Routes through gpt-image-2-2026-04-21.
             </p>
             <p className="text-[11px] text-amber-400 mt-1">
-              ⏱ Limit: 5 images / minute — batches larger than 5 will queue and take longer.
+              ⏱ ~30-90s per image · 5 images / minute rate limit (Tier 1) — larger batches queue.
             </p>
           </div>
         </label>
@@ -1005,8 +1008,10 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
               </span>
             </div>
             <p className="text-xs text-zinc-500 mt-0.5">
-              Black Forest Labs FLUX 2 PRO — best for editorial-style edits.
-              Async polling, typically 10-30s per image.
+              Black Forest Labs FLUX 2 MAX — best for editorial-style edits, async polling.
+            </p>
+            <p className="text-[11px] text-amber-400 mt-1">
+              ⏱ ~10-30s per image · ~1,200 requests / minute (BFL) — effectively unlimited.
             </p>
           </div>
         </label>
