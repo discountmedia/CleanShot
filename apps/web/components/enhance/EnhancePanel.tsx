@@ -1201,7 +1201,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSe
                 OpenAI ChatGPT
               </p>
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-red-300 bg-red-950/60 border border-red-800 rounded px-1.5 py-0.5">
-                Slowest
+                Slow
               </span>
             </div>
             <p className="text-xs text-zinc-500 mt-0.5">
