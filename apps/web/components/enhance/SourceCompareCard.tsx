@@ -210,15 +210,14 @@ export function SourceCompareCard({
             )}
           </div>
 
-          {/* Variants in a 2-column grid on md+ screens so the operator
-              can compare provider outputs side-by-side instead of
-              scrolling a vertical column. Each variant keeps its full
-              landscape aspect. Wraps to N/2 rows at md+; on mobile the
-              grid collapses to single-column. Providers not enqueued
-              for this file (operator unchecked them in ProviderRow
-              before hitting Enhance) are filtered out entirely — no
-              "not run" placeholder. */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Variants in a minimum 2-column grid at every breakpoint so
+              the operator always sees side-by-side comparison (no
+              single-column collapse on mobile). Each variant keeps its
+              full landscape aspect; wraps to N/2 rows. Providers not
+              enqueued for this file (operator unchecked them in
+              ProviderRow before hitting Enhance) are filtered out
+              entirely — no "not run" placeholder. */}
+          <div className="grid grid-cols-2 gap-3">
             {ENHANCE_PROVIDERS.filter((p) => variants[p] !== undefined).map((p) => {
               const variant = variants[p];
               return (
