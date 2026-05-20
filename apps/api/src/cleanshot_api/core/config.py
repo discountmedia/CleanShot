@@ -79,6 +79,11 @@ class Settings(BaseSettings):
     # GCP Secret Manager (cleanshot-bfl-key) on Cloud Run; absent locally
     # unless the developer also sets BFL_API_KEY in their .env.
     bfl_api_key: str = Field("", alias="BFL_API_KEY")
+    # Reve (https://api.reve.com) — fourth image-edit provider. Bearer-token
+    # auth. Mounted from GCP Secret Manager (cleanshot-reve-key) on Cloud
+    # Run; the worker dispatches to /v1/image/edit when payload.provider
+    # == "reve".
+    reve_api_key: str = Field("", alias="REVE_API_KEY")
     # Google AI Studio API key — used for the enhance pipeline's Gemini
     # calls so we can access preview image-gen models (e.g.
     # gemini-3.1-flash-image-preview) that aren't yet published in this

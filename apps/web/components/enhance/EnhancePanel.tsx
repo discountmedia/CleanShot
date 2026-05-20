@@ -30,10 +30,11 @@ import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
 //   openai  — gpt-image-2-2026-04-21, ~30-90s (limited by 5/min throttle
 //             so the 6th+ image in a batch waits longer)
 //   flux    — flux-2-max polling loop, ~15-30s typical
-const EXPECTED_ENHANCE_DURATIONS_S: Record<"gemini" | "openai" | "flux", number> = {
+const EXPECTED_ENHANCE_DURATIONS_S: Record<"gemini" | "openai" | "flux" | "reve", number> = {
   gemini: 20,
   openai: 75,
   flux:   25,
+  reve:   20,  // Reve /v1/image/edit returns synchronously, ~10-30s typical
 };
 
 import { buildEnhanceFilename, convertToJpeg, formatBytes } from "../../lib/compress";
@@ -250,7 +251,7 @@ function JobStatusRow({
    * duration estimate. Falls back to "gemini" if the caller passes
    * something unknown.
    */
-  provider: "gemini" | "openai" | "flux";
+  provider: "gemini" | "openai" | "flux" | "reve";
   // Resolved by the parent into a thumbnailUrl appended to the pipeline.
   // Called once, after a successful job has its signed URL minted.
   onComplete: (job: JobRecord, outputUrl: string) => void;
@@ -545,7 +546,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
   const [globalError, setGlobalError] = useState<string | null>(null);
   /** Provider for image generation. Mutually-exclusive checkboxes in UI:
    * "Use ChatGPT instead" / "Use Flux instead". Default is Gemini. */
-  const [provider, setProvider] = useState<"gemini" | "openai" | "flux">("gemini");
+  const [provider, setProvider] = useState<"gemini" | "openai" | "flux" | "reve">("gemini");
 
   /** "Custom prompt (advanced)" disclosure state + textarea contents. */
   const [customPromptOpen, setCustomPromptOpen] = useState(false);
@@ -1025,6 +1026,41 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
             </p>
           </div>
         </label>
+
+        {/* Reve checkbox */}
+        <label
+          htmlFor="provider-reve"
+          className={`
+            flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
+            ${provider === "reve"
+              ? "bg-fuchsia-950/40 border-fuchsia-800 hover:border-fuchsia-700"
+              : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
+          `}
+        >
+          <input
+            id="provider-reve"
+            type="checkbox"
+            checked={provider === "reve"}
+            onChange={(e) => setProvider(e.target.checked ? "reve" : "gemini")}
+            className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-fuchsia-500 focus:ring-2 focus:ring-fuchsia-500 focus:ring-offset-0"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold text-zinc-200">
+                Use Reve instead
+              </p>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-fuchsia-100 bg-fuchsia-600 rounded px-1.5 py-0.5 shadow-sm shadow-fuchsia-900/60 animate-pulse">
+                New
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Reve image-edit (latest) — synchronous /v1/image/edit; auto-enhances the instruction internally.
+            </p>
+            <p className="text-[11px] text-amber-400 mt-1">
+              ⏱ ~10-30s per image · credit-billed (~$0.03 per edit baseline; varies with postprocessing).
+            </p>
+          </div>
+        </label>
       </div>
 
       {/* ── Enhancement toggles ── */}
@@ -1239,6 +1275,8 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
             ? "gpt-image-2-2026-04-21"
             : provider === "flux"
             ? "flux-2-max (Black Forest Labs)"
+            : provider === "reve"
+            ? "reve-edit (latest)"
             : "gemini-3.1-flash-image-preview"}
         </code>
       </p>

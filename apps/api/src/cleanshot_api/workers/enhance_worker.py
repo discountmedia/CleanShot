@@ -71,6 +71,20 @@ FLUX_GENERATE_URL = "https://api.bfl.ai/v1/flux-2-max"
 FLUX_POLL_INTERVAL_S = 1.5         # seconds between poll requests
 FLUX_POLL_MAX_ATTEMPTS = 60        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
 
+# Reve endpoint — synchronous JSON request, returns base64-encoded PNG +
+# credit accounting in the same response. Auth via Bearer token in
+# Authorization header. The `version="latest"` default points to the
+# most-recent Reve image-edit model; pin to a dated slug like
+# "reve-edit@20250915" if you want frozen behaviour across versions.
+REVE_GENERATE_URL = "https://api.reve.com/v1/image/edit"
+ENHANCE_MODEL_REVE = "reve-edit-latest"
+# Reve's edit_instruction field caps at 2560 chars — our stock prompt
+# can exceed that with all toggles on, so we truncate. The Reve docs
+# explicitly say "this instruction will be automatically enhanced by
+# the model", so a clean truncation at a sentence boundary loses less
+# than it would on the more literal providers.
+REVE_PROMPT_MAX_CHARS = 2560
+
 
 def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
     """
@@ -445,6 +459,84 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
         )
 
 
+async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
+    """
+    Call Reve's /v1/image/edit endpoint synchronously and return raw PNG
+    bytes.
+
+    Request shape (per https://docs.reve.com):
+      Authorization: Bearer <REVE_API_KEY>
+      Accept: application/json
+      body: {
+        edit_instruction: <prompt — capped to REVE_PROMPT_MAX_CHARS>,
+        reference_image:  <base64 source bytes>,
+        version:          "latest",
+      }
+
+    Response shape (when accept=json):
+      {
+        image:              <base64 PNG>,
+        version:            "reve-edit@...",
+        content_violation:  bool,
+        request_id:         "rsid-...",
+        credits_used:       int,
+        credits_remaining:  int,
+      }
+
+    Aspect ratio is intentionally NOT sent — Reve defaults to the
+    reference image's aspect, which is what we want (we already cap
+    uploads at 1024 long-edge in compress.ts).
+    """
+    settings = get_settings()
+    if not settings.reve_api_key:
+        raise RuntimeError(
+            "Reve provider requested but REVE_API_KEY is not set. "
+            "Mount cleanshot-reve-key:latest via Cloud Run --set-secrets "
+            "and re-deploy."
+        )
+
+    image_bytes, _ct = await _load_image_bytes(gcs_uri)
+    image_b64 = base64.b64encode(image_bytes).decode()
+
+    body = {
+        "edit_instruction": prompt[:REVE_PROMPT_MAX_CHARS],
+        "reference_image":  image_b64,
+        "version":          "latest",
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.reve_api_key}",
+        "Accept":        "application/json",
+        "Content-Type":  "application/json",
+    }
+
+    # Reve is synchronous — a single POST returns the rendered image.
+    # Timeout matches the OpenAI client (300s); Reve typically returns
+    # in 10-30s but we'd rather wait than fail.
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(REVE_GENERATE_URL, headers=headers, json=body)
+
+    if resp.status_code >= 400:
+        # Surface the structured error fields if present.
+        try:
+            err = resp.json()
+            detail = err.get("message") or err.get("error_code") or resp.text[:300]
+        except Exception:
+            detail = resp.text[:300]
+        raise ValueError(f"Reve edit failed ({resp.status_code}): {detail}")
+
+    data = resp.json()
+    if data.get("content_violation"):
+        raise ValueError(
+            "Reve flagged the response as a content-policy violation; no image returned."
+        )
+    image_b64_out = data.get("image")
+    if not image_b64_out:
+        raise ValueError(f"Reve returned no image bytes: {data}")
+
+    # Reve returns a base64-encoded PNG payload — decode once to raw bytes.
+    return base64.b64decode(image_b64_out)
+
+
 async def _run_enhance(
     request: Request,
     payload: EnhanceTaskPayload,
@@ -502,6 +594,11 @@ async def _run_enhance(
         elif payload.provider == "flux":
             provider_model = "flux-2-max"
             output_bytes = await _enhance_with_flux(
+                payload.input_gcs_uri, prompt
+            )
+        elif payload.provider == "reve":
+            provider_model = ENHANCE_MODEL_REVE
+            output_bytes = await _enhance_with_reve(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default

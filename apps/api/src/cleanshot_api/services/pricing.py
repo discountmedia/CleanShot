@@ -44,6 +44,14 @@ PER_IMAGE_USD: dict[str, float] = {
     # Black Forest Labs FLUX 2 MAX. BFL bills credits; ~$0.06 in USD
     # equivalent at current credit rate (1024 credits ≈ $1, ~60 cr/call).
     "flux-2-max":                     0.060,
+
+    # Reve (https://api.reve.com). Reve bills credits — example response
+    # in their docs showed `credits_used: 30` against an initial 1000
+    # budget. Without a published USD-per-credit conversion we use a
+    # conservative $0.03/edit placeholder. After a few real runs,
+    # inspect the actual credits_used + Reve's pricing page and
+    # update this entry.
+    "reve-edit-latest":               0.030,
 }
 
 

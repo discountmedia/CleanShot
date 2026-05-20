@@ -86,8 +86,9 @@ export async function enqueueEnhance(params: {
   forkliftMeta?: Partial<ForkliftMeta>;
   /** Image generation provider. Default = "gemini" (gemini-2.5-flash-image).
    * "openai" routes through gpt-image-2-2026-04-21.
-   * "flux" routes through Black Forest Labs FLUX 2 [PRO]. */
-  provider?: "gemini" | "openai" | "flux";
+   * "flux"   routes through Black Forest Labs FLUX 2 MAX.
+   * "reve"   routes through Reve image-edit (latest). */
+  provider?: "gemini" | "openai" | "flux" | "reve";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
   idempotencyKey: string;
