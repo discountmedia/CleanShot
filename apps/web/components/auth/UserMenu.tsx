@@ -6,6 +6,13 @@
 import { useState } from "react";
 import { useSession, signOut } from "@/lib/auth-client";
 
+// Per-user avatar overrides. Email keys are lowercased to match how
+// Better Auth normalises the session. Add a row when a teammate wants
+// their own image; everyone else still gets the initials disc.
+const USER_AVATARS: Record<string, string> = {
+  "stephen@discountforklift.us": "/sukuna-avatar.png",
+};
+
 export function UserMenu() {
   const { data: session } = useSession();
   const [signingOut, setSigningOut]   = useState(false);
@@ -13,8 +20,9 @@ export function UserMenu() {
 
   if (!session?.user) return null;
 
-  const email   = session.user.email ?? "";
-  const initials = email.split("@")[0].slice(0, 2).toUpperCase();
+  const email     = session.user.email ?? "";
+  const initials  = email.split("@")[0].slice(0, 2).toUpperCase();
+  const avatarUrl = USER_AVATARS[email.toLowerCase()];
 
   const handleSignOut = async () => {
     setSigningOut(true);
@@ -29,9 +37,18 @@ export function UserMenu() {
         aria-expanded={menuOpen}
         aria-label="User menu"
       >
-        <span className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white">
-          {initials}
-        </span>
+        {avatarUrl ? (
+          /* eslint-disable-next-line @next/next/no-img-element -- small avatar, next/image overhead isn't worth it */
+          <img
+            src={avatarUrl}
+            alt=""
+            className="w-6 h-6 rounded-full object-cover bg-zinc-800"
+          />
+        ) : (
+          <span className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white">
+            {initials}
+          </span>
+        )}
         <span className="text-xs text-zinc-300 max-w-[140px] truncate hidden sm:block">{email}</span>
         <svg className={`w-3 h-3 text-zinc-500 transition-transform ${menuOpen ? "rotate-180" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor">
