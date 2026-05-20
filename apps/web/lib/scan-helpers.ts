@@ -185,8 +185,12 @@ const EQUIPMENT_BODY_PARTS: Record<EquipmentType, string> = {
   telehandler:  "chassis, boom, and cab",
 };
 
-/** Refined operator-authored spine. Image-gen models respond better to
- *  declarative scene prose than to multi-section instructional text. */
+/** Honesty-first multi-section spine. The earlier single-paragraph
+ *  version with "completely covering all previous paint chips and rust"
+ *  made the model render near-factory-new lifts. This version leads
+ *  with mandatory-imperfections + "cheap shop respray" framing and
+ *  ends with explicit FAILURE CRITERIA so "looks too new" reads as a
+ *  hard fail. Mirrors apps/api/.../workers/enhance_worker.py exactly. */
 function buildSpine(
   equipmentType: EquipmentType,
   paintForksOn:  boolean,
@@ -198,13 +202,43 @@ function buildSpine(
     paintForksOn
     && (equipmentType === "forklift" || equipmentType === "telehandler");
 
-  const forksSentence = paintForksApplies
-    ? ` The lifting forks are painted a distinct Discount Forklift signature red with safety yellow tips, while the load back rest (LBR) — the vertical frame at the back of the fork carriage — remains BLACK (OSHA convention reserves black for the LBR so the high-vis forks read clearly against it).`
-    : "";
+  const sections: string[] = [];
 
-  return (
-    `A photorealistic depiction of the used ${eq} from the reference image, maintaining the identical camera angle, perspective, and background environment. The entire body of the ${eq}, including the ${parts}, has received a fresh coat of spray paint in the precise original factory color, completely covering all previous paint chips and rust while preserving body details. Crucially, all OEM make, model, and capacity decals have been meticulously masked and are preserved in their exact original placement and spelling, showing only realistic wear.${forksSentence} The tires retain their used character and tread wear, but their sidewalls only have been treated with a high-gloss tire shine, contrasted with the untreated tread. The overall appearance is a realistically refurbished used ${eq}, clean but with a quality "used" character and slight imperfections to avoid a deceptively perfect brand-new appearance. The background setting remains entirely unchanged.`
+  sections.push(
+    `A photorealistic depiction of a USED ${eq} that has just received a CHEAP shop-grade spray paint job. THIS IS A USED VEHICLE — not a restoration, not a factory finish, not a brand-new unit. Visible signs of age, wear, and prior use MUST remain visible in the final image.`,
   );
+
+  sections.push(
+    "MANDATORY IMPERFECTIONS — these stay visible in the output:\n• Dents, panel damage, and bent hardware stay.\n• Deep scratches and gouges stay.\n• Significant rust pitting still shows through the fresh paint — only surface dust and dirt get covered, not the pitting itself.\n• Worn-through paint patches in deep corners and high-wear edges stay visible.\n• Missing parts, broken hardware, and cracked components stay.",
+  );
+
+  sections.push(
+    `PAINT JOB CHARACTER: a single quick coat from a shop spray gun in the precise original factory colour scheme. It looks CHEAP — light orange-peel texture, slightly uneven coverage on complex surfaces, thin spots in tight corners, occasional overspray. Apply this respray to the ${parts}. Match the original panel-to-colour mapping exactly; do not change which panel is which colour.`,
+  );
+
+  sections.push(
+    "OEM make, model, and capacity decals are masked off and preserved in their EXACT original placement and spelling, showing only realistic wear.",
+  );
+
+  if (paintForksApplies) {
+    sections.push(
+      "LIFTING FORKS — paint ONLY the two horizontal fork tines themselves (the L-shaped blades that go into pallets) with Discount Forklift signature red and safety yellow tips. The red covers the heel of each fork (the vertical shank) and roughly the first 80% of the horizontal blade; the outermost ~15-20 cm (~6-8 inches) of the tip is safety YELLOW. Do NOT paint the surrounding carriage, mast, mast rails, side shifters, attachment brackets, or any hardware around the forks — ONLY the two fork tines themselves. The LOAD BACK REST (LBR), the vertical cage / grid frame at the back of the fork carriage, remains BLACK; OSHA convention reserves black for the LBR so the high-vis forks read clearly against it.",
+    );
+  }
+
+  sections.push(
+    "TIRES retain their full used character — tread wear, cuts, gouges, aging cracks, dry rot, and chunks all stay visible. Only the tire sidewalls have been wiped with a light tire shine; the tread is untreated.",
+  );
+
+  sections.push(
+    "SCENE: maintain the identical camera angle, perspective, and background environment from the source image. The background setting remains entirely unchanged.",
+  );
+
+  sections.push(
+    `FAILURE CRITERIA — if the final image looks brand-new, factory-fresh, restored, or noticeably "better than the original," you have failed the task. The ${eq} must still look unmistakably USED. If you're unsure whether a defect should be covered, LEAVE IT VISIBLE.`,
+  );
+
+  return sections.join("\n\n");
 }
 
 function buildRentalScrubBlock(): string {

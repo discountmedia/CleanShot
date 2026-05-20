@@ -182,39 +182,85 @@ def _build_enhance_prompt(
         and equipment_type in ("forklift", "telehandler")
     )
 
-    # Forks + LBR sentence — only included when the toggle is on AND the
-    # equipment has forks. LBR-black appended so the model doesn't
-    # accidentally include the LBR in the high-vis fork paint pass.
-    forks_sentence = (
-        " The lifting forks are painted a distinct Discount Forklift "
-        "signature red with safety yellow tips, while the load back rest "
-        "(LBR) — the vertical frame at the back of the fork carriage — "
-        "remains BLACK (OSHA convention reserves black for the LBR so "
-        "the high-vis forks read clearly against it)."
-        if paint_forks_on
-        else ""
+    # ── Spine — honesty-first cheap-respray framing ─────────────────────
+    # The earlier "completely covering all previous paint chips and rust"
+    # wording read as restoration instructions and made the model render
+    # near-factory-new lifts. Now leads with a mandatory-defects list +
+    # "cheap shop-grade respray" framing + an explicit FAILURE CRITERIA
+    # bookend so the model treats "looks too new" as a hard fail.
+    sections: list[str] = []
+
+    sections.append(
+        f"A photorealistic depiction of a USED {eq_display} that has just "
+        f"received a CHEAP shop-grade spray paint job. THIS IS A USED "
+        f"VEHICLE — not a restoration, not a factory finish, not a "
+        f"brand-new unit. Visible signs of age, wear, and prior use MUST "
+        f"remain visible in the final image."
     )
 
-    # ── Spine — refined operator-authored prompt ────────────────────────
-    sections: list[str] = []
     sections.append(
-        f"A photorealistic depiction of the used {eq_display} from the "
-        f"reference image, maintaining the identical camera angle, "
-        f"perspective, and background environment. The entire body of "
-        f"the {eq_display}, including the {eq_parts}, has received a "
-        f"fresh coat of spray paint in the precise original factory "
-        f"color, completely covering all previous paint chips and rust "
-        f"while preserving body details. Crucially, all OEM make, model, "
-        f"and capacity decals have been meticulously masked and are "
-        f"preserved in their exact original placement and spelling, "
-        f"showing only realistic wear.{forks_sentence} The tires retain "
-        f"their used character and tread wear, but their sidewalls only "
-        f"have been treated with a high-gloss tire shine, contrasted "
-        f"with the untreated tread. The overall appearance is a "
-        f"realistically refurbished used {eq_display}, clean but with a "
-        f"quality \"used\" character and slight imperfections to avoid "
-        f"a deceptively perfect brand-new appearance. The background "
+        "MANDATORY IMPERFECTIONS — these stay visible in the output:\n"
+        "• Dents, panel damage, and bent hardware stay.\n"
+        "• Deep scratches and gouges stay.\n"
+        "• Significant rust pitting still shows through the fresh paint "
+        "— only surface dust and dirt get covered, not the pitting itself.\n"
+        "• Worn-through paint patches in deep corners and high-wear "
+        "edges stay visible.\n"
+        "• Missing parts, broken hardware, and cracked components stay."
+    )
+
+    sections.append(
+        f"PAINT JOB CHARACTER: a single quick coat from a shop spray gun "
+        f"in the precise original factory colour scheme. It looks CHEAP "
+        f"— light orange-peel texture, slightly uneven coverage on "
+        f"complex surfaces, thin spots in tight corners, occasional "
+        f"overspray. Apply this respray to the {eq_parts}. Match the "
+        f"original panel-to-colour mapping exactly; do not change which "
+        f"panel is which colour."
+    )
+
+    sections.append(
+        "OEM make, model, and capacity decals are masked off and "
+        "preserved in their EXACT original placement and spelling, "
+        "showing only realistic wear."
+    )
+
+    if paint_forks_on:
+        sections.append(
+            "LIFTING FORKS — paint ONLY the two horizontal fork tines "
+            "themselves (the L-shaped blades that go into pallets) with "
+            "Discount Forklift signature red and safety yellow tips. The "
+            "red covers the heel of each fork (the vertical shank) and "
+            "roughly the first 80% of the horizontal blade; the "
+            "outermost ~15-20 cm (~6-8 inches) of the tip is safety "
+            "YELLOW. Do NOT paint the surrounding carriage, mast, mast "
+            "rails, side shifters, attachment brackets, or any hardware "
+            "around the forks — ONLY the two fork tines themselves. The "
+            "LOAD BACK REST (LBR), the vertical cage / grid frame at the "
+            "back of the fork carriage, remains BLACK; OSHA convention "
+            "reserves black for the LBR so the high-vis forks read "
+            "clearly against it."
+        )
+
+    sections.append(
+        "TIRES retain their full used character — tread wear, cuts, "
+        "gouges, aging cracks, dry rot, and chunks all stay visible. "
+        "Only the tire sidewalls have been wiped with a light tire "
+        "shine; the tread is untreated."
+    )
+
+    sections.append(
+        f"SCENE: maintain the identical camera angle, perspective, and "
+        f"background environment from the source image. The background "
         f"setting remains entirely unchanged."
+    )
+
+    sections.append(
+        f"FAILURE CRITERIA — if the final image looks brand-new, "
+        f"factory-fresh, restored, or noticeably \"better than the "
+        f"original,\" you have failed the task. The {eq_display} must "
+        f"still look unmistakably USED. If you're unsure whether a "
+        f"defect should be covered, LEAVE IT VISIBLE."
     )
 
     # ── Toggle-driven additions ────────────────────────────────────────
@@ -222,14 +268,17 @@ def _build_enhance_prompt(
 
     if toggles.new_paint_job:
         extras.append(
-            "EXTRA EMPHASIS — paint coverage. This image has been flagged "
-            "as needing especially thorough coverage of paint chips and "
-            "small worn spots."
+            "EXTRA EMPHASIS — paint coverage. This image has rough "
+            "surface paint; lean a bit harder on covering surface dirt "
+            "and small scuffs. Still respect the FAILURE CRITERIA: no "
+            "restoration, no factory-new finish, mandatory imperfections "
+            "stay visible."
         )
     if toggles.remove_rust:
         extras.append(
-            "EXTRA EMPHASIS — surface rust. This image has been flagged "
-            "for thorough surface-rust cleanup before the paint pass."
+            "EXTRA EMPHASIS — surface dirt. Clean off light surface dust "
+            "and dirt a bit more thoroughly before the cheap respray. "
+            "Significant rust pitting still shows through the new paint."
         )
     if toggles.restore_decals:
         extras.append(
