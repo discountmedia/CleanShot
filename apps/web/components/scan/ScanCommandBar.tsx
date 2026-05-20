@@ -1,12 +1,13 @@
 // apps/web/components/scan/ScanCommandBar.tsx
 // Sticky bottom action strip — mirrors the Enhance tab's CommandBar.
-// Shows verdict tallies, approved/rejected counts, a min-confidence
-// threshold slider, and one primary CTA: "Approve N → Resize".
+// Shows verdict tallies, approved/rejected counts, and one primary CTA:
+// "Approve N → Resize" — approves every undecided card regardless of
+// consensus verdict or confidence.
 //
-// Eligibility is intentionally narrow: only clean PASS consensus at or
-// above the threshold gets bulk-approved. Mixed and fail verdicts are
-// excluded regardless of slider — bulk should never approve against AI
-// dissent.
+// Operator's escape hatches: per-card Reject (✕) keeps a card out of
+// the bulk action; per-card Approve forwards just that one. Auto-advance
+// (when on) still uses the pass-only safety filter so silent background
+// approval never auto-ships a fail.
 
 interface ScanCommandBarProps {
   passCount:     number;
@@ -18,10 +19,6 @@ interface ScanCommandBarProps {
 
   /** Number of cards that would be approved by the bulk CTA right now. */
   eligibleCount: number;
-
-  /** 0–1, defaults to 0.80 on first mount; lives in ScanPanel state. */
-  threshold:     number;
-  onThreshold:   (next: number) => void;
 
   /** Bulk-approve handler. Receives no args — eligibleCount is the count we'd ship. */
   onApproveBulk: () => void;
@@ -37,8 +34,6 @@ export function ScanCommandBar({
   approvedCount,
   rejectedCount,
   eligibleCount,
-  threshold,
-  onThreshold,
   onApproveBulk,
   autoAdvance,
 }: ScanCommandBarProps) {
@@ -73,25 +68,6 @@ export function ScanCommandBar({
         </div>
 
         <div className="ml-auto flex items-center gap-3 flex-wrap">
-          <label className="flex items-center gap-2">
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
-              Min confidence
-            </span>
-            <input
-              type="range"
-              min={50}
-              max={100}
-              step={5}
-              value={Math.round(threshold * 100)}
-              onChange={(e) => onThreshold(Number(e.target.value) / 100)}
-              className="w-24 accent-red-500"
-              aria-label="Minimum confidence threshold for bulk approve"
-            />
-            <span className="text-xs font-mono tabular-nums text-zinc-300 w-9 text-right">
-              {Math.round(threshold * 100)}%
-            </span>
-          </label>
-
           {autoAdvance && (
             <span className="text-[11px] text-zinc-500 italic">
               Auto-advance is on — passes auto-send to Resize

@@ -125,7 +125,6 @@ export function ScanPanel({
   // ─── Redesign-specific UI state ─────────────────────────────────────────
 
   const [filter, setFilter]               = useState<ScanFilter>("all");
-  const [threshold, setThreshold]         = useState<number>(0.80);
   const [approved, setApproved]           = useState<Set<string>>(new Set());
   const [rejected, setRejected]           = useState<Set<string>>(new Set());
   const [regenOpenId, setRegenOpenId]     = useState<string | null>(null);
@@ -396,17 +395,30 @@ export function ScanPanel({
     });
   }, [scanStates, filter]);
 
-  // Eligible-for-bulk-approve: pass consensus at ≥ threshold, not yet
-  // approved/rejected. Mixed/fail excluded regardless of threshold — bulk
-  // should never approve against AI dissent.
+  // Eligible-for-bulk-approve: ANY verdict, as long as the scan has
+  // results and isn't already approved/rejected. Operators wanted a
+  // single one-click "send everything I haven't rejected to Resize"
+  // CTA — the confidence-gate friction is gone. Per-card Reject (✕) is
+  // the escape hatch to keep a card out of the bulk run.
   const eligibleForBulk = useMemo(() => {
     return scanStates.filter((s) => {
       if (approved.has(s.assetId) || rejected.has(s.assetId)) return false;
       if (s.providerResults.length === 0) return false;
-      const c = computeConsensus(s.providerResults);
-      return c !== null && c.verdict === "pass" && c.avgConfidence >= threshold;
+      return true;
     });
-  }, [scanStates, approved, rejected, threshold]);
+  }, [scanStates, approved, rejected]);
+
+  // Pass-only subset for auto-advance. Even with threshold gone, silent
+  // background auto-approval should never ship a fail or mixed verdict
+  // — operators need to see those before they go.
+  const autoAdvanceEligible = useMemo(() => {
+    return scanStates.filter((s) => {
+      if (approved.has(s.assetId) || rejected.has(s.assetId)) return false;
+      if (s.providerResults.length === 0) return false;
+      const c = computeConsensus(s.providerResults);
+      return c !== null && c.verdict === "pass";
+    });
+  }, [scanStates, approved, rejected]);
 
   // Command-bar verdict tallies — exclude already-decided cards so the
   // numbers always reflect work remaining.
@@ -492,17 +504,19 @@ export function ScanPanel({
   // ─── Auto-advance — auto-approve eligible passes ────────────────────────
   // Forwarding to Resize + marking approved in lock-step IS the side-effect
   // here; marking approved is what prevents the re-derive loop because the
-  // eligibleForBulk memo filters by approved.
+  // autoAdvanceEligible memo filters by approved. Note auto-advance uses
+  // the pass-only set, NOT the broader eligibleForBulk that the manual CTA
+  // ships — silent background approval should never auto-ship a fail.
   useEffect(() => {
-    if (!autoAdvance || eligibleForBulk.length === 0) return;
-    onSendToResize(eligibleForBulk.map(buildResizeItem));
+    if (!autoAdvance || autoAdvanceEligible.length === 0) return;
+    onSendToResize(autoAdvanceEligible.map(buildResizeItem));
     // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional, see comment above.
     setApproved((prev) => {
       const next = new Set(prev);
-      for (const s of eligibleForBulk) next.add(s.assetId);
+      for (const s of autoAdvanceEligible) next.add(s.assetId);
       return next;
     });
-  }, [autoAdvance, eligibleForBulk, onSendToResize, buildResizeItem]);
+  }, [autoAdvance, autoAdvanceEligible, onSendToResize, buildResizeItem]);
 
   // ─── Reset scan ─────────────────────────────────────────────────────────
 
@@ -790,8 +804,6 @@ export function ScanPanel({
           approvedCount={approved.size}
           rejectedCount={rejected.size}
           eligibleCount={eligibleForBulk.length}
-          threshold={threshold}
-          onThreshold={setThreshold}
           onApproveBulk={handleApproveBulk}
           autoAdvance={autoAdvance}
         />
