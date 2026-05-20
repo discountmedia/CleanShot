@@ -1095,10 +1095,12 @@ export function EnhancePanel({
             </div>
           )}
 
-          {/* 2-column on xl+ so 10-image batches don't force a long
-              vertical scroll. On smaller screens cards still stack
-              full-width — the variant strip needs the room. */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3 pb-4">
+          {/* Single column at every breakpoint. The 2-col xl layout
+              shrank variants to ~half the size they need to be for
+              close inspection (operator needs ≥85% of original size to
+              spot subtle paint / decal differences). Scroll length on
+              big batches is a known trade-off. */}
+          <div className="flex flex-col gap-3 pb-4">
             {files.map((f) => {
               const variants = variantsByFile.get(f.id);
               if (!variants) return null;

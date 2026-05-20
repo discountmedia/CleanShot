@@ -180,7 +180,12 @@ export function SourceCompareCard({
           <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
             Original — source photo
           </span>
-          <div className="relative w-full max-w-4xl mx-auto aspect-4/3 rounded-lg overflow-hidden border border-zinc-800 bg-black">
+          {/* Original capped narrower than the variant column so each
+              variant in the 2-col grid below comes out ≥85% of the
+              original's display width. Math: card body ~1448px →
+              variants ~718px each → original max-w-3xl (768px) keeps
+              the variant/original ratio at ~93%. */}
+          <div className="relative w-full max-w-3xl mx-auto aspect-4/3 rounded-lg overflow-hidden border border-zinc-800 bg-black">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={file.previewUrl}
