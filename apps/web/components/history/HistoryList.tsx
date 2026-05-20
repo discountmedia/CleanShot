@@ -311,13 +311,33 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
 
 // ─── Main list ───────────────────────────────────────────────────────────────
 
-export function HistoryList({ userEmail }: { userEmail: string }) {
+export function HistoryList({
+  userEmail,
+  active = true,
+}: {
+  userEmail: string;
+  /**
+   * True when the History tab is the active workspace tab. Refetches
+   * whenever this flips false → true so new approvals from the Resize
+   * tab show up without a full page reload. Defaults to true so this
+   * component still works when mounted standalone (e.g. /history page).
+   */
+  active?: boolean;
+}) {
   const [data, setData]       = useState<HistoryResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState<string | null>(null);
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
+  const [refreshTick, setRefreshTick] = useState(0);
 
+  // Refetch on mount, whenever the tab becomes active, and whenever the
+  // Refresh button is clicked. Workspace keeps all four panels mounted
+  // simultaneously (visibility-only toggle), so without this the
+  // history list would forever show whatever it loaded on first paint.
   useEffect(() => {
+    if (!active) return;
+    setLoading(true);
+    setError(null);
     fetch("/api/history", { cache: "no-store" })
       .then((r) => {
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
@@ -326,7 +346,7 @@ export function HistoryList({ userEmail }: { userEmail: string }) {
       .then(setData)
       .catch((e: unknown) => setError(e instanceof Error ? e.message : "Failed to load history"))
       .finally(() => setLoading(false));
-  }, []);
+  }, [active, refreshTick]);
 
   // Distinct make / model dropdown options, sorted alphabetically.
   const availableMakes = useMemo(() => {
@@ -400,9 +420,19 @@ export function HistoryList({ userEmail }: { userEmail: string }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
-        {data.totalSets} set{data.totalSets !== 1 ? "s" : ""} · Images stored 60 days from approval · {userEmail}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
+          {data.totalSets} set{data.totalSets !== 1 ? "s" : ""} · Images stored 60 days from approval · {userEmail}
+        </p>
+        <button
+          onClick={() => setRefreshTick((t) => t + 1)}
+          disabled={loading}
+          className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-2 py-1 rounded transition-colors disabled:opacity-50"
+          aria-label="Reload history"
+        >
+          {loading ? "Loading…" : "Refresh"}
+        </button>
+      </div>
 
       <FilterBar
         filters={filters}

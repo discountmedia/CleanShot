@@ -188,7 +188,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           </PanelSlot>
 
           <PanelSlot active={activeTab === "history"}>
-            <HistoryList userEmail={userEmail} />
+            <HistoryList userEmail={userEmail} active={activeTab === "history"} />
           </PanelSlot>
 
           {!sessionId && !sessionError && activeTab !== "history" && (
