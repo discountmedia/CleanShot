@@ -70,6 +70,10 @@ export interface ScanCardProps {
   /** Equipment category — forwarded to RegenPanel so the seeded prompt
    *  uses the same per-type guardrails Enhance applied originally. */
   equipmentType: EquipmentType;
+  /** OEM make — forwarded to RegenPanel so the regen prompt's RENTAL-
+   *  FLEET BRANDING block can restore OEM-style brand decals where
+   *  rental wraps were stripped. Null when meta.make isn't set. */
+  make:          string | null;
 
   onToggleRegen:   () => void;
   onToggleDetails: () => void;
@@ -87,6 +91,7 @@ export function ScanCard({
   scanStartedMs,
   nowMs,
   equipmentType,
+  make,
   onToggleRegen,
   onToggleDetails,
   onApprove,
@@ -277,6 +282,7 @@ export function ScanCard({
             <RegenPanel
               unified={unified}
               equipmentType={equipmentType}
+              make={make}
               onApply={onApplyRegen}
               onCancel={onToggleRegen}
             />

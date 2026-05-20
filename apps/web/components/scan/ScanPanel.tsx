@@ -111,6 +111,13 @@ export interface ScanPanelProps {
    * one Enhance used for the original generation.
    */
   equipmentType:   EquipmentType;
+  /**
+   * OEM make from the operator's meta form (e.g. "Toyota"). Threaded
+   * into RegenPanel so the regen prompt's RENTAL-FLEET BRANDING block
+   * can request OEM-style brand restoration where rental wraps were
+   * stripped. Null when the operator hasn't filled in Make yet.
+   */
+  make:            string | null;
 }
 
 export function ScanPanel({
@@ -120,6 +127,7 @@ export function ScanPanel({
   onSendToResize,
   autoAdvance,
   equipmentType,
+  make,
 }: ScanPanelProps) {
   // ─── Core scan state ────────────────────────────────────────────────────
 
@@ -764,6 +772,7 @@ export function ScanPanel({
                   scanStartedMs={jobStartedMs.get(scan.assetId) ?? null}
                   nowMs={nowMs}
                   equipmentType={equipmentType}
+                  make={make}
                   onToggleRegen={() =>
                     setRegenOpenId((cur) => (cur === scan.assetId ? null : scan.assetId))
                   }

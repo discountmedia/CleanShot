@@ -186,7 +186,10 @@ function buildMaster(equipmentType: EquipmentType): string {
   ].join("\n");
 }
 
-function buildStandardTreatment(includeRentalScrub: boolean): string {
+function buildStandardTreatment(
+  includeRentalScrub: boolean,
+  make:               string | null = null,
+): string {
   const bullets: string[] = [];
 
   bullets.push(
@@ -198,8 +201,15 @@ function buildStandardTreatment(includeRentalScrub: boolean): string {
   );
 
   if (includeRentalScrub) {
+    const makeClean = (make ?? "").trim();
+    const oemRestoration = makeClean
+      ? ` Where the removed rental branding covered a substantial body panel area that an OEM-shipped ${makeClean} unit would normally carry brand identification on (typical positions: side cab panels, rear counterweight / chassis, mast cross-member or boom side), restore an OEM-style "${makeClean}" brand wordmark or logo in the manufacturer's typical decal style and placement for that make. Do NOT invent capacity numbers, model numbers, serial numbers, or specifications that aren't already visible elsewhere in the source — only the ${makeClean} brand identification.`
+      : "";
+
     bullets.push(
-      "RENTAL-FLEET BRANDING. Remove decals, stickers, vinyl wraps, painted lettering, and asset-tag numbers that advertise third-party rental fleets. Examples include (non-exhaustive): Sunbelt Rentals, United Rentals, Herc Rentals, Sunstate Equipment, Ahern Rentals, EquipmentShare, The Home Depot Tool Rental, BlueLine Rental, NES Rentals, and any similar fleet-branding wraps or stickers (large fleet ID numbers, '1-800' style asset tags, rental-company logos in non-OEM colours). Where a rental decal is removed, leave the underlying panel surface matching the surrounding panel — do not leave a ghost outline. PRESERVE all OEM manufacturer decals (Toyota, Hyster, Yale, Crown, Komatsu, Mitsubishi, Caterpillar, Skyjack, Genie, JLG, Bobcat, etc.), capacity plates, VIN / serial numbers, model badges, and safety stickers — only third-party rental-fleet branding is removed.",
+      "RENTAL-FLEET BRANDING. Remove decals, stickers, vinyl wraps, painted lettering, and asset-tag numbers that advertise third-party rental fleets. Examples include (non-exhaustive): Sunbelt Rentals, United Rentals, Herc Rentals, Sunstate Equipment, Ahern Rentals, EquipmentShare, The Home Depot Tool Rental, BlueLine Rental, NES Rentals, and any similar fleet-branding wraps or stickers (large fleet ID numbers, '1-800' style asset tags, rental-company logos in non-OEM colours). Where a rental decal is removed, leave the underlying panel surface matching the surrounding panel — do not leave a ghost outline."
+      + oemRestoration
+      + " PRESERVE all OEM manufacturer decals (Toyota, Hyster, Yale, Crown, Komatsu, Mitsubishi, Caterpillar, Skyjack, Genie, JLG, Bobcat, etc.), capacity plates, VIN / serial numbers, model badges, and safety stickers — only third-party rental-fleet branding is removed.",
     );
   }
 
@@ -243,6 +253,13 @@ export interface BuildRegenPromptOptions {
   equipmentType?:        EquipmentType;
   /** Defaults to true (most batches want it). */
   removeRentalBranding?: boolean;
+  /**
+   * OEM make (e.g. "Toyota", "Hyster"). When set, the RENTAL-FLEET
+   * BRANDING block instructs the model to restore OEM-style brand
+   * decals where rental wraps were stripped. Empty/missing => rental
+   * branding is just cleaned off without OEM restoration.
+   */
+  make?:                 string | null;
 }
 
 /**
@@ -256,6 +273,7 @@ export function buildRegenPrompt(
 ): string {
   const equipmentType        = options.equipmentType        ?? "forklift";
   const removeRentalBranding = options.removeRentalBranding ?? true;
+  const make                 = options.make                 ?? null;
 
   let issuesBlock = "";
   if (unified.length > 0) {
@@ -279,7 +297,7 @@ export function buildRegenPrompt(
 
   const sections: string[] = [
     buildMaster(equipmentType),
-    buildStandardTreatment(removeRentalBranding),
+    buildStandardTreatment(removeRentalBranding, make),
   ];
   if (issuesBlock) sections.push(issuesBlock);
   sections.push(buildGuardrails(equipmentType));
