@@ -214,11 +214,6 @@ def _build_enhance_prompt(
     )
 
     if toggles.remove_rental_branding:
-        #make_clean = (make or "").strip()
-        # When a make is known, instruct the model to restore OEM-style
-        # brand decals where the rental wrap had stripped them. When the
-        # make field is empty, just clean the rental branding away and
-        # leave the panel plain — don't have the model guess a brand.
         standard_bullets.append(
             "RENTAL-FLEET BRANDING. Remove decals, stickers, vinyl wraps, "
             "painted lettering, and asset-tag numbers that advertise "
@@ -230,13 +225,14 @@ def _build_enhance_prompt(
             "'1-800' style asset tags, rental-company logos in non-OEM "
             "colours). Where a rental decal is removed, leave the "
             "underlying panel surface matching the surrounding panel — "
-            "do not leave a ghost outline."
-            #+ oem_restoration
-            + " PRESERVE all OEM manufacturer decals (Toyota, Hyster, "
-              "Yale, Crown, Komatsu, Mitsubishi, Caterpillar, Skyjack, "
-              "Genie, JLG, Bobcat, etc.), capacity plates, VIN / serial "
-              "numbers, model badges, and safety stickers — only third-"
-              "party rental-fleet branding is removed."
+            "do not leave a ghost outline, and do NOT invent or paste "
+            "any replacement brand decals, logos, or wordmarks (no "
+            "guessing OEM identity). PRESERVE all OEM manufacturer "
+            "decals already present (Toyota, Hyster, Yale, Crown, "
+            "Komatsu, Mitsubishi, Caterpillar, Skyjack, Genie, JLG, "
+            "Bobcat, etc.), capacity plates, VIN / serial numbers, "
+            "model badges, and safety stickers — only third-party "
+            "rental-fleet branding is removed."
         )
 
     standard_bullets.append(
@@ -331,12 +327,11 @@ def _build_enhance_prompt(
             f"tags all stay."
         )
     if toggles.paint_forks_red_yellow_tips:
-        # Forklift-only action — frontend hides the toggle when
-        # equipment_type != forklift, but the prompt is defensive anyway:
-        # if a non-forklift type slips through with this on, skip it
-        # rather than try to "paint forks" on something that doesn't have
-        # forks.
-        if equipment_type == "forklift":
+        # Applies to fork-carrying equipment (forklifts + telehandlers).
+        # Scissor lifts have no forks — the frontend hides the toggle
+        # for those, but we defensively no-op here too if the type
+        # slips through.
+        if equipment_type in ("forklift", "telehandler"):
             extras.append(
                 "ADDITIONAL ACTION — repaint the forks with the standard "
                 "OSHA two-tone safety scheme. The MAIN BODY of each fork "
@@ -347,7 +342,16 @@ def _build_enhance_prompt(
                 "result must clearly read as a RED fork with a small "
                 "YELLOW tip cap. Do NOT paint the entire fork yellow or "
                 "the entire fork red. Do not change fork length, profile, "
-                "mounting, or position."
+                "mounting, or position.\n"
+                "  LOAD BACK REST (LBR): the vertical frame at the back "
+                "of the fork carriage (the cage / grid that prevents "
+                "loads from sliding back into the operator) MUST remain "
+                "BLACK. Do NOT paint the LBR red, yellow, or any high-"
+                "visibility safety colour — OSHA convention reserves "
+                "black for the LBR so the forks read clearly against it. "
+                "If the existing LBR is chipped, rusty, or dirty, clean "
+                "it up to read as a fresh even BLACK finish; never change "
+                "its colour."
             )
 
     extras_block = (
@@ -835,7 +839,6 @@ async def _run_enhance(
             prompt = _build_enhance_prompt(
                 payload.toggles,
                 equipment_type=payload.equipment_type,
-                #make=payload.make,
             )
 
         # Dispatch to the requested provider. The Gemini semaphore is

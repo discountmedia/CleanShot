@@ -961,15 +961,16 @@ export function EnhancePanel({
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
-                  // paintForksRedYellowTips only makes sense for forklifts —
-                  // scissor lifts and telehandlers don't have OSHA-painted
-                  // forks. Hide the toggle when the operator picks a
-                  // non-forklift equipment type; the backend prompt
-                  // defensively skips the bullet too.
-                  .filter((key) =>
-                    key !== "paintForksRedYellowTips"
-                    || (meta.equipmentType ?? "forklift") === "forklift",
-                  )
+                  // paintForksRedYellowTips applies to fork-carrying
+                  // equipment (forklifts + telehandlers). Scissor lifts
+                  // have no forks, so hide the toggle for those. Backend
+                  // also defensively skips the bullet if the type slips
+                  // through with the toggle on.
+                  .filter((key) => {
+                    if (key !== "paintForksRedYellowTips") return true;
+                    const et = meta.equipmentType ?? "forklift";
+                    return et === "forklift" || et === "telehandler";
+                  })
                   .map((key) => (
                     <ToggleSwitch
                       key={key}

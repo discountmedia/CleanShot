@@ -182,12 +182,6 @@ class EnhanceRequest(BaseModel):
     # lift" / "USED telehandler"). Defaults to forklift for backward
     # compatibility with callers that don't pass it.
     equipment_type: Literal["forklift", "scissor_lift", "telehandler"] = "forklift"
-    # OEM make/brand from the operator's meta form (e.g. "Toyota",
-    # "Hyster", "Skyjack"). When set, the RENTAL-FLEET BRANDING block in
-    # the prompt instructs the model to restore OEM-style brand decals
-    # in panel positions where rental wraps had been stripped. Empty or
-    # missing => no OEM restoration; rental decals are just cleaned off.
-    make: str | None = None
     # Optional custom prompt — when present, overrides the toggle-derived
     # prompt and is passed to the model verbatim. The frontend's
     # "Custom prompt (advanced)" section produces this; the toggles
@@ -434,9 +428,6 @@ class EnhanceTaskPayload(BaseModel):
     # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
     # Ignored when custom_prompt is set (the operator's verbatim text wins).
     equipment_type: Literal["forklift", "scissor_lift", "telehandler"] = "forklift"
-    # OEM make — feeds the RENTAL-FLEET BRANDING block's OEM-decal
-    # restoration sentence. Ignored when custom_prompt is set.
-    make: str | None = None
     # Optional verbatim prompt override. Set by either:
     #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or
     #   • Enhance tab "Custom prompt (advanced)" textarea.

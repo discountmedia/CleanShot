@@ -99,7 +99,7 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   restoreDecals: "Extra emphasis on decal restoration on this image",
   removePeople: "Remove any people or bystanders from the frame",
   removeBackgroundSignage: "Remove exit signs, company logos, posters, and other background signage (OEM decals on the unit stay intact)",
-  paintForksRedYellowTips: "Paint the forks red with yellow tips per OSHA convention (forklift only)",
+  paintForksRedYellowTips: "Paint the forks red with yellow tips per OSHA convention; load back rest (LBR) stays black (forklifts + telehandlers)",
   shineTires: "Extra emphasis on tire dressing on this image",
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",

@@ -28,11 +28,6 @@ interface RegenPanelProps {
    * Defaults to "forklift" when omitted.
    */
   equipmentType?: EquipmentType;
-  /**
-   * OEM make — feeds the RENTAL-FLEET BRANDING block's OEM-decal
-   * restoration sentence. Null/missing => no OEM restoration on regen.
-   */
-  //make?: string | null;
   onApply:  (payload: { prompt: string; provider: EnhanceProvider }) => void;
   onCancel: () => void;
 }
@@ -41,7 +36,6 @@ export function RegenPanel({
   unified,
   defaultProvider = "gemini",
   equipmentType = "forklift",
-  //make = null,
   onApply,
   onCancel,
 }: RegenPanelProps) {

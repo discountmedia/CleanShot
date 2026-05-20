@@ -210,14 +210,15 @@ export function SourceCompareCard({
             )}
           </div>
 
-          {/* Variants stacked vertically at the SAME landscape size as
-              the original, so the operator can scroll down and compare
-              each provider's output directly against the source up top
-              without squinting at small thumbs. Capped at max-w-4xl to
-              match the original; centered. Providers not enqueued for
-              this file (e.g. operator unchecked mid-batch) still render
-              as disabled placeholders so the layout stays stable. */}
-          <div className="flex flex-col gap-3 w-full max-w-4xl mx-auto">
+          {/* Variants in a 2-column grid on md+ screens so the operator
+              can compare provider outputs side-by-side instead of
+              scrolling a vertical column. Each variant keeps its full
+              landscape aspect. 5 variants wrap to 3 rows (2+2+1) at md+;
+              on mobile the grid collapses to single-column. Providers
+              not enqueued for this file (e.g. operator unchecked
+              mid-batch) still render as disabled placeholders so the
+              layout stays stable. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {ENHANCE_PROVIDERS.map((p) => {
               const variant = variants[p];
               return (
