@@ -596,8 +596,10 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
         filename: toUpload.name,
         contentType: "image/jpeg",
       });
-    } catch {
-      updateFile(id, { status: "error", error: "Failed to get upload URL" });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[upload] signed-url request failed", err);
+      updateFile(id, { status: "error", error: `Upload URL: ${detail}` });
       return;
     }
 
@@ -607,8 +609,10 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
         updateFile(id, { progress: pct })
       );
       updateFile(id, { status: "done", assetId: signedResp.assetId, gcsUri: signedResp.gcsUri });
-    } catch {
-      updateFile(id, { status: "error", error: "Upload to GCS failed" });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[upload] PUT to GCS failed", err);
+      updateFile(id, { status: "error", error: `GCS PUT: ${detail}` });
       return;
     }
 
@@ -626,8 +630,10 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
         idempotencyKey: `enhance-${id}`,
       });
       setEnhanceJobs((prev) => new Map(prev).set(id, jobId));
-    } catch {
-      updateFile(id, { status: "error", error: "Failed to enqueue enhance job" });
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      console.error("[upload] enqueue enhance failed", err);
+      updateFile(id, { status: "error", error: `Enqueue: ${detail}` });
     }
   };
 
