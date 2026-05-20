@@ -894,6 +894,9 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
             <p className="text-xs text-zinc-500 mt-0.5">
               Slower but can be more literal. Routes through gpt-image-2-2026-04-21.
             </p>
+            <p className="text-[11px] text-amber-400 mt-1">
+              ⏱ Limit: 5 images / minute — batches larger than 5 will queue and take longer.
+            </p>
           </div>
         </label>
 
