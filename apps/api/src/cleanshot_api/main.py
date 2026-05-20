@@ -173,12 +173,15 @@ async def lifespan(app: FastAPI):
 
     # --- Reve image-edit rate limiter ---
     # Reve's docs claim no published per-minute cap, but in practice
-    # the API returns 429 RPM errors on bursts. Same sliding-window
-    # treatment as OpenAI to start (5 per 60s); retune once we have
-    # data on Reve's actual ceiling.
+    # the API returns 429 RPM errors on bursts. Started at 5/60s
+    # (same as OpenAI), operator still saw 7 in a row succeed before
+    # 429s started — likely a mix of per-instance limiter scope and
+    # Reve's own threshold sitting around there. Pulled down to 3
+    # events per 30s (steady-state ~6/min with a small burst of 3).
+    # Retune once we see how this holds.
     app.state.reve_image_rate_limiter = AsyncRateLimiter(
-        max_events=5,
-        interval_seconds=60.0,
+        max_events=3,
+        interval_seconds=30.0,
         name="reve_image_edit",
     )
 
