@@ -23,14 +23,14 @@
 // operator needs day-to-day. Add an "Advanced" disclosure later if usage
 // data shows they're wanted.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   approveSet,
   exportProPreviewStream,
   saveProject,
   type ExportProPreviewItem,
 } from "../../lib/api";
-import type { ResizeResult } from "../../lib/types";
+import type { ForkliftMeta, ResizeResult } from "../../lib/types";
 
 export interface ResizePanelProps {
   sessionId: string;
@@ -45,6 +45,19 @@ export interface ResizePanelProps {
   resizeResults: ResizeResult[];
   /** Kept for prop compatibility with Workspace; not currently invoked. */
   onResizeComplete: (results: ResizeResult[]) => void;
+  /**
+   * Shared forklift metadata from Workspace state. The Resize tab's Save
+   * Project form pre-fills from this — the operator already typed
+   * make / model / year on the Enhance tab, so re-entry would be busywork.
+   * Read-only here (the form has its own local edit state for any
+   * field the operator wants to tweak before saving).
+   */
+  meta: Partial<ForkliftMeta>;
+  /**
+   * Signed-in user's email. Used to pre-fill the Username field so the
+   * operator doesn't re-type it every project.
+   */
+  userEmail: string;
 }
 
 interface ProjectForm {
@@ -70,20 +83,24 @@ const EMPTY_FORM: ProjectForm = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function validateForm(form: ProjectForm): { valid: boolean; yearNum: number | null } {
-  const yearNum = Number.parseInt(form.year, 10);
-  const yearOk  = Number.isInteger(yearNum) && yearNum >= 1900 && yearNum <= 2100;
-  const allTextFieldsOk = (
-    form.make.trim().length     > 0 &&
-    form.model.trim().length    > 0 &&
-    form.tireType.trim().length > 0 &&
-    form.capacity.trim().length > 0 &&
-    form.fuelType.trim().length > 0 &&
-    form.username.trim().length > 0
-  );
-  return {
-    valid:   allTextFieldsOk && yearOk,
-    yearNum: yearOk ? yearNum : null,
-  };
+  // Per-product call: only `make` and `model` are gating fields for the
+  // Save Project action. Year is parsed if provided (validated 1900-2100)
+  // and falls back to the current year when blank. Capacity / tireType /
+  // fuelType / username are nice-to-have free text — empty values get
+  // replaced with "unknown" / the operator's email before send so the
+  // backend's NOT-NULL columns are still satisfied.
+  const yearRaw = form.year.trim();
+  let yearNum: number | null = null;
+  if (yearRaw.length === 0) {
+    yearNum = new Date().getFullYear();
+  } else {
+    const parsed = Number.parseInt(yearRaw, 10);
+    if (Number.isInteger(parsed) && parsed >= 1900 && parsed <= 2100) {
+      yearNum = parsed;
+    }
+  }
+  const valid = form.make.trim().length > 0 && form.model.trim().length > 0 && yearNum !== null;
+  return { valid, yearNum };
 }
 
 // ─── Form field components ────────────────────────────────────────────────────
@@ -119,8 +136,41 @@ function TextField({
 export function ResizePanel({
   sessionId,
   enhancedAssets,
+  meta,
+  userEmail,
 }: ResizePanelProps) {
-  const [form, setForm] = useState<ProjectForm>(EMPTY_FORM);
+  // Initialise the form from the values the operator already entered on
+  // the Enhance tab + their signed-in email. Once the form mounts the
+  // local state takes over — edits stay local until Save Project. If
+  // the operator returns to Enhance and changes meta, the next mount of
+  // this panel (or the effect below) reflects the new values.
+  const [form, setForm] = useState<ProjectForm>(() => ({
+    ...EMPTY_FORM,
+    make:     meta.make     ?? "",
+    model:    meta.model    ?? "",
+    year:     meta.year     ?? "",
+    tireType: meta.tireType ?? "",
+    capacity: meta.capacity ?? "",
+    fuelType: meta.fuelType ?? "",
+    username: userEmail && userEmail !== "dev@local" ? userEmail : "",
+  }));
+
+  // Keep the form in sync when Workspace's meta changes (e.g. the
+  // operator edits the Enhance form while the Resize panel is mounted
+  // but hidden). Only fills in fields the operator hasn't already
+  // touched locally — once they've typed something we don't clobber it.
+  useEffect(() => {
+    setForm((prev) => ({
+      ...prev,
+      make:     prev.make     || (meta.make     ?? ""),
+      model:    prev.model    || (meta.model    ?? ""),
+      year:     prev.year     || (meta.year     ?? ""),
+      tireType: prev.tireType || (meta.tireType ?? ""),
+      capacity: prev.capacity || (meta.capacity ?? ""),
+      fuelType: prev.fuelType || (meta.fuelType ?? ""),
+      username: prev.username || (userEmail && userEmail !== "dev@local" ? userEmail : ""),
+    }));
+  }, [meta, userEmail]);
 
   // Status flags. `isSaved` flips true after a successful Save — Export is
   // gated on it. Editing the form after a successful Save does NOT unset
@@ -173,6 +223,15 @@ export function ResizePanel({
         [form.make, form.model, form.year].map((s) => s.trim()).filter(Boolean).join(" ")
         || "Untitled";
 
+      // Only make + model are gating fields on the form. Everything else
+      // is nice-to-have, but the FastAPI schema still requires min_length=1
+      // on each column. Substitute sensible placeholders when the
+      // operator left them blank rather than blocking the save.
+      const tireTypeOut = form.tireType.trim() || "unknown";
+      const capacityOut = form.capacity.trim() || "unknown";
+      const fuelTypeOut = form.fuelType.trim() || "unknown";
+      const usernameOut = form.username.trim() || (userEmail && userEmail !== "dev@local" ? userEmail : "unknown");
+
       // 1. Commit the project metadata (unlocks the export endpoints
       // server-side by setting projects.saved_at).
       await saveProject({
@@ -181,10 +240,10 @@ export function ResizePanel({
         make:      form.make.trim(),
         year:      yearNum,
         model:     form.model.trim(),
-        tireType:  form.tireType.trim(),
-        capacity:  form.capacity.trim(),
-        fuelType:  form.fuelType.trim(),
-        username:  form.username.trim(),
+        tireType:  tireTypeOut,
+        capacity:  capacityOut,
+        fuelType:  fuelTypeOut,
+        username:  usernameOut,
         photoType: "auction",
       });
 
@@ -300,7 +359,7 @@ export function ResizePanel({
               Project Details
             </span>
             <span className="text-[10px] text-zinc-500">
-              Save Project commits this metadata AND adds the queued image set to your History tab.
+              Save Project commits this metadata AND adds the queued image set to your History tab. Only <span className="text-zinc-300">Make</span> and <span className="text-zinc-300">Model</span> are required.
             </span>
           </div>
           {isSaved && (
@@ -312,19 +371,13 @@ export function ResizePanel({
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
           <TextField
-            label="Username"
-            value={form.username}
-            onChange={(v) => updateField("username", v)}
-            placeholder="Your name or initials"
-          />
-          <TextField
-            label="Make"
+            label="Make *"
             value={form.make}
             onChange={(v) => updateField("make", v)}
             placeholder="Toyota"
           />
           <TextField
-            label="Model"
+            label="Model *"
             value={form.model}
             onChange={(v) => updateField("model", v)}
             placeholder="8FGU25"
@@ -333,7 +386,13 @@ export function ResizePanel({
             label="Year"
             value={form.year}
             onChange={(v) => updateField("year", v.replace(/[^0-9]/g, "").slice(0, 4))}
-            placeholder="2019"
+            placeholder="defaults to current year"
+          />
+          <TextField
+            label="Username"
+            value={form.username}
+            onChange={(v) => updateField("username", v)}
+            placeholder="defaults to your login email"
           />
           <TextField
             label="Capacity"

@@ -506,6 +506,13 @@ export interface CompletedEnhanceItem {
 export interface EnhancePanelProps {
   sessionId: string;
   /**
+   * Forklift metadata is owned by Workspace so it survives panel
+   * switches and the Resize tab can pre-fill its Save Project form from
+   * the same source.
+   */
+  meta: Partial<ForkliftMeta>;
+  onMetaChange: (meta: Partial<ForkliftMeta>) => void;
+  /**
    * Called when the user explicitly clicks "Send to Scan" (per-row) or
    * "Send all to Scan tab" (batch). The workspace appends to its
    * enhancedAssets pipeline and switches to the Scan tab. Nothing happens
@@ -520,7 +527,7 @@ export interface EnhancePanelProps {
   onClearPipeline: () => void;
 }
 
-export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: EnhancePanelProps) {
+export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onClearPipeline }: EnhancePanelProps) {
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Ref to the per-job rows section — scrolled into view when the user
@@ -529,7 +536,10 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
 
   const [files, setFiles]           = useState<UploadFile[]>([]);
   const [toggles, setToggles]       = useState<EnhanceToggles>(DEFAULT_TOGGLES);
-  const [meta, setMeta]             = useState<Partial<ForkliftMeta>>({});
+  // `meta` and `setMeta` aliases for legacy call sites that still
+  // reference the old local-state names. Forwarded to the controlled
+  // props from Workspace.
+  const setMeta = onMetaChange;
   const [enhanceJobs, setEnhanceJobs] = useState<Map<string, string>>(new Map()); // fileId → jobId
   const [isRunning, setIsRunning]   = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);

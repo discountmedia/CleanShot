@@ -21,7 +21,7 @@ import { ResizePanel } from "@/components/resize/ResizePanel";
 import { HistoryList } from "@/components/history/HistoryList";
 
 import { createSession } from "@/lib/api";
-import type { ResizeResult } from "@/lib/types";
+import type { ForkliftMeta, ResizeResult } from "@/lib/types";
 
 // Cross-panel asset shape. Each panel emits these as its output.
 interface PipelineAsset {
@@ -57,6 +57,12 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   const [enhancedAssets, setEnhancedAssets] = useState<PipelineAsset[]>([]);
   const [resizeAssets,   setResizeAssets]   = useState<PipelineAsset[]>([]);
   const [resizeResults,  setResizeResults]  = useState<ResizeResult[]>([]);
+
+  // Forklift metadata is owned by Workspace so it survives panel
+  // switches and so Resize can pre-fill its Save Project form from
+  // values the operator already entered on Enhance. Username falls out
+  // of `userEmail` on the Resize tab (no separate state needed).
+  const [meta, setMeta] = useState<Partial<ForkliftMeta>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -148,6 +154,8 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
             {sessionId && (
               <EnhancePanel
                 sessionId={sessionId}
+                meta={meta}
+                onMetaChange={setMeta}
                 onSendToScan={handleSendToScan}
                 onClearPipeline={handleClearPipeline}
               />
@@ -176,6 +184,8 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 enhancedAssets={resizeAssets}
                 resizeResults={resizeResults}
                 onResizeComplete={setResizeResults}
+                meta={meta}
+                userEmail={userEmail}
               />
             )}
           </PanelSlot>
