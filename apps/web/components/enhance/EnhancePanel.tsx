@@ -31,7 +31,7 @@ import { v4 as uuidv4 } from "uuid";  // pnpm add uuid @types/uuid
 //             so the 6th+ image in a batch waits longer)
 //   flux    — flux-2-max polling loop, ~15-30s typical
 type Provider = "gemini" | "openai" | "flux" | "reve" | "grok";
-const ALL_PROVIDERS: readonly Provider[] = ["gemini", "openai", "flux", "reve", "grok"] as const;
+const ALL_PROVIDERS: readonly Provider[] = ["gemini", "openai", "grok", "flux", "reve"] as const;
 
 const PROVIDER_LABELS: Record<Provider, string> = {
   gemini: "Gemini",
@@ -1213,6 +1213,44 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSe
           </div>
         </label>
 
+        {/* Grok checkbox */}
+        <label
+          htmlFor="provider-grok"
+          className={`
+            flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
+            ${selectedProviders.has("grok")
+              ? "bg-orange-950/40 border-orange-800 hover:border-orange-700"
+              : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
+          `}
+        >
+          <input
+            id="provider-grok"
+            type="checkbox"
+            checked={selectedProviders.has("grok")}
+            onChange={() => toggleProvider("grok")}
+            className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0"
+          />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <p className="text-sm font-semibold text-zinc-200">
+                xAI Grok
+              </p>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-950/60 border border-amber-800 rounded px-1.5 py-0.5">
+                Moderate
+              </span>
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-orange-100 bg-orange-600 rounded px-1.5 py-0.5 shadow-sm shadow-orange-900/60 animate-pulse">
+                New
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Grok image-edit (grok-imagine-image-quality) via xAI /v1/images/edits — supports broad style transfer + photorealistic touch-ups.
+            </p>
+            <p className="text-[11px] text-amber-400 mt-1">
+              ⏱ ~15-45s per image · throttled to 3 per 30s server-side (xAI doesn&apos;t publish a per-minute cap) — larger batches queue.
+            </p>
+          </div>
+        </label>
+
         {/* Flux checkbox */}
         <label
           htmlFor="provider-flux"
@@ -1285,44 +1323,6 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSe
             </p>
             <p className="text-[11px] text-amber-400 mt-1">
               ⏱ ~10-30s per image · throttled to 3 per 30s server-side (Reve returns 429 RPM on bursts despite no published cap) — larger batches queue.
-            </p>
-          </div>
-        </label>
-
-        {/* Grok checkbox */}
-        <label
-          htmlFor="provider-grok"
-          className={`
-            flex items-start gap-3 px-4 py-3 rounded-xl border cursor-pointer select-none transition-colors
-            ${selectedProviders.has("grok")
-              ? "bg-orange-950/40 border-orange-800 hover:border-orange-700"
-              : "bg-zinc-900/50 border-zinc-800 hover:border-zinc-700"}
-          `}
-        >
-          <input
-            id="provider-grok"
-            type="checkbox"
-            checked={selectedProviders.has("grok")}
-            onChange={() => toggleProvider("grok")}
-            className="mt-0.5 w-4 h-4 rounded border-zinc-700 bg-zinc-900 text-orange-500 focus:ring-2 focus:ring-orange-500 focus:ring-offset-0"
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <p className="text-sm font-semibold text-zinc-200">
-                xAI Grok
-              </p>
-              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-950/60 border border-amber-800 rounded px-1.5 py-0.5">
-                Moderate
-              </span>
-              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-orange-100 bg-orange-600 rounded px-1.5 py-0.5 shadow-sm shadow-orange-900/60 animate-pulse">
-                New
-              </span>
-            </div>
-            <p className="text-xs text-zinc-500 mt-0.5">
-              Grok image-edit (grok-imagine-image-quality) via xAI /v1/images/edits — supports broad style transfer + photorealistic touch-ups.
-            </p>
-            <p className="text-[11px] text-amber-400 mt-1">
-              ⏱ ~15-45s per image · throttled to 3 per 30s server-side (xAI doesn&apos;t publish a per-minute cap) — larger batches queue.
             </p>
           </div>
         </label>
