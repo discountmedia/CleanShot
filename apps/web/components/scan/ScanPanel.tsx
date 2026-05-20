@@ -172,6 +172,58 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 // ─── Auto-prompt builder ─────────────────────────────────────────────────────
+//
+// The regen path sends a verbatim `custom_prompt` that bypasses the
+// worker's wrapper, so the prompt assembled here must carry the FULL
+// enhance treatment instructions on its own. The text below is a
+// near-verbatim port of `_build_enhance_prompt` in
+// apps/api/src/cleanshot_api/workers/enhance_worker.py
+// (master + standard_treatment + guardrails). The only regen-specific
+// addition is an "ISSUES TO ADDRESS" block, which slots into the same
+// position the backend reserves for toggle-driven "ADDITIONAL EMPHASIS".
+//
+// If you change one side, change the other — drift here means regen
+// quality silently diverges from enhance quality.
+
+const ENHANCE_MASTER = (
+  "You are editing a photograph of a USED forklift. The goal is a "
+  + "thorough makeover of the SAME machine in the SAME place: clean "
+  + "paint, sharp decals, dressed tires — like the unit just rolled "
+  + "out of a professional detail bay. The output MUST be visibly "
+  + "improved versus the input. A reasonable viewer should be able "
+  + "to see at a glance that the machine has been cleaned up. "
+  + "\"Used lift with a really good makeover\" — not brand-new from "
+  + "factory, not a stock photo, not a studio composite."
+);
+
+const ENHANCE_STANDARD_TREATMENT = [
+  "STANDARD TREATMENT — apply ALL of the following to every request. These are the changes the output MUST reflect:",
+  "",
+  "• PAINT REFRESH. Repaint every visibly-worn body panel so the machine looks like it just came out of a professional detail bay. Concretely:",
+  "    – Where any panel is currently yellowed, cream-coloured, or dingy white, render it as clean, bright, even white.",
+  "    – Where any panel is currently dull, faded, dirty, or chalky red, render it as clean, saturated, evenly painted red.",
+  "    – Anywhere you see chips, scratches, scuffs, scrapes, paint loss, oxidation, stains, or dirt streaks, replace those areas with a smooth uniform coat of paint matching the surrounding panel's colour.",
+  "  The cab roof, overhead guard, mast, main body, step panels, and counterweight should all visibly look freshly painted in the output. Keep the same colours and the same panel-to-colour mapping — only the surface condition changes.",
+  "",
+  "• DECAL RESTORATION. Restore every OEM decal, brand logo, capacity sticker, model badge, and safety label to crisp, fully legible condition. Keep their original text, layout, and position. Do not invent new decals, add manufacturer logos that were not present, or change any model / capacity numbering.",
+  "",
+  "• RUST + CORROSION. Where rust, corrosion, oxidation, or surface pitting is visible, replace those areas with clean painted metal in the surrounding OEM colour. Do NOT add or imply rust or wear that was not in the source.",
+  "",
+  "• TIRE REFRESH. Clean and refresh the EXISTING tires — darker rubber, no dust or grime, freshly dressed appearance. Keep the same tires (same type, tread, sidewall, wear profile); do NOT swap them for new tires.",
+  "",
+  "• LIGHTING / EXPOSURE. Lift the deepest shadows just enough to reveal detail, recover any blown highlights, and neutralize obvious colour casts. Keep the scene's original light direction and ambient mood — do NOT replace it with studio lighting.",
+].join("\n");
+
+const ENHANCE_GUARDRAILS = [
+  "GUARDRAILS — while applying everything above, the following must stay identical to the source. These are limits on HOW you change the image, not reasons to skip the standard treatment:",
+  "• Background, floor, walls, surroundings — keep the exact same location. Never isolate the forklift on a white / studio / gradient backdrop. Never blur or replace the scene.",
+  "• Lighting direction, ambient colour, and shadow placement. Refresh exposure, but keep the same lighting character.",
+  "• Camera angle, framing, distance, proportions. No zoom, crop, rotate, horizon-leveling, or re-posing.",
+  "• Make, model, year, trim level. Same mast configuration, fork count, fork length, overhead guard shape, counterweight shape, and tire type.",
+  "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or any bolt-on hardware that is not already in the source.",
+  "• Every OEM decal, capacity plate, VIN / serial number, and data tag remains present, legible, and unchanged. Do not invent or alter any text, digits, or logos on the machine.",
+  "• Do not introduce damage, rust, dents, or wear that was not in the source image.",
+].join("\n");
 
 function buildRegenPrompt(results: ProviderScanResult[]): string {
   // Collect all anomalies across providers, deduplicated by type+location
@@ -188,46 +240,28 @@ function buildRegenPrompt(results: ProviderScanResult[]): string {
     }
   }
 
-  // Scene-preservation guardrails are duplicated here (loose mirror of the
-  // backend's _build_enhance_prompt block) because the regen path sends a
-  // verbatim custom_prompt that bypasses the worker's wrapper. Without
-  // these lines Gemini strips the scene to a blank studio backdrop —
-  // user-reported failure mode 2026-05-19.
-  const GUARDRAILS = [
-    "GUARDRAILS — keep identical to the source:",
-    "• Background, location, floor, walls, surroundings — keep the exact same scene. Do NOT isolate the forklift on a white / studio / gradient backdrop.",
-    "• Lighting direction, ambient colour, and shadow placement — keep the scene's original lighting character (do NOT replace with studio lighting).",
-    "• Camera angle, framing, distance, and proportions — no zoom, crop, rotate, or re-pose.",
-    "• Make, model, year, mast configuration, fork count, fork length, overhead guard, counterweight, and tire type.",
-    "• Same tires — same tread, sidewall, wear profile. Refresh appearance only; do not swap for new tires.",
-    "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or any bolt-on hardware that is not in the source.",
-    "• All OEM decals, capacity plates, VIN / serial numbers, model badges, and data tags remain present, legible, and unchanged.",
-    "• Do not introduce damage, rust, dents, or wear that was not in the source.",
-  ];
-
-  if (anomalies.length === 0) {
-    return [
-      "Improve the overall presentation of this USED forklift photograph while keeping it clearly the same used machine in the same place — light tonal correction, sharper decals, dressed tires.",
+  // ISSUES block — regen's analogue of the enhance prompt's
+  // toggle-driven "ADDITIONAL EMPHASIS" section. Sits between
+  // STANDARD TREATMENT and GUARDRAILS, same as on the enhance side.
+  let issuesBlock = "";
+  if (anomalies.length > 0) {
+    const lines = anomalies
+      .sort((a, b) => {
+        const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+        return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
+      })
+      .map((a) => `• Fix [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.description}`);
+    issuesBlock = [
+      "ISSUES TO ADDRESS — apply ON TOP of the standard treatment. Each item below was flagged by an AI scan of this same image:",
       "",
-      ...GUARDRAILS,
+      ...lines,
     ].join("\n");
   }
 
-  const lines = anomalies
-    .sort((a, b) => {
-      const order = { high: 0, medium: 1, low: 2 };
-      return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
-    })
-    .map((a) => `• Fix [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.description}`);
-
-  return [
-    "You are editing a photograph of a USED forklift to address SPECIFIC issues detected by AI scan. Fix the listed issues while leaving the rest of the image exactly as-is — same machine, same place, same lighting.",
-    "",
-    "ISSUES TO ADDRESS:",
-    ...lines,
-    "",
-    ...GUARDRAILS,
-  ].join("\n");
+  const sections = [ENHANCE_MASTER, ENHANCE_STANDARD_TREATMENT];
+  if (issuesBlock) sections.push(issuesBlock);
+  sections.push(ENHANCE_GUARDRAILS);
+  return sections.join("\n\n");
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────

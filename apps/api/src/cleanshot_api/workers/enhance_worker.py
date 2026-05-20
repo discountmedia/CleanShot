@@ -118,6 +118,14 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
          toggles emphasize the matching base item; remove_people and
          paint_forks_red_yellow_tips add genuinely new actions.
       4. GUARDRAILS — same scene, same hardware, readable decals.
+
+    DRIFT-WARNING:
+      The Scan-tab "Regenerate" auto-prompt is built client-side in
+      apps/web/components/scan/ScanPanel.tsx (`buildRegenPrompt` +
+      ENHANCE_MASTER / ENHANCE_STANDARD_TREATMENT / ENHANCE_GUARDRAILS
+      constants). It mirrors the strings below near-verbatim so regen
+      quality matches enhance quality. If you edit any of the master /
+      standard / guardrails text here, mirror the change there too.
     """
     master = (
         "You are editing a photograph of a USED forklift. The goal is a "
