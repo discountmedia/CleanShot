@@ -1487,17 +1487,17 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
       )}
 
       {/* ── Model attribution ── */}
+      {/* Lists every provider currently checked in the model selector.
+          Multi-select means an enhance batch can be routed to up to
+          four backends; the operator should see exactly which. */}
       <p className="text-[11px] text-zinc-700 text-center">
         Enhancement powered by{" "}
-        <code className="font-mono">
-          {provider === "openai"
-            ? "gpt-image-2-2026-04-21"
-            : provider === "flux"
-            ? "flux-2-max (Black Forest Labs)"
-            : provider === "reve"
-            ? "reve-edit (latest)"
-            : "gemini-3.1-flash-image-preview"}
-        </code>
+        {ALL_PROVIDERS.filter((p) => selectedProviders.has(p)).map((p, i, arr) => (
+          <span key={p}>
+            <code className="font-mono">{PROVIDER_LABELS[p]}</code>
+            {i < arr.length - 1 ? " · " : ""}
+          </span>
+        ))}
       </p>
     </div>
   );
