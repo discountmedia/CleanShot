@@ -25,6 +25,7 @@ const PUBLIC_PATHS = [
   "/login",
   "/unauthorized",
   "/api/auth",        // Better Auth callback routes
+  "/_vercel",         // Vercel Web Analytics beacon endpoint (/_vercel/insights/*)
 ];
 
 export function proxy(request: NextRequest) {
