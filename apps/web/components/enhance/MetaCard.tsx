@@ -7,7 +7,12 @@
 // owned by `Workspace` (lifted source of truth that also pre-fills the
 // Resize tab's Save Project form).
 
-import type { ForkliftMeta } from "../../lib/types";
+import {
+  EQUIPMENT_TYPES,
+  EQUIPMENT_TYPE_LABELS,
+  type EquipmentType,
+  type ForkliftMeta,
+} from "../../lib/types";
 
 interface MetaCardProps {
   meta: Partial<ForkliftMeta>;
@@ -34,11 +39,41 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
 
   const makeValue = (meta.make ?? "");
   const makeValid = makeValue.trim().length > 0;
+  const equipmentType: EquipmentType = meta.equipmentType ?? "forklift";
 
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
       <div className="px-5 py-4 flex items-end gap-4 flex-wrap">
-        <div className="flex-1 min-w-[200px]">
+        {/* Equipment type — sits before Make so the operator sees they
+            can swap categories. Compact chip row to match the Enhance
+            tab's ProviderRow vocabulary. */}
+        <div className="flex flex-col gap-1.5">
+          <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+            Equipment
+          </span>
+          <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
+            {EQUIPMENT_TYPES.map((t, i) => {
+              const selected = t === equipmentType;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => update("equipmentType", t)}
+                  aria-pressed={selected}
+                  className={`text-[11px] uppercase tracking-[0.16em] font-semibold px-3 py-2 transition-colors ${
+                    selected
+                      ? "bg-red-950/40 text-red-300"
+                      : "bg-zinc-900 text-zinc-500 hover:text-zinc-300"
+                  } ${i > 0 ? "border-l border-zinc-700" : ""}`}
+                >
+                  {EQUIPMENT_TYPE_LABELS[t]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="flex-1 min-w-50">
           <label
             htmlFor="meta-make"
             className="flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5"
@@ -65,13 +100,13 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
           type="button"
           onClick={() => onExpand(!expanded)}
           aria-expanded={expanded}
-          className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white transition-colors px-3 py-2 border border-zinc-800 hover:border-zinc-600 rounded mb-[1px]"
+          className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white transition-colors px-3 py-2 border border-zinc-800 hover:border-zinc-600 rounded mb-px"
         >
           {expanded ? "− Hide details" : "+ More details"}
         </button>
 
         <span className="text-xs text-zinc-500 ml-auto mb-2">
-          {makeValid ? "✓ ready to enhance" : "Enter the forklift Make to continue"}
+          {makeValid ? "✓ ready to enhance" : "Enter the Make to continue"}
         </span>
       </div>
 

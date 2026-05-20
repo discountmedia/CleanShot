@@ -17,7 +17,12 @@ interface ClientRequest {
   assetId: string;
   toggles: Record<string, boolean>;
   forkliftMeta?: Record<string, string>;  // intentionally dropped before forward
-  provider?: "gemini" | "openai" | "flux";
+  provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
+  /**
+   * Drives the per-type anatomy block in _build_enhance_prompt. Optional
+   * — backend defaults to "forklift" when omitted.
+   */
+  equipmentType?: "forklift" | "scissor_lift" | "telehandler";
   customPrompt?: string;                  // when set, FastAPI bypasses toggles
   idempotencyKey: string;
 }
@@ -40,6 +45,7 @@ export async function POST(request: NextRequest) {
       asset_id:        body.assetId,
       toggles:         body.toggles,            // already camelCase; Pydantic aliases handle it
       provider:        body.provider ?? "gemini",
+      ...(body.equipmentType ? { equipment_type: body.equipmentType } : {}),
       // Only forward custom_prompt when non-empty; omitting lets FastAPI
       // use its `None` default and the worker falls through to toggles.
       ...(body.customPrompt?.trim() ? { custom_prompt: body.customPrompt } : {}),

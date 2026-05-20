@@ -176,6 +176,12 @@ class EnhanceRequest(BaseModel):
     # ~$0.03–0.08 per image. Model IDs pinned in
     # apps/api/.../workers/enhance_worker.py.
     provider: Literal["gemini", "openai", "flux", "reve", "grok"] = "gemini"
+    # What kind of equipment is in the photo — drives the per-type
+    # anatomy guardrail block in _build_enhance_prompt + the equipment
+    # display name in the master goal ("USED forklift" / "USED scissor
+    # lift" / "USED telehandler"). Defaults to forklift for backward
+    # compatibility with callers that don't pass it.
+    equipment_type: Literal["forklift", "scissor_lift", "telehandler"] = "forklift"
     # Optional custom prompt — when present, overrides the toggle-derived
     # prompt and is passed to the model verbatim. The frontend's
     # "Custom prompt (advanced)" section produces this; the toggles
@@ -202,6 +208,10 @@ class EnhanceToggles(BaseModel):
     paint_forks_red_yellow_tips: bool = Field(False, alias="paintForksRedYellowTips")
     shine_tires: bool = Field(False, alias="shineTires")
     improve_lighting: bool = Field(False, alias="improveLighting")
+    # Default ON — most batches are ex-rental units. Surfaces as a
+    # visible toggle in the Advanced section so operators can opt out
+    # if they know the unit doesn't have rental-fleet branding.
+    remove_rental_branding: bool = Field(True, alias="removeRentalBranding")
 
 
 class EnhanceResponse(BaseModel):
@@ -415,6 +425,9 @@ class EnhanceTaskPayload(BaseModel):
     # prompt was originally tuned for Gemini, but other providers are now
     # accepted at the operator's discretion).
     provider: Literal["gemini", "openai", "flux", "reve", "grok"] = "gemini"
+    # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
+    # Ignored when custom_prompt is set (the operator's verbatim text wins).
+    equipment_type: Literal["forklift", "scissor_lift", "telehandler"] = "forklift"
     # Optional verbatim prompt override. Set by either:
     #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or
     #   • Enhance tab "Custom prompt (advanced)" textarea.

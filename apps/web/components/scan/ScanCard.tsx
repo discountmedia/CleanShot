@@ -16,6 +16,7 @@ import {
   type UnifiedAnomalyEntry,
 } from "../../lib/scan-helpers";
 import type {
+  EquipmentType,
   ImageScanState,
   ProviderScanResult,
   ScanProvider,
@@ -66,6 +67,9 @@ export interface ScanCardProps {
   scanStartedMs: number | null;
   /** Monotonic-ish ms tick (ScanPanel runs a 1s interval while scanning). */
   nowMs: number;
+  /** Equipment category — forwarded to RegenPanel so the seeded prompt
+   *  uses the same per-type guardrails Enhance applied originally. */
+  equipmentType: EquipmentType;
 
   onToggleRegen:   () => void;
   onToggleDetails: () => void;
@@ -82,6 +86,7 @@ export function ScanCard({
   detailsOpen,
   scanStartedMs,
   nowMs,
+  equipmentType,
   onToggleRegen,
   onToggleDetails,
   onApprove,
@@ -271,6 +276,7 @@ export function ScanCard({
           <div className="mt-4">
             <RegenPanel
               unified={unified}
+              equipmentType={equipmentType}
               onApply={onApplyRegen}
               onCancel={onToggleRegen}
             />

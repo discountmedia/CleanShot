@@ -10,6 +10,7 @@ import {
   buildRegenPrompt,
   type UnifiedAnomalyEntry,
 } from "../../lib/scan-helpers";
+import type { EquipmentType } from "../../lib/types";
 import {
   ENHANCE_PROVIDERS,
   ENHANCE_PROVIDER_LABELS,
@@ -21,6 +22,12 @@ interface RegenPanelProps {
   unified: UnifiedAnomalyEntry[];
   /** Default provider for the regen run (defaults to "gemini"). */
   defaultProvider?: EnhanceProvider;
+  /**
+   * Equipment category — feeds the seeded prompt's per-type anatomy
+   * block so the regen target uses the same guardrails Enhance did.
+   * Defaults to "forklift" when omitted.
+   */
+  equipmentType?: EquipmentType;
   onApply:  (payload: { prompt: string; provider: EnhanceProvider }) => void;
   onCancel: () => void;
 }
@@ -28,10 +35,14 @@ interface RegenPanelProps {
 export function RegenPanel({
   unified,
   defaultProvider = "gemini",
+  equipmentType = "forklift",
   onApply,
   onCancel,
 }: RegenPanelProps) {
-  const initialPrompt = useMemo(() => buildRegenPrompt(unified), [unified]);
+  const initialPrompt = useMemo(
+    () => buildRegenPrompt(unified, { equipmentType }),
+    [unified, equipmentType],
+  );
   const [prompt, setPrompt] = useState(initialPrompt);
   const [provider, setProvider] = useState<EnhanceProvider>(defaultProvider);
 

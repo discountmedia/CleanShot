@@ -466,6 +466,7 @@ export function EnhancePanel({
           toggles,
           forkliftMeta: meta,
           provider: p,
+          equipmentType: meta.equipmentType ?? "forklift",
           customPrompt: customPromptActive ? customPrompt : undefined,
           idempotencyKey: `enhance-${id}-${p}`,
         });
@@ -510,6 +511,7 @@ export function EnhancePanel({
           toggles,
           forkliftMeta:   meta,
           provider,
+          equipmentType:  meta.equipmentType ?? "forklift",
           customPrompt:   customPromptActive ? customPrompt : undefined,
           idempotencyKey: `enhance-${file.id}-${provider}-regen-${++regenSeqRef.current}`,
         });
@@ -958,16 +960,26 @@ export function EnhancePanel({
                 actions on top.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>).map((key) => (
-                  <ToggleSwitch
-                    key={key}
-                    id={`toggle-${key}`}
-                    label={TOGGLE_LABELS[key]}
-                    description={TOGGLE_DESCRIPTIONS[key]}
-                    checked={toggles[key]}
-                    onChange={(v) => setToggles((prev) => ({ ...prev, [key]: v }))}
-                  />
-                ))}
+                {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
+                  // paintForksRedYellowTips only makes sense for forklifts —
+                  // scissor lifts and telehandlers don't have OSHA-painted
+                  // forks. Hide the toggle when the operator picks a
+                  // non-forklift equipment type; the backend prompt
+                  // defensively skips the bullet too.
+                  .filter((key) =>
+                    key !== "paintForksRedYellowTips"
+                    || (meta.equipmentType ?? "forklift") === "forklift",
+                  )
+                  .map((key) => (
+                    <ToggleSwitch
+                      key={key}
+                      id={`toggle-${key}`}
+                      label={TOGGLE_LABELS[key]}
+                      description={TOGGLE_DESCRIPTIONS[key]}
+                      checked={toggles[key]}
+                      onChange={(v) => setToggles((prev) => ({ ...prev, [key]: v }))}
+                    />
+                  ))}
               </div>
             </div>
 

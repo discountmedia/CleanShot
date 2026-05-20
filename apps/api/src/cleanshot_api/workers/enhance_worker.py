@@ -110,113 +110,188 @@ ENHANCE_MODEL_GROK = "grok-imagine-image-quality"
 GROK_PROMPT_MAX_CHARS = 4000
 
 
-def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
+# Display name + per-type anatomy guardrail for the equipment-aware prompt.
+# Keep these short — they slot into a sentence inside GUARDRAILS so the
+# operator's model gets a clear "preserve these specific parts" list per
+# unit category.
+EQUIPMENT_DISPLAY: dict[str, str] = {
+    "forklift":     "forklift",
+    "scissor_lift": "scissor lift",
+    "telehandler":  "telehandler",
+}
+
+EQUIPMENT_ANATOMY: dict[str, str] = {
+    "forklift": (
+        "Same mast configuration, fork count, fork length, overhead guard "
+        "shape, counterweight shape, and tire type."
+    ),
+    "scissor_lift": (
+        "Same platform size and handrail pattern, scissor mechanism "
+        "extension, base / chassis dimensions, drive wheels, and control "
+        "box position."
+    ),
+    "telehandler": (
+        "Same boom length and section count, attachment (forks / bucket / "
+        "lifting jib), outrigger configuration, cab shape, and wheel / "
+        "tire type."
+    ),
+}
+
+
+def _build_enhance_prompt(
+    toggles: EnhanceToggles,
+    equipment_type: str = "forklift",
+) -> str:
     """
     Build a Gemini image-edit instruction.
 
-    Hardcoded standard treatment + optional toggle-driven emphasis.
-
     Structure (applied to every Enhance request regardless of toggle state):
-      1. MASTER GOAL — used-lift makeover, same machine in same place,
-         output MUST be visibly improved.
-      2. STANDARD TREATMENT — paint refresh, decal restoration, rust
-         removal, tire refresh, lighting correction. ALWAYS in the prompt.
-         These were previously gated behind individual toggles, but
-         Gemini's conservative bias meant toggling them on barely
-         produced change. Making them unconditional + present-tense
-         significantly raises compliance.
-      3. ADDITIONAL EMPHASIS — driven by toggles. The five "core"
-         toggles emphasize the matching base item; remove_people and
-         paint_forks_red_yellow_tips add genuinely new actions.
-      4. GUARDRAILS — same scene, same hardware, readable decals.
+      1. MASTER GOAL — honest detail-pass on a used unit. Improve
+         presentation while preserving visible defects so the output
+         can't be used to misrepresent condition (bait-and-switch).
+      2. STANDARD TREATMENT — surface clean-up, decal restoration,
+         rental-fleet branding scrub, light rust cleanup, tire refresh,
+         lighting correction. All bounded by the HONESTY CONSTRAINT.
+      3. ADDITIONAL EMPHASIS — driven by toggles.
+      4. GUARDRAILS — same scene, same hardware, readable decals, and
+         honest condition preservation.
 
     DRIFT-WARNING:
       The Scan-tab "Regenerate" auto-prompt is built client-side in
-      apps/web/components/scan/ScanPanel.tsx (`buildRegenPrompt` +
-      ENHANCE_MASTER / ENHANCE_STANDARD_TREATMENT / ENHANCE_GUARDRAILS
+      apps/web/lib/scan-helpers.ts (`buildRegenPrompt` + ENHANCE_MASTER /
+      ENHANCE_STANDARD_TREATMENT / ENHANCE_GUARDRAILS / EQUIPMENT_ANATOMY
       constants). It mirrors the strings below near-verbatim so regen
       quality matches enhance quality. If you edit any of the master /
       standard / guardrails text here, mirror the change there too.
     """
-    master = (
-        "You are editing a photograph of a USED forklift. The goal is a "
-        "thorough makeover of the SAME machine in the SAME place: clean "
-        "paint, sharp decals, dressed tires — like the unit just rolled "
-        "out of a professional detail bay. The output MUST be visibly "
-        "improved versus the input. A reasonable viewer should be able "
-        "to see at a glance that the machine has been cleaned up. "
-        "\"Used lift with a really good makeover\" — not brand-new from "
-        "factory, not a stock photo, not a studio composite."
+    eq_display = EQUIPMENT_DISPLAY.get(equipment_type, "forklift")
+    eq_anatomy = EQUIPMENT_ANATOMY.get(
+        equipment_type, EQUIPMENT_ANATOMY["forklift"]
     )
 
-    standard_treatment = (
-        "STANDARD TREATMENT — apply ALL of the following to every request. "
-        "These are the changes the output MUST reflect:\n\n"
+    master = (
+        f"You are editing a photograph of a USED {eq_display}. The goal is to "
+        f"improve presentation — clean look, sharper decals, dressed tires — "
+        f"WITHOUT misrepresenting condition. The output should look like a "
+        f"well-cared-for used unit a buyer would be happy to see in a "
+        f"listing, NOT a brand-new unit straight from the factory.\n\n"
 
-        "• PAINT REFRESH. Repaint every visibly-worn body panel so the "
-        "machine looks like it just came out of a professional detail bay. "
-        "Concretely:\n"
-        "    – Where any panel is currently yellowed, cream-coloured, or "
-        "dingy white, render it as clean, bright, even white.\n"
-        "    – Where any panel is currently dull, faded, dirty, or chalky "
-        "red, render it as clean, saturated, evenly painted red.\n"
-        "    – Anywhere you see chips, scratches, scuffs, scrapes, paint "
-        "loss, oxidation, stains, or dirt streaks, replace those areas "
-        "with a smooth uniform coat of paint matching the surrounding "
-        "panel's colour.\n"
-        "  The cab roof, overhead guard, mast, main body, step panels, "
-        "and counterweight should all visibly look freshly painted in the "
-        "output. Keep the same colours and the same panel-to-colour "
-        "mapping — only the surface condition changes.\n\n"
+        f"HONESTY CONSTRAINT (critical, legal): visible defects that affect "
+        f"buyer evaluation MUST remain visible. Dents and panel damage stay. "
+        f"Deep scratches stay. Broken or missing parts stay. Significant "
+        f"rust and rust-through stay. Large faded or worn-through paint "
+        f"sections stay. Cracked, deeply-worn, or gouged tires stay. "
+        f"Treat the output like an honest detail-pass on the same used "
+        f"unit — wash, wax, and tidy — NOT a full body restoration. If "
+        f"unsure whether a defect is cosmetic or material, LEAVE IT."
+    )
 
-        "• DECAL RESTORATION. Restore every OEM decal, brand logo, "
+    # Standard-treatment bullets are assembled as a list so the RENTAL-
+    # FLEET BRANDING block can be conditionally included based on the
+    # operator's toggle (it stays surfaced in the Advanced UI as a
+    # discoverable action, even though most batches want it on).
+    standard_bullets: list[str] = []
+
+    standard_bullets.append(
+        "SURFACE CLEAN-UP. Remove dust, dirt, grime, mud splatter, road "
+        "spray, and surface staining from body panels. Lift cosmetic "
+        "dullness so the existing paint reads sharper and more saturated. "
+        "You may tidy up very small scuffs and hairline scratches to read "
+        "as well-maintained. DO NOT repaint over deep scratches, dents, "
+        "panel damage, large worn-through patches, faded sections that "
+        "show actual wear pattern, or anything that materially changes "
+        "the unit's apparent condition. Keep the same colours and the "
+        "same panel-to-colour mapping — only the surface dirtiness "
+        "changes, not the condition."
+    )
+
+    standard_bullets.append(
+        "DECAL RESTORATION. Restore every OEM decal, brand logo, "
         "capacity sticker, model badge, and safety label to crisp, fully "
         "legible condition. Keep their original text, layout, and "
         "position. Do not invent new decals, add manufacturer logos that "
-        "were not present, or change any model / capacity numbering.\n\n"
+        "were not present, or change any model / capacity numbering."
+    )
 
-        "• RUST + CORROSION. Where rust, corrosion, oxidation, or surface "
-        "pitting is visible, replace those areas with clean painted metal "
-        "in the surrounding OEM colour. Do NOT add or imply rust or wear "
-        "that was not in the source.\n\n"
+    if toggles.remove_rental_branding:
+        standard_bullets.append(
+            "RENTAL-FLEET BRANDING. Remove decals, stickers, vinyl wraps, "
+            "painted lettering, and asset-tag numbers that advertise "
+            "third-party rental fleets. Examples include (non-exhaustive): "
+            "Sunbelt Rentals, United Rentals, Herc Rentals, Sunstate "
+            "Equipment, Ahern Rentals, EquipmentShare, The Home Depot "
+            "Tool Rental, BlueLine Rental, NES Rentals, and any similar "
+            "fleet-branding wraps or stickers (large fleet ID numbers, "
+            "'1-800' style asset tags, rental-company logos in non-OEM "
+            "colours). Where a rental decal is removed, leave the "
+            "underlying panel surface matching the surrounding panel — "
+            "do not leave a ghost outline. PRESERVE all OEM manufacturer "
+            "decals (Toyota, Hyster, Yale, Crown, Komatsu, Mitsubishi, "
+            "Caterpillar, Skyjack, Genie, JLG, Bobcat, etc.), capacity "
+            "plates, VIN / serial numbers, model badges, and safety "
+            "stickers — only third-party rental-fleet branding is "
+            "removed."
+        )
 
-        "• TIRE REFRESH. Clean and refresh the EXISTING tires — darker "
-        "rubber, no dust or grime, freshly dressed appearance. Keep the "
-        "same tires (same type, tread, sidewall, wear profile); do NOT "
-        "swap them for new tires.\n\n"
+    standard_bullets.append(
+        "SURFACE DIRT + LIGHT OXIDATION. Light surface dust, very "
+        "superficial oxidation, and dirt staining that read as "
+        "'unwashed' may be cleaned. Significant rust, pitting, advanced "
+        "corrosion, and any rust-through MUST remain visible — these "
+        "are condition signals buyers rely on, and removing them turns "
+        "the listing photo into a misleading sale claim."
+    )
 
-        "• LIGHTING / EXPOSURE. Lift the deepest shadows just enough to "
+    standard_bullets.append(
+        "TIRE / WHEEL REFRESH. Wipe surface dust and grime off tires "
+        "and wheels so the existing rubber reads cleaner. Keep the SAME "
+        "tires — same type, tread pattern, sidewall, wear profile. "
+        "Significant tread wear, cuts, gouges, aging cracks, and chunks "
+        "MUST stay visible. Do not make worn tires look new."
+    )
+
+    standard_bullets.append(
+        "LIGHTING / EXPOSURE. Lift the deepest shadows just enough to "
         "reveal detail, recover any blown highlights, and neutralize "
         "obvious colour casts. Keep the scene's original light direction "
         "and ambient mood — do NOT replace it with studio lighting."
     )
 
-    # Toggle-driven additions. The 5 "core" toggles emphasize a base item;
-    # remove_people and paint_forks_red_yellow_tips add genuinely new
-    # actions the standard treatment doesn't cover.
+    standard_treatment = (
+        "STANDARD TREATMENT — apply each of the following to every "
+        "request, bounded by the HONESTY CONSTRAINT above:\n\n"
+        + "\n\n".join(f"• {b}" for b in standard_bullets)
+    )
+
+    # Toggle-driven additions. Same set as before but reworded so the
+    # "extra emphasis" doesn't override the honesty constraint above.
     extras: list[str] = []
 
     if toggles.new_paint_job:
         extras.append(
-            "EXTRA EMPHASIS — paint refresh. This image has been flagged "
-            "as needing particularly fresh paint; be especially aggressive "
-            "on the paint step above."
+            "EXTRA EMPHASIS — surface paint. This image has been flagged "
+            "as needing extra attention on dirt/grime removal and small-"
+            "scuff tidy-up. Still bounded by the HONESTY CONSTRAINT — "
+            "do not repaint over major paint failure or panel damage."
         )
     if toggles.remove_rust:
         extras.append(
-            "EXTRA EMPHASIS — rust removal. This image has been flagged "
-            "as needing particularly thorough rust / corrosion cleanup."
+            "EXTRA EMPHASIS — surface rust. This image has been flagged "
+            "for slightly more aggressive surface-rust cleanup. Light "
+            "oxidation can be cleaned harder; significant rust, pitting, "
+            "and rust-through still stay visible."
         )
     if toggles.restore_decals:
         extras.append(
             "EXTRA EMPHASIS — decals. Pay extra attention to decal "
-            "restoration on this image; every label should read perfectly "
-            "crisp in the output."
+            "restoration; every label should read perfectly crisp in the "
+            "output."
         )
     if toggles.shine_tires:
         extras.append(
-            "EXTRA EMPHASIS — tires. Pay extra attention to the tire "
-            "refresh; the rubber should read as freshly conditioned."
+            "EXTRA EMPHASIS — tires. Pay extra attention to surface "
+            "dust and grime removal on tires. Visible wear, cuts, "
+            "gouges, and aging cracks still stay."
         )
     if toggles.improve_lighting:
         extras.append(
@@ -242,25 +317,32 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
             "or floor of the scene. Replace each removed sign with a "
             "plausible continuation of the wall / door / surface behind "
             "it (same colour, same material, same lighting).\n"
-            "  CRITICAL EXCEPTION — do NOT touch any signage that lives "
-            "ON THE FORKLIFT ITSELF. The OEM decals, brand name on the "
-            "mast (e.g., 'NISSAN', 'TOYOTA', 'HYSTER'), capacity plates, "
-            "VIN / serial numbers, model badges, safety stickers, and "
-            "data tags must all remain present, legible, and unchanged. "
-            "Only environmental / background signage is removed."
+            f"  CRITICAL EXCEPTION — do NOT touch any signage on the "
+            f"{eq_display} ITSELF apart from rental-fleet branding (which "
+            f"is handled in the STANDARD TREATMENT). OEM decals, brand "
+            f"name on the mast / boom / chassis, capacity plates, VIN / "
+            f"serial numbers, model badges, safety stickers, and data "
+            f"tags all stay."
         )
     if toggles.paint_forks_red_yellow_tips:
-        extras.append(
-            "ADDITIONAL ACTION — repaint the forks with the standard OSHA "
-            "two-tone safety scheme. The MAIN BODY of each fork (the heel, "
-            "the vertical shank, and roughly the first 80% of the "
-            "horizontal blade) must be solid bright safety RED. Only the "
-            "final tip — the outermost ~15-20 cm (~6-8 inches) of the "
-            "blade — should be solid bright safety YELLOW. The result must "
-            "clearly read as a RED fork with a small YELLOW tip cap. Do "
-            "NOT paint the entire fork yellow or the entire fork red. Do "
-            "not change fork length, profile, mounting, or position."
-        )
+        # Forklift-only action — frontend hides the toggle when
+        # equipment_type != forklift, but the prompt is defensive anyway:
+        # if a non-forklift type slips through with this on, skip it
+        # rather than try to "paint forks" on something that doesn't have
+        # forks.
+        if equipment_type == "forklift":
+            extras.append(
+                "ADDITIONAL ACTION — repaint the forks with the standard "
+                "OSHA two-tone safety scheme. The MAIN BODY of each fork "
+                "(the heel, the vertical shank, and roughly the first 80% "
+                "of the horizontal blade) must be solid bright safety RED. "
+                "Only the final tip — the outermost ~15-20 cm (~6-8 inches) "
+                "of the blade — should be solid bright safety YELLOW. The "
+                "result must clearly read as a RED fork with a small "
+                "YELLOW tip cap. Do NOT paint the entire fork yellow or "
+                "the entire fork red. Do not change fork length, profile, "
+                "mounting, or position."
+            )
 
     extras_block = (
         "ADDITIONAL EMPHASIS — apply ON TOP of the standard treatment:\n\n"
@@ -270,26 +352,30 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
     )
 
     guardrails = (
-        "GUARDRAILS — while applying everything above, the following must "
-        "stay identical to the source. These are limits on HOW you change "
-        "the image, not reasons to skip the standard treatment:\n"
-        "• Background, floor, walls, surroundings — keep the exact same "
-        "location. Never isolate the forklift on a white / studio / "
-        "gradient backdrop. Never blur or replace the scene.\n"
-        "• Lighting direction, ambient colour, and shadow placement. "
-        "Refresh exposure, but keep the same lighting character.\n"
-        "• Camera angle, framing, distance, proportions. No zoom, crop, "
-        "rotate, horizon-leveling, or re-posing.\n"
-        "• Make, model, year, trim level. Same mast configuration, fork "
-        "count, fork length, overhead guard shape, counterweight shape, "
-        "and tire type.\n"
-        "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or "
-        "any bolt-on hardware that is not already in the source.\n"
-        "• Every OEM decal, capacity plate, VIN / serial number, and "
-        "data tag remains present, legible, and unchanged. Do not invent "
-        "or alter any text, digits, or logos on the machine.\n"
-        "• Do not introduce damage, rust, dents, or wear that was not in "
-        "the source image."
+        f"GUARDRAILS — while applying everything above, the following must "
+        f"stay identical to the source. These are limits on HOW you change "
+        f"the image, not reasons to skip the standard treatment:\n"
+        f"• Background, floor, walls, surroundings — keep the exact same "
+        f"location. Never isolate the {eq_display} on a white / studio / "
+        f"gradient backdrop. Never blur or replace the scene.\n"
+        f"• Lighting direction, ambient colour, and shadow placement. "
+        f"Refresh exposure, but keep the same lighting character.\n"
+        f"• Camera angle, framing, distance, proportions. No zoom, crop, "
+        f"rotate, horizon-leveling, or re-posing.\n"
+        f"• Make, model, year, trim level. {eq_anatomy}\n"
+        f"• Do NOT add lamps, beacons, mirrors, antennas, attachments, or "
+        f"any bolt-on hardware that is not already in the source.\n"
+        f"• Every OEM decal, capacity plate, VIN / serial number, and "
+        f"data tag remains present, legible, and unchanged. Do not invent "
+        f"or alter any text, digits, or logos on the machine. (Third-"
+        f"party rental-fleet branding is the one exception — see "
+        f"STANDARD TREATMENT.)\n"
+        f"• Do not introduce damage, rust, dents, or wear that was not in "
+        f"the source image.\n"
+        f"• HONESTY CONSTRAINT (restated): preserve visible damage, deep "
+        f"wear, dents, panel damage, broken parts, significant rust, and "
+        f"heavy paint failure. The output must not misrepresent the unit's "
+        f"actual condition. This is a detail-pass, not a restoration."
     )
 
     sections = [master, standard_treatment]
@@ -740,7 +826,10 @@ async def _run_enhance(
         if payload.custom_prompt:
             prompt = payload.custom_prompt
         else:
-            prompt = _build_enhance_prompt(payload.toggles)
+            prompt = _build_enhance_prompt(
+                payload.toggles,
+                equipment_type=payload.equipment_type,
+            )
 
         # Dispatch to the requested provider. The Gemini semaphore is
         # still useful for cost control on the AI Studio key (the key has

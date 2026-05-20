@@ -13,6 +13,21 @@ export type ConsensusVerdict = "pass" | "fail" | "split";
 
 // ─── Forklift metadata (Enhance tab optional fields) ─────────────────────────
 
+/** Equipment categories the prompt builder branches on. */
+export type EquipmentType = "forklift" | "scissor_lift" | "telehandler";
+
+export const EQUIPMENT_TYPES: readonly EquipmentType[] = [
+  "forklift",
+  "scissor_lift",
+  "telehandler",
+] as const;
+
+export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
+  forklift:     "Forklift",
+  scissor_lift: "Scissor lift",
+  telehandler:  "Telehandler",
+};
+
 export interface ForkliftMeta {
   make: string;
   model: string;
@@ -20,6 +35,13 @@ export interface ForkliftMeta {
   tireType: string;
   capacity: string;
   fuelType: string;
+  /**
+   * Equipment category — drives the per-type anatomy block in the
+   * backend's enhance prompt. Optional; backend defaults to "forklift"
+   * if omitted. Stored on the same `meta` object so the existing
+   * Workspace → EnhancePanel → ResizePanel plumbing carries it for free.
+   */
+  equipmentType?: EquipmentType;
 }
 
 // ─── Enhance toggles ─────────────────────────────────────────────────────────
@@ -38,6 +60,13 @@ export interface EnhanceToggles {
   paintForksRedYellowTips: boolean;
   shineTires: boolean;
   improveLighting: boolean;
+  /**
+   * When true, the backend's STANDARD TREATMENT includes a RENTAL-FLEET
+   * BRANDING block that strips third-party rental decals (Sunbelt,
+   * United Rentals, etc.) while preserving OEM manufacturer decals.
+   * Default ON because most batches are ex-rental units.
+   */
+  removeRentalBranding: boolean;
 }
 
 export const DEFAULT_TOGGLES: EnhanceToggles = {
@@ -49,6 +78,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   paintForksRedYellowTips: false,
   shineTires: false,
   improveLighting: false,
+  removeRentalBranding: true,    // default ON — most batches are ex-rental units
 };
 
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
@@ -60,6 +90,7 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   paintForksRedYellowTips: "Paint Forks Red w/ Yellow Tips",
   shineTires: "Shine Tires",
   improveLighting: "Improve Lighting",
+  removeRentalBranding: "Remove Rental-Fleet Branding",
 };
 
 export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
@@ -67,10 +98,11 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   removeRust: "Extra emphasis on rust / corrosion cleanup on this image",
   restoreDecals: "Extra emphasis on decal restoration on this image",
   removePeople: "Remove any people or bystanders from the frame",
-  removeBackgroundSignage: "Remove exit signs, company logos, posters, and other background signage (forklift OEM decals stay intact)",
-  paintForksRedYellowTips: "Paint the forks red with yellow tips per OSHA convention",
+  removeBackgroundSignage: "Remove exit signs, company logos, posters, and other background signage (OEM decals on the unit stay intact)",
+  paintForksRedYellowTips: "Paint the forks red with yellow tips per OSHA convention (forklift only)",
   shineTires: "Extra emphasis on tire dressing on this image",
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
+  removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
 };
 
 // ─── Upload ───────────────────────────────────────────────────────────────────

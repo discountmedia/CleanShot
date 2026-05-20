@@ -89,6 +89,9 @@ export async function enqueueEnhance(params: {
    * "flux"   routes through Black Forest Labs FLUX 2 MAX.
    * "reve"   routes through Reve image-edit (latest). */
   provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
+  /** Equipment category — drives the backend's per-type anatomy block.
+   * Defaults to "forklift" server-side if omitted. */
+  equipmentType?: "forklift" | "scissor_lift" | "telehandler";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
   idempotencyKey: string;

@@ -10,6 +10,7 @@
 
 import type {
   AnomalyItem,
+  EquipmentType,
   ProviderScanResult,
   ScanProvider,
 } from "./types";
@@ -147,66 +148,115 @@ export function unifyAnomalies(
   );
 }
 
-// ─── Regen prompt (moved verbatim from ScanPanel.tsx) ────────────────────────
+// ─── Regen prompt — mirror of the backend's _build_enhance_prompt ────────────
 //
 // The regen path sends a verbatim `custom_prompt` that bypasses the
 // worker's wrapper, so the prompt assembled here must carry the FULL
 // enhance treatment instructions on its own. The text below is a
 // near-verbatim port of `_build_enhance_prompt` in
-// apps/api/src/cleanshot_api/workers/enhance_worker.py
-// (master + standard_treatment + guardrails). The only regen-specific
-// addition is an "ISSUES TO ADDRESS" block.
+// apps/api/src/cleanshot_api/workers/enhance_worker.py — master +
+// standard_treatment + guardrails, with an "ISSUES TO ADDRESS" block
+// in place of the toggle-driven extras the enhance flow uses.
 //
-// If you change one side, change the other — drift here means regen
-// quality silently diverges from enhance quality.
+// DRIFT-WARNING: if you change either side, mirror the change here too.
+// In particular: the HONESTY CONSTRAINT (preserve visible defects) and
+// the RENTAL-FLEET BRANDING block must stay in lock-step.
 
-const ENHANCE_MASTER = (
-  "You are editing a photograph of a USED forklift. The goal is a "
-  + "thorough makeover of the SAME machine in the SAME place: clean "
-  + "paint, sharp decals, dressed tires — like the unit just rolled "
-  + "out of a professional detail bay. The output MUST be visibly "
-  + "improved versus the input. A reasonable viewer should be able "
-  + "to see at a glance that the machine has been cleaned up. "
-  + "\"Used lift with a really good makeover\" — not brand-new from "
-  + "factory, not a stock photo, not a studio composite."
-);
+const EQUIPMENT_DISPLAY: Record<EquipmentType, string> = {
+  forklift:     "forklift",
+  scissor_lift: "scissor lift",
+  telehandler:  "telehandler",
+};
 
-const ENHANCE_STANDARD_TREATMENT = [
-  "STANDARD TREATMENT — apply ALL of the following to every request. These are the changes the output MUST reflect:",
-  "",
-  "• PAINT REFRESH. Repaint every visibly-worn body panel so the machine looks like it just came out of a professional detail bay. Concretely:",
-  "    – Where any panel is currently yellowed, cream-coloured, or dingy white, render it as clean, bright, even white.",
-  "    – Where any panel is currently dull, faded, dirty, or chalky red, render it as clean, saturated, evenly painted red.",
-  "    – Anywhere you see chips, scratches, scuffs, scrapes, paint loss, oxidation, stains, or dirt streaks, replace those areas with a smooth uniform coat of paint matching the surrounding panel's colour.",
-  "  The cab roof, overhead guard, mast, main body, step panels, and counterweight should all visibly look freshly painted in the output. Keep the same colours and the same panel-to-colour mapping — only the surface condition changes.",
-  "",
-  "• DECAL RESTORATION. Restore every OEM decal, brand logo, capacity sticker, model badge, and safety label to crisp, fully legible condition. Keep their original text, layout, and position. Do not invent new decals, add manufacturer logos that were not present, or change any model / capacity numbering.",
-  "",
-  "• RUST + CORROSION. Where rust, corrosion, oxidation, or surface pitting is visible, replace those areas with clean painted metal in the surrounding OEM colour. Do NOT add or imply rust or wear that was not in the source.",
-  "",
-  "• TIRE REFRESH. Clean and refresh the EXISTING tires — darker rubber, no dust or grime, freshly dressed appearance. Keep the same tires (same type, tread, sidewall, wear profile); do NOT swap them for new tires.",
-  "",
-  "• LIGHTING / EXPOSURE. Lift the deepest shadows just enough to reveal detail, recover any blown highlights, and neutralize obvious colour casts. Keep the scene's original light direction and ambient mood — do NOT replace it with studio lighting.",
-].join("\n");
+const EQUIPMENT_ANATOMY: Record<EquipmentType, string> = {
+  forklift:
+    "Same mast configuration, fork count, fork length, overhead guard shape, counterweight shape, and tire type.",
+  scissor_lift:
+    "Same platform size and handrail pattern, scissor mechanism extension, base / chassis dimensions, drive wheels, and control box position.",
+  telehandler:
+    "Same boom length and section count, attachment (forks / bucket / lifting jib), outrigger configuration, cab shape, and wheel / tire type.",
+};
 
-const ENHANCE_GUARDRAILS = [
-  "GUARDRAILS — while applying everything above, the following must stay identical to the source. These are limits on HOW you change the image, not reasons to skip the standard treatment:",
-  "• Background, floor, walls, surroundings — keep the exact same location. Never isolate the forklift on a white / studio / gradient backdrop. Never blur or replace the scene.",
-  "• Lighting direction, ambient colour, and shadow placement. Refresh exposure, but keep the same lighting character.",
-  "• Camera angle, framing, distance, proportions. No zoom, crop, rotate, horizon-leveling, or re-posing.",
-  "• Make, model, year, trim level. Same mast configuration, fork count, fork length, overhead guard shape, counterweight shape, and tire type.",
-  "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or any bolt-on hardware that is not already in the source.",
-  "• Every OEM decal, capacity plate, VIN / serial number, and data tag remains present, legible, and unchanged. Do not invent or alter any text, digits, or logos on the machine.",
-  "• Do not introduce damage, rust, dents, or wear that was not in the source image.",
-].join("\n");
+function buildMaster(equipmentType: EquipmentType): string {
+  const eq = EQUIPMENT_DISPLAY[equipmentType];
+  return [
+    `You are editing a photograph of a USED ${eq}. The goal is to improve presentation — clean look, sharper decals, dressed tires — WITHOUT misrepresenting condition. The output should look like a well-cared-for used unit a buyer would be happy to see in a listing, NOT a brand-new unit straight from the factory.`,
+    "",
+    "HONESTY CONSTRAINT (critical, legal): visible defects that affect buyer evaluation MUST remain visible. Dents and panel damage stay. Deep scratches stay. Broken or missing parts stay. Significant rust and rust-through stay. Large faded or worn-through paint sections stay. Cracked, deeply-worn, or gouged tires stay. Treat the output like an honest detail-pass on the same used unit — wash, wax, and tidy — NOT a full body restoration. If unsure whether a defect is cosmetic or material, LEAVE IT.",
+  ].join("\n");
+}
+
+function buildStandardTreatment(includeRentalScrub: boolean): string {
+  const bullets: string[] = [];
+
+  bullets.push(
+    "SURFACE CLEAN-UP. Remove dust, dirt, grime, mud splatter, road spray, and surface staining from body panels. Lift cosmetic dullness so the existing paint reads sharper and more saturated. You may tidy up very small scuffs and hairline scratches to read as well-maintained. DO NOT repaint over deep scratches, dents, panel damage, large worn-through patches, faded sections that show actual wear pattern, or anything that materially changes the unit's apparent condition. Keep the same colours and the same panel-to-colour mapping — only the surface dirtiness changes, not the condition.",
+  );
+
+  bullets.push(
+    "DECAL RESTORATION. Restore every OEM decal, brand logo, capacity sticker, model badge, and safety label to crisp, fully legible condition. Keep their original text, layout, and position. Do not invent new decals, add manufacturer logos that were not present, or change any model / capacity numbering.",
+  );
+
+  if (includeRentalScrub) {
+    bullets.push(
+      "RENTAL-FLEET BRANDING. Remove decals, stickers, vinyl wraps, painted lettering, and asset-tag numbers that advertise third-party rental fleets. Examples include (non-exhaustive): Sunbelt Rentals, United Rentals, Herc Rentals, Sunstate Equipment, Ahern Rentals, EquipmentShare, The Home Depot Tool Rental, BlueLine Rental, NES Rentals, and any similar fleet-branding wraps or stickers (large fleet ID numbers, '1-800' style asset tags, rental-company logos in non-OEM colours). Where a rental decal is removed, leave the underlying panel surface matching the surrounding panel — do not leave a ghost outline. PRESERVE all OEM manufacturer decals (Toyota, Hyster, Yale, Crown, Komatsu, Mitsubishi, Caterpillar, Skyjack, Genie, JLG, Bobcat, etc.), capacity plates, VIN / serial numbers, model badges, and safety stickers — only third-party rental-fleet branding is removed.",
+    );
+  }
+
+  bullets.push(
+    "SURFACE DIRT + LIGHT OXIDATION. Light surface dust, very superficial oxidation, and dirt staining that read as 'unwashed' may be cleaned. Significant rust, pitting, advanced corrosion, and any rust-through MUST remain visible — these are condition signals buyers rely on, and removing them turns the listing photo into a misleading sale claim.",
+  );
+
+  bullets.push(
+    "TIRE / WHEEL REFRESH. Wipe surface dust and grime off tires and wheels so the existing rubber reads cleaner. Keep the SAME tires — same type, tread pattern, sidewall, wear profile. Significant tread wear, cuts, gouges, aging cracks, and chunks MUST stay visible. Do not make worn tires look new.",
+  );
+
+  bullets.push(
+    "LIGHTING / EXPOSURE. Lift the deepest shadows just enough to reveal detail, recover any blown highlights, and neutralize obvious colour casts. Keep the scene's original light direction and ambient mood — do NOT replace it with studio lighting.",
+  );
+
+  return [
+    "STANDARD TREATMENT — apply each of the following to every request, bounded by the HONESTY CONSTRAINT above:",
+    "",
+    ...bullets.map((b) => `• ${b}`),
+  ].join("\n");
+}
+
+function buildGuardrails(equipmentType: EquipmentType): string {
+  const eq = EQUIPMENT_DISPLAY[equipmentType];
+  const anatomy = EQUIPMENT_ANATOMY[equipmentType];
+  return [
+    "GUARDRAILS — while applying everything above, the following must stay identical to the source. These are limits on HOW you change the image, not reasons to skip the standard treatment:",
+    `• Background, floor, walls, surroundings — keep the exact same location. Never isolate the ${eq} on a white / studio / gradient backdrop. Never blur or replace the scene.`,
+    "• Lighting direction, ambient colour, and shadow placement. Refresh exposure, but keep the same lighting character.",
+    "• Camera angle, framing, distance, proportions. No zoom, crop, rotate, horizon-leveling, or re-posing.",
+    `• Make, model, year, trim level. ${anatomy}`,
+    "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or any bolt-on hardware that is not already in the source.",
+    "• Every OEM decal, capacity plate, VIN / serial number, and data tag remains present, legible, and unchanged. Do not invent or alter any text, digits, or logos on the machine. (Third-party rental-fleet branding is the one exception — see STANDARD TREATMENT.)",
+    "• Do not introduce damage, rust, dents, or wear that was not in the source image.",
+    "• HONESTY CONSTRAINT (restated): preserve visible damage, deep wear, dents, panel damage, broken parts, significant rust, and heavy paint failure. The output must not misrepresent the unit's actual condition. This is a detail-pass, not a restoration.",
+  ].join("\n");
+}
+
+export interface BuildRegenPromptOptions {
+  /** Defaults to "forklift" so existing callers keep working. */
+  equipmentType?:        EquipmentType;
+  /** Defaults to true (most batches want it). */
+  removeRentalBranding?: boolean;
+}
 
 /**
- * Compose the full regen prompt from a unified anomaly list. Accepts the
- * deduped list directly so the caller doesn't have to recompute it; the
- * provider-result form is supported via `buildRegenPromptFromResults`
- * below for callers that already have the array.
+ * Compose the full regen prompt from a unified anomaly list. Equipment
+ * type and rental-scrub branching come through as options; both default
+ * to the production-default behaviour (forklift, rental scrub on).
  */
-export function buildRegenPrompt(unified: UnifiedAnomalyEntry[]): string {
+export function buildRegenPrompt(
+  unified:  UnifiedAnomalyEntry[],
+  options:  BuildRegenPromptOptions = {},
+): string {
+  const equipmentType        = options.equipmentType        ?? "forklift";
+  const removeRentalBranding = options.removeRentalBranding ?? true;
+
   let issuesBlock = "";
   if (unified.length > 0) {
     const severityOrder: Record<AnomalyItem["severity"], number> = {
@@ -227,13 +277,19 @@ export function buildRegenPrompt(unified: UnifiedAnomalyEntry[]): string {
     ].join("\n");
   }
 
-  const sections = [ENHANCE_MASTER, ENHANCE_STANDARD_TREATMENT];
+  const sections: string[] = [
+    buildMaster(equipmentType),
+    buildStandardTreatment(removeRentalBranding),
+  ];
   if (issuesBlock) sections.push(issuesBlock);
-  sections.push(ENHANCE_GUARDRAILS);
+  sections.push(buildGuardrails(equipmentType));
   return sections.join("\n\n");
 }
 
 /** Convenience wrapper for callers that have the raw provider-result array. */
-export function buildRegenPromptFromResults(results: ProviderScanResult[]): string {
-  return buildRegenPrompt(unifyAnomalies(results));
+export function buildRegenPromptFromResults(
+  results: ProviderScanResult[],
+  options: BuildRegenPromptOptions = {},
+): string {
+  return buildRegenPrompt(unifyAnomalies(results), options);
 }

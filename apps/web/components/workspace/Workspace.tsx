@@ -271,6 +271,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onClearPipeline={handleClearPipeline}
                 onSendToResize={handleSendToResize}
                 autoAdvance={autoAdvance}
+                equipmentType={meta.equipmentType ?? "forklift"}
               />
             )}
           </PanelSlot>

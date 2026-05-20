@@ -32,6 +32,29 @@ export function Header({
   const showAutoAdvance = typeof autoAdvance === "boolean" && typeof onAutoAdvance === "function";
   return (
     <header className="bg-black border-b-2 border-red-600">
+      {/* BETA banner — sits above the logo row so it's the first thing
+          the operator sees on page load. Links to the user profile page
+          where they can file a support ticket. Amber striped to read as
+          informational/warning without competing with the brand-red
+          underline below the main header strip. */}
+      <div className="bg-amber-950/40 border-b border-amber-900">
+        <div className="px-6 py-2 flex items-center justify-center gap-3 text-center flex-wrap">
+          <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-900/60 border border-amber-700 rounded px-2 py-0.5 shrink-0">
+            Beta V.1
+          </span>
+          <p className="text-xs sm:text-sm font-semibold uppercase tracking-[0.12em] text-amber-100 leading-snug">
+            Site is currently in testing — bugs will be present.{" "}
+            <Link
+              href="/profile"
+              className="underline decoration-amber-500 hover:text-white hover:decoration-amber-300 transition-colors"
+            >
+              Send a support ticket through the user profile page
+            </Link>{" "}
+            to report bugs or request features.
+          </p>
+        </div>
+      </div>
+
       <div className="flex items-center px-6 py-3 gap-5">
         {/* Logo block */}
         <Link href="/" className="shrink-0" aria-label="CleanShot home">

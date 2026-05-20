@@ -168,104 +168,112 @@ export function SourceCompareCard({
         </div>
       </header>
 
-      {/* Body — original + variants */}
-      <div className="p-5">
-        <div className="grid grid-cols-[140px_auto_1fr] gap-4 items-start">
-          {/* Original thumbnail (uses the local object URL the file picker
-              produced — no GCS fetch needed for the source side). */}
-          <figure className="flex flex-col gap-2">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
-              Original
-            </span>
-            <div className="relative aspect-square rounded-lg overflow-hidden border border-zinc-800 bg-black">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={file.previewUrl}
-                alt={`${filename} (original)`}
-                className="w-full h-full object-cover"
-              />
-              <div className="absolute inset-x-0 bottom-0 px-2 py-1 bg-linear-to-t from-black/80 to-transparent">
-                <span className="text-[9px] font-mono text-zinc-300">source</span>
-              </div>
+      {/* Body — big landscape original on top, 5-col landscape variants
+          below. Stacks vertically so the operator can see anomalies on
+          the source at a useful size, then scan across the variants to
+          pick a winner. */}
+      <div className="p-5 space-y-5">
+        {/* Original — large landscape. Capped at a sensible max-width so
+            the card doesn't dominate ultra-wide screens; centered when
+            narrower than the cap. */}
+        <figure className="flex flex-col gap-2">
+          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+            Original — source photo
+          </span>
+          <div className="relative w-full max-w-4xl mx-auto aspect-4/3 rounded-lg overflow-hidden border border-zinc-800 bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={file.previewUrl}
+              alt={`${filename} (original)`}
+              className="w-full h-full object-contain"
+            />
+            <div className="absolute inset-x-0 bottom-0 px-2 py-1 bg-linear-to-t from-black/80 to-transparent">
+              <span className="text-[9px] font-mono text-zinc-300">source</span>
             </div>
-          </figure>
-
-          {/* Arrow */}
-          <div className="self-center text-2xl text-zinc-700 pt-6" aria-hidden="true">
-            →
           </div>
+        </figure>
 
-          {/* Variants */}
-          <div className="flex flex-col gap-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
-                Enhanced — click a variant to pick the winner
-              </span>
-              {chosen && (
-                <button
-                  type="button"
-                  onClick={() => onChoose(null)}
-                  className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hover:text-zinc-300"
-                >
-                  Clear pick
-                </button>
-              )}
-            </div>
-
-            {/* 5-column grid so every variant has a fixed slot whether or
-                not it's been enqueued yet. Providers not enqueued for this
-                file (e.g. the operator unchecked them mid-batch) render as
-                a disabled placeholder so the layout stays stable. */}
-            <div className="grid grid-cols-5 gap-2">
-              {ENHANCE_PROVIDERS.map((p) => {
-                const variant = variants[p];
-                return (
-                  <VariantThumb
-                    key={p}
-                    provider={p}
-                    variant={variant}
-                    chosen={chosen === p}
-                    nowMs={nowMs}
-                    onChoose={() => onChoose(p)}
-                    onRegen={() => onRetry(p)}
-                  />
-                );
-              })}
-            </div>
-
-            {/* Failed-variant inline retry strip. Lists every failed variant
-                so the operator can address them in one place rather than
-                hunting for the red thumb. */}
-            {failedVariants.length > 0 && (
-              <div className="mt-1 flex flex-col gap-1.5 rounded border border-red-900 bg-red-950/20 px-3 py-2">
-                {failedVariants.map(({ provider, variant }) => (
-                  <div
-                    key={provider}
-                    className="flex items-center justify-between gap-3"
-                  >
-                    <div className="text-[11px] text-red-300 min-w-0">
-                      <span className="font-semibold uppercase tracking-[0.16em] text-red-400">
-                        {ENHANCE_PROVIDER_LABELS[provider]} failed
-                      </span>
-                      {variant.error && (
-                        <span className="text-zinc-500 ml-2 font-mono truncate inline-block max-w-[40ch] align-bottom">
-                          {variant.error}
-                        </span>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => onRetry(provider)}
-                      className="shrink-0 text-[10px] uppercase tracking-[0.18em] font-semibold text-amber-300 hover:text-white bg-amber-950/40 hover:bg-amber-700 border border-amber-800 hover:border-amber-600 px-2.5 py-1 rounded transition-colors"
-                    >
-                      ↻ Retry {ENHANCE_PROVIDER_LABELS[provider]}
-                    </button>
-                  </div>
-                ))}
-              </div>
+        {/* Variants — 5-column landscape row */}
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+              Enhanced — click a variant to pick the winner
+            </span>
+            {chosen && (
+              <button
+                type="button"
+                onClick={() => onChoose(null)}
+                className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hover:text-zinc-300"
+              >
+                Clear pick
+              </button>
             )}
           </div>
+
+          {/* 5-column grid so every variant has a fixed slot whether or
+              not it's been enqueued yet. Providers not enqueued for this
+              file (e.g. the operator unchecked them mid-batch) render as
+              a disabled placeholder so the layout stays stable. */}
+          <div className="grid grid-cols-5 gap-2">
+            {ENHANCE_PROVIDERS.map((p) => {
+              const variant = variants[p];
+              return (
+                <VariantThumb
+                  key={p}
+                  provider={p}
+                  variant={variant}
+                  chosen={chosen === p}
+                  nowMs={nowMs}
+                  onChoose={() => onChoose(p)}
+                  onRegen={() => onRetry(p)}
+                />
+              );
+            })}
+          </div>
+
+          {/* Failed-variant inline retry strip. Lists every failed variant
+              so the operator can address them in one place rather than
+              hunting for the red thumb. */}
+          {failedVariants.length > 0 && (
+            <div className="mt-1 flex flex-col gap-1.5 rounded border border-red-900 bg-red-950/20 px-3 py-2">
+              {failedVariants.map(({ provider, variant }) => (
+                <div
+                  key={provider}
+                  className="flex items-center justify-between gap-3"
+                >
+                  <div className="text-[11px] text-red-300 min-w-0">
+                    <span className="font-semibold uppercase tracking-[0.16em] text-red-400">
+                      {ENHANCE_PROVIDER_LABELS[provider]} failed
+                    </span>
+                    {variant.error && (
+                      <span className="text-zinc-500 ml-2 font-mono truncate inline-block max-w-[40ch] align-bottom">
+                        {variant.error}
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => onRetry(provider)}
+                    className="shrink-0 text-[10px] uppercase tracking-[0.18em] font-semibold text-amber-300 hover:text-white bg-amber-950/40 hover:bg-amber-700 border border-amber-800 hover:border-amber-600 px-2.5 py-1 rounded transition-colors"
+                  >
+                    ↻ Retry {ENHANCE_PROVIDER_LABELS[provider]}
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* AI disclaimer — small, low-contrast italic footer. Reminds
+            the operator (and anyone shoulder-surfing) that the enhanced
+            images are AI-generated representations, not raw photos. The
+            backend prompt's HONESTY CONSTRAINT keeps the output close
+            to the source, but the disclaimer is the belt to its braces. */}
+        <p className="text-[10px] text-zinc-600 italic leading-snug text-center max-w-3xl mx-auto">
+          AI-enhanced for clarity — visible defects, dents, and significant
+          wear are preserved. Listings should disclose that images may have
+          been altered to better represent the unit&apos;s actual appearance.
+        </p>
       </div>
     </article>
   );
@@ -339,7 +347,7 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen }: V
         }
         ${isComplete ? "cursor-pointer" : "cursor-default"}`}
     >
-      <div className="relative aspect-square bg-zinc-900">
+      <div className="relative aspect-4/3 bg-zinc-900">
         {isComplete && variant?.outputUrl && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img

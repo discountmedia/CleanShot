@@ -45,6 +45,7 @@ import { convertToJpeg, formatBytes } from "../../lib/compress";
 import { useJobPoller } from "../../lib/polling";
 import { computeConsensus } from "../../lib/scan-helpers";
 import type {
+  EquipmentType,
   ImageScanState,
   JobRecord,
   ProviderScanResult,
@@ -104,6 +105,12 @@ export interface ScanPanelProps {
    * never auto-advance regardless of threshold.
    */
   autoAdvance:     boolean;
+  /**
+   * Equipment category from the lifted workspace meta. Threaded into
+   * RegenPanel so the regen prompt's per-type guardrails match the
+   * one Enhance used for the original generation.
+   */
+  equipmentType:   EquipmentType;
 }
 
 export function ScanPanel({
@@ -112,6 +119,7 @@ export function ScanPanel({
   onClearPipeline,
   onSendToResize,
   autoAdvance,
+  equipmentType,
 }: ScanPanelProps) {
   // ─── Core scan state ────────────────────────────────────────────────────
 
@@ -755,6 +763,7 @@ export function ScanPanel({
                   detailsOpen={detailsOpenId === scan.assetId}
                   scanStartedMs={jobStartedMs.get(scan.assetId) ?? null}
                   nowMs={nowMs}
+                  equipmentType={equipmentType}
                   onToggleRegen={() =>
                     setRegenOpenId((cur) => (cur === scan.assetId ? null : scan.assetId))
                   }
