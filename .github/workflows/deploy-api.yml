@@ -98,3 +98,8 @@ jobs:
 # image. This bump forces a fresh build with no stale layers so the real
 # dual-Gemini-client lifespan code lands, and the new GEMINI_API_KEY
 # secret mount actually activates the AI Studio path.
+#
+# 2026-05-20: retrying the Reve provider deploy — revision 00065 failed
+# because cleanshot-reve-key didn't exist when that deploy ran. Secret
+# was created a few minutes later; this bump retriggers the workflow so
+# the new revision can mount it successfully.
