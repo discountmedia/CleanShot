@@ -411,8 +411,9 @@ class EnhanceTaskPayload(BaseModel):
     input_gcs_uri: str
     toggles: EnhanceToggles
     # Provider for image generation. Worker dispatches on this. Regen-from-Scan
-    # always uses Gemini regardless of caller preference (the scan-derived
-    # prompt was tuned for Gemini's behaviour).
+    # passes the operator's selected provider through here (the scan-derived
+    # prompt was originally tuned for Gemini, but other providers are now
+    # accepted at the operator's discretion).
     provider: Literal["gemini", "openai", "flux", "reve", "grok"] = "gemini"
     # Optional verbatim prompt override. Set by either:
     #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or

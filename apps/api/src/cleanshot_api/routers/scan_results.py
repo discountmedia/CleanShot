@@ -18,6 +18,7 @@ import uuid
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
+from typing import Literal
 
 from cleanshot_api.core.security import require_api_key
 from cleanshot_api.db import queries
@@ -105,6 +106,9 @@ class RegenRequest(BaseModel):
     asset_id: uuid.UUID
     regen_prompt: str
     idempotency_key: str
+    # Operator-selected provider for the regen pass. Defaults to gemini for
+    # backward compatibility with existing callers that don't pass one.
+    provider: Literal["gemini", "openai", "flux", "reve", "grok"] = "gemini"
 
 
 class RegenResponse(BaseModel):
@@ -123,10 +127,11 @@ async def enqueue_regen(
 ) -> RegenResponse:
     """
     Single-image regen triggered from the Scan tab.
-    Uses the same enhance pipeline (default model: gemini-2.5-flash-image) but
-    with an explicit regen_prompt instead of toggle-derived instructions.
-    The prompt flows through EnhanceTaskPayload.custom_prompt; the worker
-    treats that as a verbatim override and skips _build_enhance_prompt.
+    Uses the same enhance pipeline (default provider: gemini) but with an
+    explicit regen_prompt instead of toggle-derived instructions, and an
+    operator-selected provider. The prompt flows through
+    EnhanceTaskPayload.custom_prompt; the worker treats that as a verbatim
+    override and skips _build_enhance_prompt.
     """
     async with pool.acquire() as conn:
         asset = await queries.get_asset(conn, body.asset_id)
@@ -150,6 +155,7 @@ async def enqueue_regen(
         input_asset_id=body.asset_id,
         input_gcs_uri=asset.gcs_uri,
         toggles=EnhanceToggles(),           # all False
+        provider=body.provider,
         custom_prompt=body.regen_prompt,
     )
     tasks_name = enqueue_enhance(task_payload)

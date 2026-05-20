@@ -34,7 +34,7 @@ import {
   uploadToGcs,
   type ExportProPreviewItem,
 } from "../../lib/api";
-import { convertToJpeg, formatBytes } from "../../lib/compress";
+import { convertToJpeg } from "../../lib/compress";
 import type { ForkliftMeta, ResizeResult } from "../../lib/types";
 
 const MAX_UPLOADS = 10;
@@ -739,6 +739,55 @@ export function ResizePanel({
           </div>
         )}
       </section>
+
+      {/* ── Assets queued (from Enhance / Scan) ── */}
+      {/* Thumbnails for images that arrived via "Send to Resize" — without
+          this, when the operator clicks Send-to-Resize on the Scan tab and
+          lands here, the only visible signal is a "1" / "5" in the count
+          column. Showing the actual previews makes the hand-off legible
+          and matches the standalone-upload grid above. */}
+      {enhancedAssets.length > 0 && (
+        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+          <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+                From Enhance / Scan
+              </span>
+              <span className="text-[10px] text-zinc-500">
+                Images you sent over from the other tabs. They&apos;ll be included in the next export.
+              </span>
+            </div>
+            <span className="text-[10px] uppercase tracking-[0.18em] font-mono text-zinc-500">
+              {enhancedAssets.length}
+            </span>
+          </header>
+          <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 p-4">
+            {enhancedAssets.map((a) => (
+              <div
+                key={a.assetId}
+                className="relative rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={a.thumbnailUrl}
+                  alt={a.filename}
+                  className="w-full aspect-square object-cover"
+                />
+                {a.provider && (
+                  <span className="absolute top-1 right-1 text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-black/70 text-zinc-200">
+                    {a.provider}
+                  </span>
+                )}
+                <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
+                  <p className="text-[10px] text-zinc-200 truncate" title={a.filename}>
+                    {a.filename}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* ── Asset count + Clear all ── */}
       {/* Clear all is shown whenever there's anything to clear — assets

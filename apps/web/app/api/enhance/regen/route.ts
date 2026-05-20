@@ -6,8 +6,8 @@
 // FastAPI's RegenRequest is snake_case with no Pydantic aliases on the
 // schema — the same translation pattern as /api/enhance.
 //
-//   client  -> BFF:    sessionId,  assetId,  regenPrompt,  idempotencyKey
-//   BFF     -> FastAPI: session_id, asset_id, regen_prompt, idempotency_key
+//   client  -> BFF:    sessionId,  assetId,  regenPrompt,  idempotencyKey, provider?
+//   BFF     -> FastAPI: session_id, asset_id, regen_prompt, idempotency_key, provider?
 //   response: { job_id }  ->  { jobId }
 
 import { type NextRequest, NextResponse } from "next/server";
@@ -22,6 +22,8 @@ interface ClientRequest {
   assetId: string;
   regenPrompt: string;
   idempotencyKey: string;
+  /** Operator-selected provider for the regen pass. Backend defaults to gemini. */
+  provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
 }
 
 interface FastApiResponse {
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
       asset_id:        body.assetId,
       regen_prompt:    body.regenPrompt,
       idempotency_key: body.idempotencyKey,
+      ...(body.provider ? { provider: body.provider } : {}),
     }),
     signal: request.signal,
     cache: "no-store",

@@ -125,6 +125,8 @@ export async function enqueueRegen(params: {
   assetId: string;
   regenPrompt: string;
   idempotencyKey: string;
+  /** Operator-selected provider for the regen pass. Backend defaults to gemini. */
+  provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
 }): Promise<{ jobId: string }> {
   return post("/api/enhance/regen", params);
 }

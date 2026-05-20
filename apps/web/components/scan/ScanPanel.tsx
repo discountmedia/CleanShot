@@ -87,6 +87,42 @@ import type {
 
 const MAX_UPLOADS = 10;
 
+// Providers available for "Regenerate this image" — mirrors the Enhance tab.
+// Listed in the same order so the visual is consistent between tabs.
+type RegenProvider = "gemini" | "openai" | "grok" | "flux" | "reve";
+const REGEN_PROVIDERS: readonly RegenProvider[] = ["gemini", "openai", "grok", "flux", "reve"] as const;
+
+const REGEN_PROVIDER_LABELS: Record<RegenProvider, string> = {
+  gemini: "Gemini",
+  openai: "OpenAI",
+  grok:   "Grok",
+  flux:   "Flux",
+  reve:   "Reve",
+};
+
+const REGEN_PROVIDER_CHIP_CLASSES: Record<RegenProvider, { selected: string; idle: string }> = {
+  gemini: {
+    selected: "bg-blue-600 text-white border-blue-500",
+    idle:     "bg-zinc-900 text-blue-300 border-zinc-700 hover:border-blue-700",
+  },
+  openai: {
+    selected: "bg-green-600 text-white border-green-500",
+    idle:     "bg-zinc-900 text-green-300 border-zinc-700 hover:border-green-700",
+  },
+  grok: {
+    selected: "bg-orange-600 text-white border-orange-500",
+    idle:     "bg-zinc-900 text-orange-300 border-zinc-700 hover:border-orange-700",
+  },
+  flux: {
+    selected: "bg-purple-600 text-white border-purple-500",
+    idle:     "bg-zinc-900 text-purple-300 border-zinc-700 hover:border-purple-700",
+  },
+  reve: {
+    selected: "bg-fuchsia-600 text-white border-fuchsia-500",
+    idle:     "bg-zinc-900 text-fuchsia-300 border-zinc-700 hover:border-fuchsia-700",
+  },
+};
+
 /**
  * Local state for a file the operator dropped directly onto the Scan
  * tab (standalone mode — bypasses Enhance). Each file is JPEG-converted
@@ -374,6 +410,10 @@ function ImageScanCard({
   );
   const [showPrompt, setShowPrompt]   = useState(false);
   const [regenError, setRegenError]   = useState<string | null>(null);
+  // Operator-selected provider for the regen pass. Defaults to gemini to
+  // preserve the previous behaviour, but the chip row lets them pick any of
+  // the five providers (same set as the Enhance tab) on a per-card basis.
+  const [regenProvider, setRegenProvider] = useState<RegenProvider>("gemini");
 
   // Poll regen job
   useJobPoller(
@@ -406,6 +446,7 @@ function ImageScanCard({
         sessionId,
         assetId: scan.assetId,
         regenPrompt: promptText,
+        provider: regenProvider,
         idempotencyKey: `regen-${scan.assetId}-${uuidv4()}`,
       });
       setRegenJobId(jobId);
@@ -508,6 +549,36 @@ function ImageScanCard({
             </button>
           </div>
 
+          {/* Provider picker — single-select chip row. Same five providers
+              the Enhance tab offers; the operator chooses one per click.
+              Disabled while a regen is already in flight to keep the
+              selection in sync with the running job. */}
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 mr-1">
+              Model
+            </span>
+            {REGEN_PROVIDERS.map((p) => {
+              const selected = regenProvider === p;
+              const cls = REGEN_PROVIDER_CHIP_CLASSES[p];
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => setRegenProvider(p)}
+                  disabled={isRegening}
+                  aria-pressed={selected}
+                  className={`
+                    text-[10px] uppercase tracking-[0.12em] font-semibold px-2 py-1 rounded border transition-colors
+                    ${selected ? cls.selected : cls.idle}
+                    ${isRegening ? "opacity-60 cursor-not-allowed" : ""}
+                  `}
+                >
+                  {REGEN_PROVIDER_LABELS[p]}
+                </button>
+              );
+            })}
+          </div>
+
           {/* Auto-generated prompt (editable) */}
           {showPrompt && (
             <textarea
@@ -547,7 +618,7 @@ function ImageScanCard({
                 {regenStatus === "enqueuing" ? "Enqueuing…" : "Regenerating…"}
               </span>
             ) : (
-              "↻ Regenerate Image"
+              `↻ Regenerate with ${REGEN_PROVIDER_LABELS[regenProvider]}`
             )}
           </button>
         </div>
