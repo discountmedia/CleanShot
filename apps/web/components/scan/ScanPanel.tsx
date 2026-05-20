@@ -71,7 +71,10 @@ import {
   getAssetUrl,
   enqueueScanBatch,
   enqueueRegen,
+  getSignedUploadUrl,
+  uploadToGcs,
 } from "../../lib/api";
+import { convertToJpeg, formatBytes } from "../../lib/compress";
 import { useJobPoller } from "../../lib/polling";
 import type {
   AnomalyItem,
@@ -81,6 +84,28 @@ import type {
   ScanProvider,
   ScanVerdict,
 } from "../../lib/types";
+
+const MAX_UPLOADS = 10;
+
+/**
+ * Local state for a file the operator dropped directly onto the Scan
+ * tab (standalone mode — bypasses Enhance). Each file is JPEG-converted
+ * client-side, uploaded to GCS via a signed PUT, then merged with any
+ * Enhance/Send-to-Scan assets before the scan batch fires.
+ *
+ *   uploading → done  (happy; `assetId` set)
+ *   uploading → error ('error' string set)
+ */
+interface StandaloneUpload {
+  id:         string;        // local UUID, used as React key
+  filename:   string;        // post-convertToJpeg name
+  previewUrl: string;        // createObjectURL on the original File
+  size:       number;        // post-convertToJpeg bytes
+  status:     "uploading" | "done" | "error";
+  progress:   number;        // 0-100 during upload, 100 when done
+  assetId?:   string;        // populated when status flips to done
+  error?:     string;        // populated when status flips to error
+}
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -590,6 +615,127 @@ export function ScanPanel({
   const [batchJobIds, setBatchJobIds] = useState<string[]>([]);
   const [scanError, setScanError]     = useState<string | null>(null);
 
+  // Standalone-upload state. Identical pattern to ResizePanel — operator
+  // drops files here when the Scan tab is being used as a stand-alone
+  // QC tool (no Enhance run first). Files are JPEG-converted client-
+  // side, uploaded direct to GCS via signed PUT, then merged with
+  // `enhancedAssets` into `allAssets` for the scan batch.
+  const [uploads, setUploads] = useState<StandaloneUpload[]>([]);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+
+  const patchUpload = useCallback((id: string, patch: Partial<StandaloneUpload>) => {
+    setUploads((prev) => prev.map((u) => (u.id === id ? { ...u, ...patch } : u)));
+  }, []);
+
+  const removeUpload = useCallback((id: string) => {
+    setUploads((prev) => {
+      const target = prev.find((u) => u.id === id);
+      if (target) URL.revokeObjectURL(target.previewUrl);
+      return prev.filter((u) => u.id !== id);
+    });
+  }, []);
+
+  const runUpload = useCallback(
+    async (id: string, file: File) => {
+      const targetFilename = file.name.replace(/\.[^./\\]+$/, "") + ".jpg";
+      let jpegFile: File;
+      try {
+        jpegFile = await convertToJpeg(file, targetFilename);
+        patchUpload(id, { filename: jpegFile.name, size: jpegFile.size });
+      } catch (err) {
+        patchUpload(id, {
+          status: "error",
+          error: err instanceof Error ? err.message : "JPEG conversion failed",
+        });
+        return;
+      }
+
+      let signed: Awaited<ReturnType<typeof getSignedUploadUrl>>;
+      try {
+        signed = await getSignedUploadUrl({
+          sessionId,
+          filename:    jpegFile.name,
+          contentType: "image/jpeg",
+        });
+      } catch (err) {
+        patchUpload(id, {
+          status: "error",
+          error: err instanceof Error ? `Upload URL: ${err.message}` : "Upload URL failed",
+        });
+        return;
+      }
+
+      try {
+        await uploadToGcs(signed.uploadUrl, jpegFile, (pct) =>
+          patchUpload(id, { progress: pct }),
+        );
+        patchUpload(id, { status: "done", progress: 100, assetId: signed.assetId });
+      } catch (err) {
+        patchUpload(id, {
+          status: "error",
+          error: err instanceof Error ? `GCS PUT: ${err.message}` : "GCS PUT failed",
+        });
+      }
+    },
+    [sessionId, patchUpload],
+  );
+
+  const addFiles = useCallback(
+    (incoming: FileList | File[]) => {
+      const list = Array.from(incoming).filter((f) => f.type.startsWith("image/"));
+      if (list.length === 0) return;
+      const allowed = Math.max(0, MAX_UPLOADS - uploads.length);
+      const accepted = list.slice(0, allowed);
+      const next: StandaloneUpload[] = accepted.map((file) => ({
+        id:         uuidv4(),
+        filename:   file.name,
+        previewUrl: URL.createObjectURL(file),
+        size:       file.size,
+        status:     "uploading",
+        progress:   0,
+      }));
+      setUploads((prev) => [...prev, ...next]);
+      next.forEach((u, i) => {
+        void runUpload(u.id, accepted[i]);
+      });
+    },
+    [uploads.length, runUpload],
+  );
+
+  const handleFileInputChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      if (e.target.files) addFiles(e.target.files);
+      e.target.value = "";
+    },
+    [addFiles],
+  );
+
+  const handleDrop = useCallback(
+    (e: React.DragEvent<HTMLDivElement>) => {
+      e.preventDefault();
+      setIsDragging(false);
+      if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
+    },
+    [addFiles],
+  );
+
+  // Done uploads merged with the prop-supplied enhanced assets — both
+  // feed into the scan batch. Standalone uploads have no provider tag
+  // (they bypassed Enhance), which is fine — the "Send to Resize"
+  // pipeline collapses missing provider to undefined.
+  const standaloneAssets = uploads
+    .filter((u) => u.status === "done" && u.assetId)
+    .map((u) => ({
+      assetId:      u.assetId as string,
+      filename:     u.filename,
+      thumbnailUrl: u.previewUrl,
+      outputUrl:    undefined as string | undefined,
+      provider:     undefined as string | undefined,
+    }));
+  const allAssets = [...enhancedAssets, ...standaloneAssets];
+  const anyUploadInFlight = uploads.some((u) => u.status === "uploading");
+
   // Track which scan asset IDs the user has already pushed to the Resize
   // tab so the per-card button shows "✓ Sent" and the batch button knows
   // who's left. Keyed by scan.assetId (the original enhanced asset id) —
@@ -598,10 +744,12 @@ export function ScanPanel({
 
   // Quick lookup of provider per assetId so per-card and bulk sends
   // can attach the provider tag the Workspace → Resize → export
-  // pipeline needs to differentiate duplicate variants.
+  // pipeline needs to differentiate duplicate variants. Standalone-
+  // upload assets get a Map entry with provider=undefined so the lookup
+  // doesn't lose them.
   const providerByAssetId = useMemo(
-    () => new Map(enhancedAssets.map((a) => [a.assetId, a.provider])),
-    [enhancedAssets],
+    () => new Map(allAssets.map((a) => [a.assetId, a.provider])),
+    [allAssets],
   );
 
   const sendOneToResize = useCallback(
@@ -683,11 +831,13 @@ export function ScanPanel({
   // ─── Start scan batch ─────────────────────────────────────────────────────
 
   const handleStartScan = async () => {
-    if (enhancedAssets.length === 0) return;
+    // Scan whatever is queued: Enhance-handed-down assets + standalone
+    // uploads completed on this tab.
+    if (allAssets.length === 0) return;
     setScanError(null);
 
     // Initialise scan states
-    const initial: ImageScanState[] = enhancedAssets.map((a) => ({
+    const initial: ImageScanState[] = allAssets.map((a) => ({
       assetId: a.assetId,
       inputJobId: "",
       filename: a.filename,
@@ -700,7 +850,7 @@ export function ScanPanel({
     try {
       const { jobIds } = await enqueueScanBatch({
         sessionId,
-        assetIds: enhancedAssets.map((a) => a.assetId),
+        assetIds: allAssets.map((a) => a.assetId),
         idempotencyKey: `scan-batch-${uuidv4()}`,
       });
       setBatchJobIds(jobIds);
@@ -771,14 +921,146 @@ export function ScanPanel({
   return (
     <div className="space-y-6">
 
+      {/* ── Standalone upload zone ── */}
+      {/* Operators using Scan as a stand-alone QC tool drop image files
+          here; they bypass Enhance and get scanned directly. Once scan
+          results come back, the normal "Send to Resize" handoff still
+          works the same way. Hidden once a scan batch is in flight to
+          discourage adding more assets mid-scan. */}
+      {scanStates.length === 0 && (
+        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+          <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+                Upload images
+              </span>
+              <span className="text-[10px] text-zinc-500">
+                Drop images here to scan directly — no Enhance step required. Auto-converted to JPEG before upload.
+              </span>
+            </div>
+            <span className="text-[10px] uppercase tracking-[0.18em] font-mono text-zinc-500">
+              {uploads.length} / {MAX_UPLOADS}
+            </span>
+          </header>
+
+          <div
+            onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+            onDragLeave={() => setIsDragging(false)}
+            onDrop={handleDrop}
+            onClick={() => fileInputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            className={`
+              m-4 p-6 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-center
+              ${isDragging
+                ? "border-blue-500 bg-blue-950/30"
+                : uploads.length >= MAX_UPLOADS
+                  ? "border-zinc-800 bg-zinc-900/40 cursor-not-allowed opacity-60"
+                  : "border-zinc-700 bg-zinc-900/40 hover:border-zinc-500"}
+            `}
+            aria-disabled={uploads.length >= MAX_UPLOADS}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileInputChange}
+              className="sr-only"
+              disabled={uploads.length >= MAX_UPLOADS}
+            />
+            <p className="text-sm text-zinc-300">
+              {uploads.length >= MAX_UPLOADS
+                ? `Maximum ${MAX_UPLOADS} uploads reached`
+                : isDragging
+                  ? "Drop to upload"
+                  : "Click or drop image files here"}
+            </p>
+            <p className="text-[11px] text-zinc-500 mt-1">
+              JPEG, PNG, WebP · auto-converted to JPEG before upload
+            </p>
+          </div>
+
+          {uploads.length > 0 && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 p-4 pt-0">
+              {uploads.map((u) => (
+                <div
+                  key={u.id}
+                  className={`
+                    relative rounded-lg overflow-hidden border bg-zinc-900
+                    ${u.status === "error" ? "border-red-700" : "border-zinc-800"}
+                  `}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={u.previewUrl}
+                    alt={u.filename}
+                    className="w-full aspect-square object-cover"
+                  />
+                  {u.status !== "done" && (
+                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-2 gap-1">
+                      {u.status === "uploading" && (
+                        <>
+                          <div className="w-full bg-zinc-700 rounded-full h-1.5">
+                            <div
+                              className="bg-blue-500 h-1.5 rounded-full transition-all"
+                              style={{ width: `${u.progress}%` }}
+                            />
+                          </div>
+                          <span className="text-[10px] text-blue-300">{u.progress}%</span>
+                        </>
+                      )}
+                      {u.status === "error" && (
+                        <span className="text-[10px] text-red-400 text-center">{u.error ?? "Upload failed"}</span>
+                      )}
+                    </div>
+                  )}
+                  {u.status === "done" && (
+                    <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5" aria-label="Uploaded">
+                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); removeUpload(u.id); }}
+                    className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full w-5 h-5 flex items-center justify-center text-zinc-300 hover:text-white text-xs leading-none"
+                    aria-label={`Remove ${u.filename}`}
+                    title="Remove"
+                  >
+                    ×
+                  </button>
+                  <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
+                    <p className="text-[10px] text-zinc-200 truncate">{u.filename}</p>
+                    <p className="text-[9px] text-zinc-500">{formatBytes(u.size)}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* ── Scan trigger ── */}
       {scanStates.length === 0 && (
         <div className="text-center space-y-4 py-8">
           <div className="text-zinc-500 space-y-1">
             <p className="text-sm">
-              {enhancedAssets.length > 0
-                ? `${enhancedAssets.length} enhanced image${enhancedAssets.length !== 1 ? "s" : ""} ready to scan`
-                : "No enhanced images yet — complete the Enhance step first"}
+              {allAssets.length > 0
+                ? `${allAssets.length} image${allAssets.length !== 1 ? "s" : ""} ready to scan` +
+                  (enhancedAssets.length > 0 && standaloneAssets.length > 0
+                    ? ` (${enhancedAssets.length} from Enhance + ${standaloneAssets.length} uploaded)`
+                    : "")
+                : anyUploadInFlight
+                  ? "Waiting for uploads to finish…"
+                  : "Drop images above, or send some from the Enhance tab first"}
             </p>
             <p className="text-xs text-zinc-700">
               Scans with{" "}
@@ -798,15 +1080,19 @@ export function ScanPanel({
 
           <button
             onClick={handleStartScan}
-            disabled={enhancedAssets.length === 0 || isScanning}
+            disabled={allAssets.length === 0 || isScanning || anyUploadInFlight}
             className={`
               px-8 py-3 rounded-xl font-semibold text-sm transition-all
-              ${enhancedAssets.length > 0 && !isScanning
+              ${allAssets.length > 0 && !isScanning && !anyUploadInFlight
                 ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
                 : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
             `}
           >
-            {isScanning ? "Scanning…" : `Scan ${enhancedAssets.length} Image${enhancedAssets.length !== 1 ? "s" : ""}`}
+            {isScanning
+              ? "Scanning…"
+              : anyUploadInFlight
+                ? "Wait for uploads…"
+                : `Scan ${allAssets.length} Image${allAssets.length !== 1 ? "s" : ""}`}
           </button>
         </div>
       )}
@@ -830,6 +1116,10 @@ export function ScanPanel({
               // Wipe local scan state AND tell the workspace to drop the
               // enhancedAssets pipeline — otherwise a fresh "Scan all"
               // would re-scan the same images the user just dismissed.
+              // Revoke standalone-upload preview URLs before wiping state
+              // so the browser releases the blob memory.
+              uploads.forEach((u) => URL.revokeObjectURL(u.previewUrl));
+              setUploads([]);
               setScanStates([]);
               setBatchJobIds([]);
               setScanError(null);
