@@ -28,6 +28,14 @@ function getPool(): Pool {
   _pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     max: 3, // small pool — auth calls are infrequent
+    // Cloud SQL Postgres presents a Google-issued server certificate
+    // that isn't in Node's default CA bundle, so `sslmode=require` in
+    // the URL alone produces UNABLE_TO_VERIFY_LEAF_SIGNATURE. Setting
+    // rejectUnauthorized=false keeps the connection TLS-encrypted but
+    // skips chain verification — mimics what libpq does by default for
+    // `sslmode=require`. Stricter alternative: download the Cloud SQL
+    // server CA and pass it as `ssl.ca`.
+    ssl: { rejectUnauthorized: false },
   });
   return _pool;
 }
