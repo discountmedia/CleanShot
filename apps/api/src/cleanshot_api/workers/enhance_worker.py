@@ -27,6 +27,7 @@ from google.genai import types
 
 from cleanshot_api.core.config import get_settings
 from cleanshot_api.db import queries
+from cleanshot_api.services.pricing import estimate_cost_usd
 from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
     EnhanceToggles,
@@ -536,6 +537,11 @@ async def _run_enhance(
                     operation="enhance",
                     status="success",
                     latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                    # All three enhance providers (Gemini image, OpenAI
+                    # gpt-image-2, Flux 2 max) bill per image, not per
+                    # token. estimate_cost_usd does the lookup; returns
+                    # None for unknown models so we'd record NULL.
+                    cost_estimate_usd=estimate_cost_usd(provider_model or ""),
                 )
         except Exception:
             logger.exception("usage_event insert failed (enhance success path)")
@@ -600,6 +606,11 @@ async def _run_enhance(
             # reliability per model. Same defensive try/except so a
             # secondary failure doesn't escalate.
             try:
+                # Failed calls still cost real money on some providers
+                # (OpenAI charges for image-edit attempts that error
+                # mid-stream, BFL bills on submission). Record the same
+                # estimated cost on failure so the admin's running
+                # spend total stays accurate.
                 await queries.insert_usage_event(
                     conn,
                     user_email=user_email,
@@ -610,6 +621,7 @@ async def _run_enhance(
                     operation="enhance",
                     status="failed",
                     latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                    cost_estimate_usd=estimate_cost_usd(provider_model or ""),
                     error_message=str(exc)[:500],
                 )
             except Exception:
