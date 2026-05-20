@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 
 import { Header } from "./Header";
 import { TabBar, type TabId } from "./TabBar";
+import { BatchContextStrip } from "./BatchContextStrip";
 
 import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 import { ScanPanel } from "@/components/scan/ScanPanel";
@@ -63,6 +64,19 @@ interface WorkspaceProps {
 
 export function Workspace({ userEmail, bypassed = false, isAdmin = false }: WorkspaceProps) {
   const [activeTab, setActiveTab] = useState<TabId>("enhance");
+
+  // Auto-advance toggle — defaults OFF (per product owner: power-user
+  // shortcut, not the first-run experience). Lives in Workspace so the
+  // header chip and EnhancePanel's auto-send effect share one source of
+  // truth. Intentionally session-scoped: not persisted to localStorage,
+  // so a page reload returns to the "explicit hand-off" default.
+  const [autoAdvance, setAutoAdvance] = useState(false);
+
+  // Mirror of `files.length` inside EnhancePanel. Lifted so the
+  // BatchContextStrip (which lives above the tab body, in Workspace) can
+  // show the current batch size without having to live inside EnhancePanel.
+  // Set via the `onFileCountChange` callback prop.
+  const [enhanceFileCount, setEnhanceFileCount] = useState(0);
 
   // One session per workspace mount. Created lazily on first render so unauthed
   // dev sessions still get a working pipeline.
@@ -184,10 +198,26 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
-      <Header bypassed={bypassed} isAdmin={isAdmin} />
+      <Header
+        bypassed={bypassed}
+        isAdmin={isAdmin}
+        autoAdvance={autoAdvance}
+        onAutoAdvance={setAutoAdvance}
+      />
 
       {/* Tab bar */}
       <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+
+      {/* Batch context strip — "what am I working on" one-liner shown on the
+          Enhance tab only. Hidden on Scan/Resize/History to keep them
+          minimal; the meta + image count are the Enhance-flow signal. */}
+      {activeTab === "enhance" && (
+        <BatchContextStrip
+          make={meta.make}
+          model={meta.model}
+          count={enhanceFileCount}
+        />
+      )}
 
       {/* Body */}
       <main className="flex-1 px-6 py-6 space-y-6 max-w-screen-2xl w-full mx-auto">
@@ -209,6 +239,8 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onSendToScan={handleSendToScan}
                 onSendToResize={handleEnhanceToResize}
                 onClearPipeline={handleClearPipeline}
+                autoAdvance={autoAdvance}
+                onFileCountChange={setEnhanceFileCount}
               />
             )}
           </PanelSlot>
