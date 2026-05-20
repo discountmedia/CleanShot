@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./node_modules/.bin/eslint lib/polling.ts)",
+      "Bash(./node_modules/.bin/tsc --noEmit)",
+      "Bash(git -C c:/dev/CleanShot add apps/web/lib/polling.ts)",
+      "Bash(git -C c:/dev/CleanShot commit -m ' *)",
+      "Bash(./node_modules/.bin/eslint components/scan/ScanPanel.tsx)",
+      "Bash(git -C c:/dev/CleanShot add apps/web/app/history/page.tsx apps/web/components/scan/ScanPanel.tsx)",
+      "Bash(./node_modules/.bin/next build *)",
+      "Bash(git -C c:/dev/CleanShot diff apps/web/tsconfig.json)",
+      "Bash(git -C c:/dev/CleanShot add apps/web/lib/auth.ts \"apps/web/app/api/auth/[...all]/route.ts\" apps/web/tsconfig.json)",
+      "Bash(git -C c:/dev/CleanShot add apps/api/src/cleanshot_api/workers/enhance_worker.py apps/api/src/cleanshot_api/workers/cleanup_worker.py apps/api/src/cleanshot_api/workers/scan_worker.py)",
+      "Bash(git -C c:/dev/CleanShot fetch origin)",
+      "Bash(git -C c:/dev/CleanShot log --oneline HEAD..origin/main)",
+      "Bash(git -C c:/dev/CleanShot pull --rebase origin main)",
+      "Bash(git -C c:/dev/CleanShot show 71821a7 --stat)",
+      "Bash(git -C c:/dev/CleanShot show 71821a7)"
+    ]
+  }
+}
