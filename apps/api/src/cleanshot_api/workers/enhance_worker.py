@@ -482,7 +482,13 @@ async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
         edit_instruction: <prompt — capped to REVE_PROMPT_MAX_CHARS>,
         reference_image:  <base64 source bytes>,
         version:          "latest",
+        mode:             "fast",
       }
+
+    `mode` defaults to "fastest", which slams Reve's undocumented per-minute
+    cap (we saw 429s after ~7 successful calls in a row even with the
+    3-per-30s limiter). Dropping to "fast" trades a few extra seconds of
+    per-image render time for headroom under their RPM ceiling.
 
     Response shape (when accept=json):
       {
@@ -513,6 +519,7 @@ async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
         "edit_instruction": prompt[:REVE_PROMPT_MAX_CHARS],
         "reference_image":  image_b64,
         "version":          "latest",
+        "mode":             "fast",
     }
     headers = {
         "Authorization": f"Bearer {settings.reve_api_key}",
