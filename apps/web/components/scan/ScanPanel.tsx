@@ -826,7 +826,7 @@ export function ScanPanel({
       )}
 
       {/* ── Per-image cards ── */}
-      <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         {scanStates.map((scan, i) => (
           <div key={scan.assetId}>
             {/* Mount a hidden poller for each job */}

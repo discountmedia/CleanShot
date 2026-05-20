@@ -1080,6 +1080,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
               Preparing batch — converting to JPEG, uploading, and enqueueing…
             </div>
           )}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {files
             .filter((f) => enhanceJobs.has(f.id))
             .map((f) => (
@@ -1111,6 +1112,7 @@ export function EnhancePanel({ sessionId, onSendToScan, onClearPipeline }: Enhan
                 onRegenerate={() => regenerateEnhance(f)}
               />
             ))}
+          </div>
         </div>
       )}
 
