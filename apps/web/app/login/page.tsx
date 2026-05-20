@@ -36,7 +36,7 @@ export default async function LoginPage({ searchParams }: Props) {
         <div className="text-center space-y-3">
           {/* eslint-disable-next-line @next/next/no-img-element -- plain <img>; logo is a circular PNG with transparency, next/image optimization isn't worth the config */}
           <img
-            src="/splash-ico.ico"
+            src="/cleanshot-splash-icon-small.webp"
             alt="CleanShot"
             className="inline-block w-24 h-24 rounded-full mb-2 shadow-lg shadow-red-900/40"
           />
