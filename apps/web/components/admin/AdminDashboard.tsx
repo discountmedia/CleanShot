@@ -9,7 +9,70 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { KpiCard } from "../workspace/KpiCard";
+
 type TabId = "users" | "projects" | "usage";
+
+interface AdminKpis {
+  enhancedToday:     number;
+  scannedToday:      number;
+  pendingReview:     number;
+  storageGcsObjects: number;
+}
+
+// ─── KPI row ──────────────────────────────────────────────────────────────────
+
+function KpiRow() {
+  const [data, setData] = useState<AdminKpis | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/kpis", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((j: AdminKpis) => setData(j))
+      .catch((e: Error) => setError(e.message));
+  }, []);
+
+  const loaded = data !== null;
+
+  return (
+    <section aria-label="Admin KPIs">
+      {error && (
+        <p className="mb-2 text-xs text-red-400">Couldn&apos;t load KPIs: {error}</p>
+      )}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <KpiCard
+          label="Enhanced today"
+          value={data?.enhancedToday ?? 0}
+          color="green"
+          placeholder={!loaded}
+          secondary="images processed"
+        />
+        <KpiCard
+          label="Scanned today"
+          value={data?.scannedToday ?? 0}
+          color="blue"
+          placeholder={!loaded}
+          secondary="AI verdicts"
+        />
+        <KpiCard
+          label="Pending review"
+          value={data?.pendingReview ?? 0}
+          color={data && data.pendingReview > 0 ? "yellow" : "white"}
+          placeholder={!loaded}
+          secondary="scan fails (last 7d)"
+        />
+        <KpiCard
+          label="GCS objects"
+          value={data?.storageGcsObjects ?? 0}
+          color="white"
+          placeholder={!loaded}
+          secondary="assets stored"
+        />
+      </div>
+    </section>
+  );
+}
 
 interface AdminUser {
   userEmail:         string;
@@ -431,6 +494,8 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
       </header>
 
       <main className="max-w-screen-2xl mx-auto px-6 py-6 space-y-6">
+        <KpiRow />
+
         {tab === "users" && (
           <UsersTab
             onSelectUser={(email) => {

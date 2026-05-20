@@ -25,6 +25,60 @@ from cleanshot_api.db.pool import get_pool
 router = APIRouter(prefix="/api/v1/admin", tags=["admin"])
 
 
+# ─── KPIs (top-of-dashboard cards) ────────────────────────────────────────────
+
+
+@router.get(
+    "/kpis",
+    dependencies=[Depends(require_api_key)],
+)
+async def get_kpis(pool: asyncpg.Pool = Depends(get_pool)) -> dict:
+    """
+    Four headline counts for the admin dashboard's KPI row:
+
+      • enhancedToday — successful enhance jobs (DATE(created_at) = today UTC)
+      • scannedToday  — successful scan jobs    (DATE(created_at) = today UTC)
+      • pendingReview — scan_results with verdict='fail' from the last 7 days
+                        — represents the human-review backlog
+      • storageGcsObjects — total rows in `assets` (one row per GCS object
+                            we've created across all users). Proxy for
+                            actual bucket size; cheap to compute. Use
+                            `gcloud storage du gs://...` for real bytes.
+    """
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+              (SELECT COUNT(*) FROM jobs
+                 WHERE operation = 'enhance'
+                   AND status    = 'complete'
+                   AND created_at >= DATE_TRUNC('day', now())
+              ) AS enhanced_today,
+
+              (SELECT COUNT(*) FROM jobs
+                 WHERE operation = 'scan'
+                   AND status    = 'complete'
+                   AND created_at >= DATE_TRUNC('day', now())
+              ) AS scanned_today,
+
+              (SELECT COUNT(*) FROM scan_results
+                 WHERE verdict   = 'fail'
+                   AND created_at >= now() - INTERVAL '7 days'
+              ) AS pending_review,
+
+              (SELECT COUNT(*) FROM assets) AS storage_gcs_objects
+            """
+        )
+
+    assert row is not None
+    return {
+        "enhancedToday":     row["enhanced_today"],
+        "scannedToday":      row["scanned_today"],
+        "pendingReview":     row["pending_review"],
+        "storageGcsObjects": row["storage_gcs_objects"],
+    }
+
+
 # ─── Users ────────────────────────────────────────────────────────────────────
 
 

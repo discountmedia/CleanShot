@@ -13,7 +13,6 @@ import { useEffect, useState } from "react";
 
 import { Header } from "./Header";
 import { TabBar, type TabId } from "./TabBar";
-import { KpiRow } from "./KpiRow";
 
 import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 import { ScanPanel } from "@/components/scan/ScanPanel";
@@ -144,8 +143,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
             Could not start a workspace session: {sessionError}
           </div>
         )}
-
-        <KpiRow />
 
         {/* Active panel — all four stay mounted to preserve in-progress state
             across tab switches; only the active one is visible. */}
