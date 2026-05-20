@@ -86,9 +86,13 @@ const createAuth = () =>
           before: async (user) => {
             if (process.env.AUTH_ENABLED === "false") return { data: user };
             const email = (user.email ?? "").toLowerCase();
+            console.log("[auth.hook] user.create.before — raw user object:", JSON.stringify(user));
+            console.log("[auth.hook] user.create.before — normalized email:", email);
             if (!(await checkAuthorization(email))) {
+              console.log("[auth.hook] REJECTING — email not authorized:", email);
               throw new Error("Email not authorized to access CleanShot");
             }
+            console.log("[auth.hook] ACCEPTING — email authorized:", email);
             return { data: user };
           },
         },
@@ -111,6 +115,7 @@ export function getAuth(): AuthInstance {
  */
 export async function checkAuthorization(email: string): Promise<boolean> {
   const lower = email.toLowerCase();
+  console.log("[checkAuth] start — email:", lower);
 
   // 1. Env-var domain allowlist
   const allowedDomains = (process.env.ALLOWED_DOMAINS ?? "")
@@ -119,15 +124,23 @@ export async function checkAuthorization(email: string): Promise<boolean> {
     .filter(Boolean);
 
   const domain = lower.split("@")[1] ?? "";
-  if (allowedDomains.includes(domain)) return true;
+  console.log("[checkAuth] domain:", domain, "allowed domains:", allowedDomains);
+  if (allowedDomains.includes(domain)) {
+    console.log("[checkAuth] PASS via ALLOWED_DOMAINS");
+    return true;
+  }
 
   // 2. Env-var individual email allowlist
   const allowedEmails = (process.env.ALLOWED_EMAILS ?? "")
     .split(",")
     .map((e) => e.trim().toLowerCase())
     .filter(Boolean);
+  console.log("[checkAuth] allowed emails:", allowedEmails);
 
-  if (allowedEmails.includes(lower)) return true;
+  if (allowedEmails.includes(lower)) {
+    console.log("[checkAuth] PASS via ALLOWED_EMAILS");
+    return true;
+  }
 
   // 3. Postgres authorization table (runtime additions)
   try {
@@ -140,15 +153,20 @@ export async function checkAuthorization(email: string): Promise<boolean> {
          LIMIT 1`,
         [lower]
       );
-      if (rows.length > 0) return true;
+      console.log("[checkAuth] DB query rows:", rows.length);
+      if (rows.length > 0) {
+        console.log("[checkAuth] PASS via DB row:", rows[0]?.value);
+        return true;
+      }
     } finally {
       client.release();
     }
   } catch (err) {
-    console.error("[checkAuthorization] DB error:", err);
+    console.error("[checkAuth] DB error:", err);
     // Fail closed — DB error means unauthorized
   }
 
+  console.log("[checkAuth] FAIL — no allowlist source matched");
   return false;
 }
 
