@@ -156,9 +156,11 @@ async def lifespan(app: FastAPI):
     # Layer 3 throttle: max concurrent Gemini calls per Cloud Run instance.
     # Layer 1: Cloud Tasks max_concurrent_dispatches (global cap).
     # Layer 2: Cloud Run max-instances (per deploy-api.yml).
-    # Bumped 2 → 4 to roughly halve batch wall-clock time. Vertex AI quota
-    # is the next ceiling; back off here if you start seeing 429s.
-    app.state.gemini_semaphore = asyncio.Semaphore(4)
+    # Bumped 4 → 8 alongside the 1024px input downsize — smaller inputs
+    # mean each call holds less memory and finishes faster, so we can
+    # afford more in flight. AI Studio key's per-minute RPM is now the
+    # binding ceiling (was Vertex quota); back off here if you see 429s.
+    app.state.gemini_semaphore = asyncio.Semaphore(8)
 
     # --- OpenAI image-edit rate limiter ---
     # OpenAI Tier-1 gpt-image-2 caps /v1/images/edits at 5 input-images

@@ -280,32 +280,65 @@ def _build_enhance_prompt(toggles: EnhanceToggles) -> str:
     return "\n\n".join(sections)
 
 
+# Cap long-edge of the input image before sending to any vendor. Final
+# export is 1024×731, so anything bigger upstream is just paying tax on
+# upload bandwidth + vendor inference time for detail that gets thrown
+# away. 1024 matches export resolution exactly.
+INPUT_MAX_LONG_EDGE_PX = 1024
+
+
 async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
-    """Download bytes from GCS in a worker thread (sync SDK).
+    """Download bytes from GCS and downsize to INPUT_MAX_LONG_EDGE_PX.
     Returns (bytes, detected_content_type).
 
+    Sync SDK runs in a worker thread. pyvips handles the resize + re-encode
+    (already a dep — used by services/image_processing.py for export
+    pipeline). PNG inputs stay PNG (lossless); everything else round-trips
+    through JPEG Q=92 since vendors mostly want photographic bytes.
+
+    Skipping the resize when max(w, h) <= 1024 avoids upscaling tiny inputs
+    and avoids the re-encode tax when there's no work to do.
+
     Duplicated from scan_worker.py for now — TODO: move to services/gcs.py
-    once a third worker needs it.
+    (TODO is now 3-callers-old, cleanup_worker imports this directly).
     """
     from google.cloud import storage as gcs
+    import pyvips
 
     settings = get_settings()
     without_scheme = gcs_uri[len("gs://"):]
     bucket_name, _, object_name = without_scheme.partition("/")
 
-    def _download() -> bytes:
+    def _download_and_downsize() -> tuple[bytes, str]:
         client = gcs.Client(project=settings.gcp_project)
         blob = client.bucket(bucket_name).blob(object_name)
-        return blob.download_as_bytes()
+        data = blob.download_as_bytes()
 
-    data = await asyncio.to_thread(_download)
+        # Magic-byte sniff for content type (before any re-encode).
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            ct = "image/png"
+        elif data[:4] == b"RIFF":
+            ct = "image/webp"
+        else:
+            ct = "image/jpeg"
 
-    ct = "image/jpeg"
-    if data[:8] == b"\x89PNG\r\n\x1a\n":
-        ct = "image/png"
-    elif data[:4] == b"RIFF":
-        ct = "image/webp"
-    return data, ct
+        img = pyvips.Image.new_from_buffer(data, "")
+        long_edge = max(img.width, img.height)
+        if long_edge <= INPUT_MAX_LONG_EDGE_PX:
+            # Already small enough — no resize, no re-encode tax.
+            return data, ct
+
+        scale = INPUT_MAX_LONG_EDGE_PX / long_edge
+        img = img.resize(scale)
+
+        if ct == "image/png":
+            out = bytes(img.write_to_buffer(".png"))
+            return out, "image/png"
+        # JPEG / WebP / anything else → JPEG Q=92 (small, fast, vendor-friendly).
+        out = bytes(img.write_to_buffer(".jpg", Q=92))
+        return out, "image/jpeg"
+
+    return await asyncio.to_thread(_download_and_downsize)
 
 
 async def _enhance_with_gemini(
@@ -339,7 +372,7 @@ async def _enhance_with_gemini(
             # standard treatment + emphasis stack is long and the model
             # benefits from planning the edit before generating. Capital
             # "High" matches the official Python SDK enum exactly.
-            thinking_config=types.ThinkingConfig(thinking_level="High"),
+            thinking_config=types.ThinkingConfig(thinking_level="Medium"),
         ),
     )
 
