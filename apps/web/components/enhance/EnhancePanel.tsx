@@ -1238,7 +1238,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSe
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-950/60 border border-amber-800 rounded px-1.5 py-0.5">
                 Moderate
               </span>
-              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-orange-100 bg-orange-600 rounded px-1.5 py-0.5 shadow-sm shadow-orange-900/60 animate-pulse">
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-sky-100 bg-sky-600 rounded px-1.5 py-0.5 shadow-sm shadow-sky-900/60 animate-pulse">
                 New
               </span>
             </div>
@@ -1276,7 +1276,7 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSe
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-950/60 border border-amber-800 rounded px-1.5 py-0.5">
                 Moderate
               </span>
-              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-purple-100 bg-purple-600 rounded px-1.5 py-0.5 shadow-sm shadow-purple-900/60 animate-pulse">
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-sky-100 bg-sky-600 rounded px-1.5 py-0.5 shadow-sm shadow-sky-900/60 animate-pulse">
                 New
               </span>
             </div>
@@ -1312,9 +1312,9 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSe
                 Reve
               </p>
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-emerald-200 bg-emerald-900/70 border border-emerald-600 rounded px-1.5 py-0.5">
-                Fastest
+                Fast
               </span>
-              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-fuchsia-100 bg-fuchsia-600 rounded px-1.5 py-0.5 shadow-sm shadow-fuchsia-900/60 animate-pulse">
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-sky-100 bg-sky-600 rounded px-1.5 py-0.5 shadow-sm shadow-sky-900/60 animate-pulse">
                 New
               </span>
             </div>
