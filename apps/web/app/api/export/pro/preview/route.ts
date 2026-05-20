@@ -1,39 +1,33 @@
 // apps/web/app/api/export/pro/preview/route.ts
 // BFF Route Handler — POST /api/export/pro/preview
-// Proxies to FastAPI's POST /api/v1/export/pro/preview. Returns JSON
-// (per-image signed URLs + a ZIP signed URL) rather than binary, so the
-// ResizePanel can render every resized image inline before the operator
-// commits to the ZIP download.
+//
+// Proxies to FastAPI's POST /api/v1/export/pro/preview. The FastAPI
+// endpoint streams NDJSON progress events:
+//   {"event":"started",  "total": N}
+//   {"event":"progress", "current": K, "total": N, "filename": "..."}
+//   {"event":"result",   "items": [...], "zip_url": "...", ...}
+//   {"event":"error",    "message": "..."}
+//
+// We pass the stream through verbatim — the browser-side helper
+// (lib/api.exportProPreviewStream) reads the NDJSON line-by-line and
+// translates snake_case → camelCase for each event.
 //
 // FastAPI 403s this route until the session's project has been saved.
+//
+// maxDuration is bumped to 300 (Pro tier max). A 50-image batch with
+// captioning + resize can take 90-180s; the prior 60s ceiling was the
+// FUNCTION_INVOCATION_TIMEOUT the operator saw.
 
 import { type NextRequest, NextResponse } from "next/server";
 
 import { forwardError, getFastApiEnv, jsonHeaders } from "@/lib/bff";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 export const dynamic = "force-dynamic";
 
 interface ClientRequest {
   sessionId: string;
   assetIds: string[];
-}
-
-interface FastApiItem {
-  asset_id:     string;
-  filename:     string;
-  url:          string;
-  width:        number;
-  height:       number;
-  size_bytes:   number;
-  size_warning: boolean;
-}
-
-interface FastApiResponse {
-  items:            FastApiItem[];
-  zip_url:          string;
-  zip_size_bytes:   number;
-  any_size_warning: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -55,21 +49,15 @@ export async function POST(request: NextRequest) {
 
   if (!res.ok) return forwardError(res);
 
-  const data = (await res.json()) as FastApiResponse;
-
-  // Translate snake_case → camelCase for the client.
-  return NextResponse.json({
-    items: data.items.map((it) => ({
-      assetId:     it.asset_id,
-      filename:    it.filename,
-      url:         it.url,
-      width:       it.width,
-      height:      it.height,
-      sizeBytes:   it.size_bytes,
-      sizeWarning: it.size_warning,
-    })),
-    zipUrl:         data.zip_url,
-    zipSizeBytes:   data.zip_size_bytes,
-    anySizeWarning: data.any_size_warning,
+  // Pass the NDJSON stream straight through. x-accel-buffering=no tells
+  // Vercel's edge not to buffer the body, so chunks reach the browser
+  // as soon as FastAPI yields them.
+  return new NextResponse(res.body, {
+    status: res.status,
+    headers: {
+      "content-type":      "application/x-ndjson",
+      "cache-control":     "no-cache",
+      "x-accel-buffering": "no",
+    },
   });
 }

@@ -25,7 +25,7 @@
 
 import { useState } from "react";
 import {
-  exportProPreview,
+  exportProPreviewStream,
   saveProject,
   type ExportProPreviewItem,
 } from "../../lib/api";
@@ -174,6 +174,14 @@ export function ResizePanel({
   const [zipSizeBytes, setZipSizeBytes] = useState<number>(0);
   const [anyWarning,   setAnyWarning]   = useState<boolean>(false);
 
+  // Streaming progress state — populated by exportProPreviewStream's
+  // callbacks. While `progressTotal > 0` and the result hasn't arrived
+  // yet, the UI renders a determinate progress bar instead of just a
+  // spinner.
+  const [progressTotal,    setProgressTotal]    = useState<number>(0);
+  const [progressCurrent,  setProgressCurrent]  = useState<number>(0);
+  const [progressFilename, setProgressFilename] = useState<string>("");
+
   const { valid: formValid, yearNum } = validateForm(form);
   const hasAssets = enhancedAssets.length > 0;
   const canSave   = formValid && !isSaving;
@@ -216,24 +224,44 @@ export function ResizePanel({
     if (!hasAssets) return;
     setError(null);
     setIsExporting(true);
-    // Wipe stale preview so the loading state is unambiguous if we re-run.
+    // Wipe stale preview + progress so the loading state is unambiguous.
     setPreviewItems([]);
     setZipUrl(null);
     setZipSizeBytes(0);
     setAnyWarning(false);
+    setProgressTotal(0);
+    setProgressCurrent(0);
+    setProgressFilename("");
     try {
-      const resp = await exportProPreview({
-        sessionId,
-        assetIds: enhancedAssets.map((a) => a.assetId),
-      });
-      setPreviewItems(resp.items);
-      setZipUrl(resp.zipUrl);
-      setZipSizeBytes(resp.zipSizeBytes);
-      setAnyWarning(resp.anySizeWarning);
+      await exportProPreviewStream(
+        {
+          sessionId,
+          assetIds: enhancedAssets.map((a) => a.assetId),
+        },
+        {
+          onStarted: (total) => {
+            setProgressTotal(total);
+            setProgressCurrent(0);
+          },
+          onProgress: (p) => {
+            setProgressCurrent(p.current);
+            setProgressFilename(p.filename);
+          },
+          onResult: (resp) => {
+            setPreviewItems(resp.items);
+            setZipUrl(resp.zipUrl);
+            setZipSizeBytes(resp.zipSizeBytes);
+            setAnyWarning(resp.anySizeWarning);
+          },
+        },
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Export failed");
     } finally {
       setIsExporting(false);
+      // Leave the progress numbers in place after success so the bar
+      // doesn't snap back to 0 between the last progress event and the
+      // grid render. They get reset on the next click.
     }
   };
 
@@ -406,6 +434,55 @@ export function ResizePanel({
                   : `Resize & preview (${enhancedAssets.length} image${enhancedAssets.length !== 1 ? "s" : ""})`}
         </button>
       </div>
+
+      {/* ── Streaming progress ── */}
+      {isExporting && (
+        <section
+          className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 space-y-2"
+          aria-live="polite"
+        >
+          <div className="flex items-center justify-between text-xs">
+            <span className="font-semibold uppercase tracking-[0.18em] text-zinc-300">
+              {progressTotal === 0
+                ? "Captioning images…"
+                : progressCurrent >= progressTotal && progressTotal > 0
+                  ? "Bundling ZIP…"
+                  : `Resizing ${progressCurrent} of ${progressTotal}`}
+            </span>
+            <span className="font-mono tabular-nums text-zinc-500">
+              {progressTotal > 0
+                ? `${Math.round((progressCurrent / progressTotal) * 100)}%`
+                : "…"}
+            </span>
+          </div>
+
+          {/* Progress bar */}
+          <div
+            className="h-2 w-full bg-zinc-900 rounded-full overflow-hidden"
+            role="progressbar"
+            aria-valuemin={0}
+            aria-valuemax={progressTotal || 100}
+            aria-valuenow={progressCurrent}
+          >
+            <div
+              className="h-full bg-blue-500 transition-all duration-300 ease-out"
+              style={{
+                // Before `started` event lands, show a 5% sliver so the
+                // bar isn't completely empty during the captioning phase.
+                width: progressTotal === 0
+                  ? "5%"
+                  : `${Math.round((progressCurrent / progressTotal) * 100)}%`,
+              }}
+            />
+          </div>
+
+          {progressFilename && (
+            <p className="text-[11px] font-mono text-zinc-600 truncate" title={progressFilename}>
+              {progressFilename}
+            </p>
+          )}
+        </section>
+      )}
 
       {/* ── Preview grid ── */}
       {previewItems.length > 0 && (

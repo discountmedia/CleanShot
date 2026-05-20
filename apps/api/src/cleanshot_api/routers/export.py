@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import io
+import json
+import logging
 import zipfile
 import uuid
 
@@ -15,8 +18,6 @@ from cleanshot_api.models.schemas import (
     ExportCustomRequest,
     ExportFullsizeRequest,
     ExportFullsizeResponse,
-    ExportProPreviewItem,
-    ExportProPreviewResponse,
     ExportProRequest,
     ExportZipRequest,
 )
@@ -26,6 +27,8 @@ from cleanshot_api.services.captioning import (
     make_filename_unique,
 )
 from cleanshot_api.services.image_processing import export_custom, export_pro
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1", tags=["export"])
 
@@ -128,26 +131,27 @@ async def export_pro_preset(
 
 @router.post(
     "/export/pro/preview",
-    response_model=ExportProPreviewResponse,
     dependencies=[Depends(require_api_key)],
 )
 async def export_pro_preview(
     body: ExportProRequest,
     request: Request,
     pool: asyncpg.Pool = Depends(get_pool),
-) -> ExportProPreviewResponse:
+) -> StreamingResponse:
     """
-    Like /export/pro but writes each resized JPEG to GCS and returns signed
-    GET URLs instead of a binary response. Lets the UI render every
-    1024×731 image inline so the operator can visually verify zoom-to-fill
-    before pulling the bundle. Also writes a ZIP of all outputs to GCS and
-    returns its signed URL — the "Download all" button is just a hyperlink,
-    no second round of pyvips work.
+    Streaming variant of the PRO preview. Returns NDJSON events:
 
-    Each output is named by a short AI-generated slug describing the image
-    (via services/captioning.py against gemini-2.5-flash on Vertex). On
-    captioning failure the filename falls back to the source stem so the
-    operator never sees a hex asset-id in the ZIP.
+      {"event": "started",  "total": N}
+      {"event": "progress", "current": K, "total": N, "filename": "..."}
+      {"event": "result",   "items": [...], "zip_url": "...", ...}
+      {"event": "error",    "message": "..."}
+
+    Captioning + GCS downloads + GCS uploads run in parallel; the pyvips
+    resize loop and ZIP-builder are sequential (CPU-bound and single-
+    writer respectively). Streaming the events lets the BFF / browser
+    paint a real progress bar instead of staring at a spinner, and also
+    keeps the Vercel function from hitting its idle timeout on large
+    batches — bytes are flowing the whole time.
 
     GCS layout (cleanshot-derivatives-prod):
       session/{session_id}/pro/{asset_id}.jpg   ← per-image previews
@@ -166,83 +170,134 @@ async def export_pro_preview(
     # Vertex Gemini client (proven path for vision — used by scan worker too)
     genai_client = request.app.state.genai
 
-    items: list[ExportProPreviewItem] = []
-    used_slugs: set[str] = set()
-    zip_buf = io.BytesIO()
-    any_warning = False
+    # Cap concurrent caption requests so a 22-image batch doesn't fire
+    # 22 simultaneous Vertex calls. Vertex Gemini's per-minute quotas
+    # are generous on the paid tier but bursts can still spike.
+    caption_sem = asyncio.Semaphore(5)
 
-    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for asset_id in body.asset_ids:
-            async with pool.acquire() as conn:
-                asset = await queries.get_asset(conn, asset_id)
-            if asset is None:
-                continue
+    async def event_stream():
+        try:
+            # ── Phase 0: resolve + download all source bytes in parallel ──
+            async def fetch_asset(asset_id):
+                async with pool.acquire() as conn:
+                    asset = await queries.get_asset(conn, asset_id)
+                if asset is None:
+                    return None
+                without_scheme = asset.gcs_uri[len("gs://"):]
+                src_bucket_name, _, src_obj = without_scheme.partition("/")
+                blob_obj = gcs_client.bucket(src_bucket_name).blob(src_obj)
+                input_bytes = await asyncio.to_thread(blob_obj.download_as_bytes)
+                return (asset_id, input_bytes, src_obj)
 
-            # Download original from wherever it lives in GCS
-            without_scheme = asset.gcs_uri[len("gs://"):]
-            src_bucket_name, _, src_obj = without_scheme.partition("/")
-            input_bytes = gcs_client.bucket(src_bucket_name).blob(src_obj).download_as_bytes()
-
-            result = export_pro(input_bytes)
-            if result.size_warning:
-                any_warning = True
-
-            # Generate a human-readable filename slug from the source image
-            # (NOT the resized output — full-res preserves more visual
-            # detail for captioning, and saves us re-running vision on a
-            # quality-degraded JPEG).
-            caption_slug = await caption_image_for_filename(
-                input_bytes, genai_client=genai_client,
+            fetch_results = await asyncio.gather(
+                *[fetch_asset(aid) for aid in body.asset_ids]
             )
-            src_filename = src_obj.rsplit("/", 1)[-1]
-            src_stem = src_filename.rsplit(".", 1)[0] if "." in src_filename else src_filename
-            base_name = caption_slug or src_stem
-            unique_name = make_filename_unique(base_name, used_slugs)
-            out_filename = f"{unique_name}.jpg"
-            out_object   = f"session/{body.session_id}/pro/{asset_id}.jpg"
-            out_uri      = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"
+            assets_data = [r for r in fetch_results if r is not None]
+            total = len(assets_data)
 
-            # Write the processed JPEG to GCS (overwrites on re-preview)
-            blob = derivatives_bucket.blob(out_object)
-            blob.upload_from_string(result.data, content_type="image/jpeg")
+            yield json.dumps({"event": "started", "total": total}) + "\n"
 
-            # Mint signed GET URL for inline preview rendering
-            preview_url, _ = gcs_service.mint_read_url(out_uri)
+            # ── Phase 1: caption in parallel (semaphore-throttled) ──
+            async def caption_one(input_bytes):
+                async with caption_sem:
+                    return await caption_image_for_filename(
+                        input_bytes, genai_client=genai_client,
+                    )
 
-            # Add to the ZIP
-            zf.writestr(out_filename, result.data)
+            captions = await asyncio.gather(
+                *[caption_one(b) for _, b, _ in assets_data]
+            )
 
-            # Read back actual dimensions for the response (verifies the
-            # cover-fit fix to export_pro is producing the expected
-            # 1024×731 output; pyvips loads metadata without decoding the
-            # full image, so this is cheap).
+            # ── Phase 2: per-image resize + write (sequential — ZIP is single-writer
+            # and pyvips is CPU-bound; parallelising would only fight the GIL) ──
+            items: list[dict] = []
+            used_slugs: set[str] = set()
+            zip_buf = io.BytesIO()
+            any_warning = False
+
             import pyvips
-            probe = pyvips.Image.new_from_buffer(result.data, "")
 
-            items.append(ExportProPreviewItem(
-                asset_id=asset_id,
-                filename=out_filename,
-                url=preview_url,
-                width=probe.width,
-                height=probe.height,
-                size_bytes=len(result.data),
-                size_warning=result.size_warning,
-            ))
+            with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+                for i, ((asset_id, input_bytes, src_obj), caption_slug) in enumerate(
+                    zip(assets_data, captions)
+                ):
+                    # Run pyvips in a worker thread so the event loop stays
+                    # responsive (the yielded progress events should keep
+                    # flowing even on slow images).
+                    result = await asyncio.to_thread(export_pro, input_bytes)
+                    if result.size_warning:
+                        any_warning = True
 
-    # Write the ZIP to GCS and mint its signed URL
-    zip_bytes = zip_buf.getvalue()
-    zip_object = f"session/{body.session_id}/pro/export_pro.zip"
-    zip_uri    = f"gs://{settings.gcs_bucket_derivatives}/{zip_object}"
-    derivatives_bucket.blob(zip_object).upload_from_string(
-        zip_bytes, content_type="application/zip",
-    )
-    zip_url, _ = gcs_service.mint_read_url(zip_uri)
+                    src_filename = src_obj.rsplit("/", 1)[-1]
+                    src_stem = src_filename.rsplit(".", 1)[0] if "." in src_filename else src_filename
+                    base_name = caption_slug or src_stem
+                    unique_name = make_filename_unique(base_name, used_slugs)
+                    out_filename = f"{unique_name}.jpg"
+                    out_object   = f"session/{body.session_id}/pro/{asset_id}.jpg"
+                    out_uri      = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"
 
-    return ExportProPreviewResponse(
-        items=items,
-        zip_url=zip_url,
-        zip_size_bytes=len(zip_bytes),
-        any_size_warning=any_warning,
+                    # Upload (I/O bound) — thread it so we don't block.
+                    out_blob = derivatives_bucket.blob(out_object)
+                    await asyncio.to_thread(
+                        out_blob.upload_from_string,
+                        result.data,
+                        content_type="image/jpeg",
+                    )
+
+                    preview_url, _ = gcs_service.mint_read_url(out_uri)
+                    zf.writestr(out_filename, result.data)
+
+                    probe = pyvips.Image.new_from_buffer(result.data, "")
+
+                    items.append({
+                        "asset_id":     str(asset_id),
+                        "filename":     out_filename,
+                        "url":          preview_url,
+                        "width":        probe.width,
+                        "height":       probe.height,
+                        "size_bytes":   len(result.data),
+                        "size_warning": result.size_warning,
+                    })
+
+                    yield json.dumps({
+                        "event":    "progress",
+                        "current":  i + 1,
+                        "total":    total,
+                        "filename": out_filename,
+                    }) + "\n"
+
+            # ── Phase 3: upload bundled ZIP, mint URL, emit result ──
+            zip_bytes = zip_buf.getvalue()
+            zip_object = f"session/{body.session_id}/pro/export_pro.zip"
+            zip_uri    = f"gs://{settings.gcs_bucket_derivatives}/{zip_object}"
+            zip_blob = derivatives_bucket.blob(zip_object)
+            await asyncio.to_thread(
+                zip_blob.upload_from_string,
+                zip_bytes,
+                content_type="application/zip",
+            )
+            zip_url, _ = gcs_service.mint_read_url(zip_uri)
+
+            yield json.dumps({
+                "event":            "result",
+                "items":            items,
+                "zip_url":          zip_url,
+                "zip_size_bytes":   len(zip_bytes),
+                "any_size_warning": any_warning,
+            }) + "\n"
+
+        except Exception as exc:
+            logger.exception("export_pro_preview stream failed")
+            yield json.dumps({"event": "error", "message": str(exc)}) + "\n"
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="application/x-ndjson",
+        # x-accel-buffering=no asks intermediate proxies (Cloud Run's
+        # frontend, Vercel) to flush each chunk immediately instead of
+        # buffering — without this the browser may not see the first
+        # progress events until well into the process.
+        headers={"X-Accel-Buffering": "no", "Cache-Control": "no-cache"},
     )
 
 

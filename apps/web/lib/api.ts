@@ -207,17 +207,120 @@ export interface ExportProPreviewResponse {
   anySizeWarning: boolean;
 }
 
+export interface ExportProPreviewProgress {
+  current: number;
+  total: number;
+  filename: string;
+}
+
+export interface ExportProPreviewCallbacks {
+  /** Fired once, before any progress events. Tells the UI the batch size. */
+  onStarted?: (total: number) => void;
+  /** Fired after each image is written to GCS — `current` is 1-indexed. */
+  onProgress?: (p: ExportProPreviewProgress) => void;
+  /** Fired exactly once on success with the final result. */
+  onResult: (result: ExportProPreviewResponse) => void;
+}
+
 /**
- * POST /api/export/pro/preview — backend processes every asset, writes each
- * resized JPEG + the bundled ZIP to GCS, returns signed URLs for inline
- * preview rendering. No binary blob in the response; ZIP download is just
- * a hyperlink to the signed URL.
+ * POST /api/export/pro/preview — streams NDJSON progress events. Backend
+ * captions + resizes + uploads in parallel where possible; the helper
+ * here parses each NDJSON line and dispatches to the appropriate
+ * callback so the UI can render a real progress bar.
+ *
+ * Throws if the response is non-OK OR if the stream emits an `error`
+ * event before the `result` event. Callers should wrap in try/catch.
  */
-export async function exportProPreview(params: {
-  sessionId: string;
-  assetIds: string[];
-}): Promise<ExportProPreviewResponse> {
-  return post("/api/export/pro/preview", params);
+export async function exportProPreviewStream(
+  params: { sessionId: string; assetIds: string[] },
+  callbacks: ExportProPreviewCallbacks,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch("/api/export/pro/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+    signal,
+    cache: "no-store",
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`POST /api/export/pro/preview → ${res.status}: ${text}`);
+  }
+  if (!res.body) {
+    throw new Error("export stream: no response body");
+  }
+
+  const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  let resultReceived = false;
+
+  // Read until the stream closes. The backend emits one final event
+  // (`result` or `error`) and then closes the stream.
+  // eslint-disable-next-line no-constant-condition
+  while (true) {
+    const { done, value } = await reader.read();
+    if (value) buffer += value;
+
+    let nlIdx;
+    while ((nlIdx = buffer.indexOf("\n")) >= 0) {
+      const line = buffer.slice(0, nlIdx).trim();
+      buffer = buffer.slice(nlIdx + 1);
+      if (!line) continue;
+
+      let event: { event: string; [k: string]: unknown };
+      try {
+        event = JSON.parse(line);
+      } catch (err) {
+        console.error("[exportProPreviewStream] bad NDJSON line", line, err);
+        continue;
+      }
+
+      switch (event.event) {
+        case "started":
+          callbacks.onStarted?.(event.total as number);
+          break;
+        case "progress":
+          callbacks.onProgress?.({
+            current:  event.current as number,
+            total:    event.total as number,
+            filename: event.filename as string,
+          });
+          break;
+        case "result": {
+          const items = (event.items as Array<Record<string, unknown>>).map((it) => ({
+            assetId:     it.asset_id as string,
+            filename:    it.filename as string,
+            url:         it.url as string,
+            width:       it.width as number,
+            height:      it.height as number,
+            sizeBytes:   it.size_bytes as number,
+            sizeWarning: it.size_warning as boolean,
+          }));
+          callbacks.onResult({
+            items,
+            zipUrl:         event.zip_url as string,
+            zipSizeBytes:   event.zip_size_bytes as number,
+            anySizeWarning: event.any_size_warning as boolean,
+          });
+          resultReceived = true;
+          break;
+        }
+        case "error":
+          throw new Error(event.message as string ?? "export stream error");
+        default:
+          // Unknown event type — log but don't fail the run.
+          console.warn("[exportProPreviewStream] unknown event type", event);
+      }
+    }
+
+    if (done) break;
+  }
+
+  if (!resultReceived) {
+    throw new Error("export stream closed without a result event");
+  }
 }
 
 /** Programmatically trigger a browser download for a Blob. */
