@@ -11,9 +11,11 @@ interface HeaderProps {
   subtitle?: string;
   /** When auth is bypassed (AUTH_ENABLED=false), show a dev-mode tag in place of UserMenu */
   bypassed?: boolean;
+  /** When true, render the Admin link next to the user menu. Decided server-side. */
+  isAdmin?: boolean;
 }
 
-export function Header({ subtitle, bypassed = false }: HeaderProps) {
+export function Header({ subtitle, bypassed = false, isAdmin = false }: HeaderProps) {
   return (
     <header className="bg-black border-b-2 border-red-600">
       <div className="flex items-center px-6 py-3 gap-5">
@@ -41,6 +43,15 @@ export function Header({ subtitle, bypassed = false }: HeaderProps) {
 
         {/* Utility actions */}
         <div className="ml-auto flex items-center gap-3">
+          {isAdmin && (
+            <Link
+              href="/admin"
+              className="text-[10px] uppercase tracking-[0.18em] font-semibold text-red-400 hover:text-red-300 border border-red-900 hover:border-red-700 bg-red-950/30 px-2 py-1 rounded transition-colors"
+              aria-label="Open admin dashboard"
+            >
+              Admin
+            </Link>
+          )}
           {bypassed ? (
             <span className="text-[10px] uppercase tracking-[0.18em] text-amber-500 border border-amber-700 px-2 py-1 rounded">
               Dev bypass

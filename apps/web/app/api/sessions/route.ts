@@ -4,6 +4,8 @@
 // FASTAPI_INTERNAL_KEY is server-only and never reaches the browser.
 
 import { type NextRequest, NextResponse } from "next/server";
+import { headers } from "next/headers";
+import { getSessionEmail } from "@/lib/auth";
 
 export const maxDuration = 15;
 export const dynamic = "force-dynamic";
@@ -18,12 +20,26 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Resolve the signed-in user's email so the new session row gets
+  // tagged with who created it. Powers per-user attribution on the
+  // admin dashboard (projects + usage_events join through sessions).
+  // Bypass mode falls back to dev@local.
+  let userEmail: string | null;
+  if (process.env.AUTH_ENABLED === "true") {
+    userEmail = await getSessionEmail(await headers());
+  } else {
+    userEmail = "dev@local";
+  }
+
+  const fwd: Record<string, string> = {
+    "X-Api-Key":   key,
+    "Content-Type": "application/json",
+  };
+  if (userEmail) fwd["X-User-Email"] = userEmail;
+
   const res = await fetch(`${base}/api/v1/sessions`, {
     method: "POST",
-    headers: {
-      "X-Api-Key":   key,
-      "Content-Type": "application/json",
-    },
+    headers: fwd,
     body: "{}",
     signal: request.signal,
     cache: "no-store",

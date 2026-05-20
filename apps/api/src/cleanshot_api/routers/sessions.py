@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from fastapi.responses import JSONResponse
 
 from cleanshot_api.core.security import require_api_key
@@ -24,9 +24,19 @@ router = APIRouter(prefix="/api/v1", tags=["sessions"])
     dependencies=[Depends(require_api_key)],
     status_code=201,
 )
-async def create_session(pool: asyncpg.Pool = Depends(get_pool)) -> CreateSessionResponse:
+async def create_session(
+    pool: asyncpg.Pool = Depends(get_pool),
+    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
+) -> CreateSessionResponse:
+    """
+    Create a new session row. If the BFF forwarded an X-User-Email header
+    (signed-in user from Better Auth), tag the session with it so the
+    admin dashboard can attribute downstream projects + usage_events back
+    to a person. Sessions created without auth leave user_email NULL.
+    """
+    user_email = x_user_email.lower() if x_user_email else None
     async with pool.acquire() as conn:
-        session = await queries.create_session(conn)
+        session = await queries.create_session(conn, user_email=user_email)
     return CreateSessionResponse(session_id=session.id)
 
 

@@ -43,6 +43,11 @@ CREATE TABLE IF NOT EXISTS sessions (
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
     last_seen_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Idempotent post-create patches: add `user_email` so we can attribute
+-- sessions (and downstream projects / jobs / usage events) back to a
+-- signed-in user. NULL for pre-SSO rows.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_email TEXT;
+CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email);
 
 -- projects  (8 required fields enforced at API layer AND here via NOT NULL)
 CREATE TABLE IF NOT EXISTS projects (
@@ -108,6 +113,34 @@ CREATE TABLE IF NOT EXISTS scan_results (
 );
 CREATE INDEX IF NOT EXISTS idx_scan_results_asset_provider
     ON scan_results(asset_id, provider);
+
+-- usage_events: one row per AI provider call (enhance / scan / cleanup
+-- / export). Powers the /admin usage tab and per-user cost attribution.
+-- user_email is denormalised here so the admin queries don't need to
+-- join through sessions on every read. Both fields nullable to keep
+-- workers tolerant of missing context.
+CREATE TABLE IF NOT EXISTS usage_events (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_email          TEXT,
+    session_id          UUID REFERENCES sessions(id),
+    job_id              UUID REFERENCES jobs(id),
+    provider            TEXT NOT NULL,
+    model               TEXT NOT NULL,
+    operation           operation_enum NOT NULL,
+    status              TEXT NOT NULL,             -- 'success' | 'failed'
+    latency_ms          INT,
+    input_tokens        INT,
+    output_tokens       INT,
+    cost_estimate_usd   NUMERIC(10, 6),
+    error_message       TEXT,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_usage_events_user_created
+    ON usage_events(user_email, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_events_provider_model_created
+    ON usage_events(provider, model, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_usage_events_created
+    ON usage_events(created_at DESC);
 
 -- consensus_results (multi-model)
 CREATE TABLE IF NOT EXISTS consensus_results (

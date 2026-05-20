@@ -164,3 +164,38 @@ export async function getSessionEmail(headers: Headers): Promise<string | null> 
   const session = await getSession(headers);
   return session?.user?.email?.toLowerCase() ?? null;
 }
+
+// ─── Admin gate ──────────────────────────────────────────────────────────────
+
+/**
+ * Returns true if the given email is in the ADMIN_EMAILS env var
+ * allowlist. ADMIN_EMAILS is a comma-separated list of lowercased
+ * addresses set per environment in Vercel:
+ *   ADMIN_EMAILS=stephen@discountforklift.us,manager@discountforklift.us
+ *
+ * Empty / unset → no admins (the /admin route stays closed even to the
+ * site owner). This is intentional fail-closed behaviour.
+ *
+ * Bypass mode (AUTH_ENABLED=false) treats dev@local as an admin so
+ * local development can hit the admin pages without flipping the gate.
+ */
+export function isAdmin(email: string | null): boolean {
+  if (!email) return false;
+  if (process.env.AUTH_ENABLED === "false" && email === "dev@local") {
+    return true;
+  }
+  const list = (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((e) => e.trim().toLowerCase())
+    .filter(Boolean);
+  return list.includes(email.toLowerCase());
+}
+
+/** Convenience: resolve the session and tell whether the caller is an admin. */
+export async function getSessionAdmin(headers: Headers): Promise<{
+  email: string | null;
+  admin: boolean;
+}> {
+  const email = await getSessionEmail(headers);
+  return { email, admin: isAdmin(email) };
+}

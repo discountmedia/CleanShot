@@ -36,9 +36,11 @@ interface WorkspaceProps {
   userEmail: string;
   /** True when AUTH_ENABLED=false; affects the header chip and HistoryList behavior. */
   bypassed?: boolean;
+  /** True if the user's email is in ADMIN_EMAILS — shows the Admin link in Header. */
+  isAdmin?: boolean;
 }
 
-export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
+export function Workspace({ userEmail, bypassed = false, isAdmin = false }: WorkspaceProps) {
   const [activeTab, setActiveTab] = useState<TabId>("enhance");
 
   // One session per workspace mount. Created lazily on first render so unauthed
@@ -124,7 +126,7 @@ export function Workspace({ userEmail, bypassed = false }: WorkspaceProps) {
 
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
-      <Header bypassed={bypassed} />
+      <Header bypassed={bypassed} isAdmin={isAdmin} />
 
       {/* Tab bar */}
       <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />

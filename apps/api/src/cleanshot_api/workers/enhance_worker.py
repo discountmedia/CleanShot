@@ -456,8 +456,16 @@ async def _run_enhance(
     openai_client = request.app.state.openai
     gemini_semaphore: asyncio.Semaphore = request.app.state.gemini_semaphore
 
+    # Look up the session owner so usage_events get attributed per user.
     async with pool.acquire() as conn:
+        user_email = await queries.get_session_user_email(conn, payload.session_id)
         await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
+
+    # Track per-call latency so we can write it into usage_events.
+    import time as _time
+    call_started_at = _time.monotonic()
+    provider_model = None
+    provider_name = payload.provider or "gemini"
 
     try:
         # Custom prompt overrides — either from the Scan tab's "Regenerate"
@@ -481,6 +489,7 @@ async def _run_enhance(
                     "OpenAI provider requested but client is not initialized. "
                     "Set OPENAI_API_KEY and ensure the lifespan picked it up."
                 )
+            provider_model = ENHANCE_MODEL_OPENAI
             # Pace OpenAI requests against the org's per-minute cap
             # (Tier-1 gpt-image-2 = 5 input-images/min). The limiter
             # blocks here until a slot opens, so 10-image batches queue
@@ -490,6 +499,7 @@ async def _run_enhance(
                 openai_client, payload.input_gcs_uri, prompt
             )
         elif payload.provider == "flux":
+            provider_model = "flux-2-max"
             output_bytes = await _enhance_with_flux(
                 payload.input_gcs_uri, prompt
             )
@@ -500,6 +510,7 @@ async def _run_enhance(
                     "not initialized. Mount cleanshot-gemini-key:latest as "
                     "GEMINI_API_KEY via Cloud Run --set-secrets."
                 )
+            provider_model = ENHANCE_MODEL_GEMINI
             async with gemini_semaphore:
                 output_bytes = await _enhance_with_gemini(
                     genai_aistudio_client, payload.input_gcs_uri, prompt
@@ -509,6 +520,25 @@ async def _run_enhance(
             raise ValueError(
                 f"{payload.provider} returned no image bytes in enhance response"
             )
+
+        # Log a successful usage event before continuing into the GCS
+        # write — captures the pure AI-call latency. Wrapped in try so a
+        # logging failure can't tank an otherwise-successful enhance.
+        try:
+            async with pool.acquire() as conn:
+                await queries.insert_usage_event(
+                    conn,
+                    user_email=user_email,
+                    session_id=payload.session_id,
+                    job_id=payload.job_id,
+                    provider=provider_name,
+                    model=provider_model or "unknown",
+                    operation="enhance",
+                    status="success",
+                    latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                )
+        except Exception:
+            logger.exception("usage_event insert failed (enhance success path)")
 
         # Write output to GCS derivatives bucket
         output_gcs_uri = await _write_to_gcs(
@@ -565,6 +595,25 @@ async def _run_enhance(
                 JobStatusEnum.failed,
                 error=str(exc)[:500],
             )
+            # Log the failed usage event too — admin dashboard tallies
+            # both success/failed counts per provider so we can see
+            # reliability per model. Same defensive try/except so a
+            # secondary failure doesn't escalate.
+            try:
+                await queries.insert_usage_event(
+                    conn,
+                    user_email=user_email,
+                    session_id=payload.session_id,
+                    job_id=payload.job_id,
+                    provider=provider_name,
+                    model=provider_model or "unknown",
+                    operation="enhance",
+                    status="failed",
+                    latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                    error_message=str(exc)[:500],
+                )
+            except Exception:
+                logger.exception("usage_event insert failed (enhance failure path)")
 
 
 async def _write_to_gcs(

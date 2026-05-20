@@ -16,7 +16,7 @@ import { redirect } from "next/navigation";
 import { headers } from "next/headers";
 
 import { Workspace } from "@/components/workspace/Workspace";
-import { getSessionEmail } from "@/lib/auth";
+import { getSessionEmail, isAdmin } from "@/lib/auth";
 
 export const dynamic = "force-dynamic";
 
@@ -30,5 +30,11 @@ export default async function HomePage() {
     userEmail = email;
   }
 
-  return <Workspace userEmail={userEmail} bypassed={!authEnabled} />;
+  return (
+    <Workspace
+      userEmail={userEmail}
+      bypassed={!authEnabled}
+      isAdmin={isAdmin(userEmail)}
+    />
+  );
 }

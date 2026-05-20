@@ -40,6 +40,7 @@ from cleanshot_api.db.migrate import run_migrations
 from cleanshot_api.db.migrate_auth import run_auth_migrations
 from cleanshot_api.db.pool import create_pool
 from cleanshot_api.routers import (
+    admin,
     approvals,
     export,
     jobs,
@@ -238,6 +239,7 @@ app.include_router(projects.router)
 app.include_router(export.router)
 app.include_router(scan_results.router)
 app.include_router(approvals.router)
+app.include_router(admin.router)
 app.include_router(worker.router)
 
 

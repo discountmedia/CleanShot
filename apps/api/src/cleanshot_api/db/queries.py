@@ -34,12 +34,74 @@ from cleanshot_api.models.schemas import (
 # ---------------------------------------------------------------------------
 
 
-async def create_session(conn: asyncpg.Connection) -> SessionRecord:
+async def create_session(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str | None = None,
+) -> SessionRecord:
+    """
+    Create a new session row, optionally tagged with the signed-in user's
+    email. The BFF forwards X-User-Email from the Better Auth session;
+    sessions created without auth (legacy or AUTH_ENABLED=false) leave
+    user_email NULL.
+    """
     row = await conn.fetchrow(
-        "INSERT INTO sessions DEFAULT VALUES RETURNING id, created_at, last_seen_at"
+        """
+        INSERT INTO sessions (user_email)
+        VALUES ($1)
+        RETURNING id, created_at, last_seen_at
+        """,
+        user_email,
     )
     assert row is not None
     return SessionRecord(**dict(row))
+
+
+async def get_session_user_email(
+    conn: asyncpg.Connection,
+    session_id: uuid.UUID,
+) -> str | None:
+    """Convenience lookup used by workers when writing usage_events."""
+    row = await conn.fetchrow(
+        "SELECT user_email FROM sessions WHERE id = $1",
+        session_id,
+    )
+    return row["user_email"] if row else None
+
+
+async def insert_usage_event(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str | None,
+    session_id: uuid.UUID | None,
+    job_id: uuid.UUID | None,
+    provider: str,
+    model: str,
+    operation: str,                       # 'enhance' | 'scan' | 'cleanup' | 'export'
+    status: str,                          # 'success' | 'failed'
+    latency_ms: int | None = None,
+    input_tokens: int | None = None,
+    output_tokens: int | None = None,
+    cost_estimate_usd: float | None = None,
+    error_message: str | None = None,
+) -> None:
+    """
+    Insert a usage_events row. Errors here should never abort the worker
+    that's calling — wrap in try/except at the call site.
+    """
+    await conn.execute(
+        """
+        INSERT INTO usage_events (
+            user_email, session_id, job_id, provider, model, operation,
+            status, latency_ms, input_tokens, output_tokens,
+            cost_estimate_usd, error_message
+        )
+        VALUES ($1, $2, $3, $4, $5, $6::operation_enum, $7, $8, $9, $10, $11, $12)
+        """,
+        user_email, session_id, job_id, provider, model, operation,
+        status, latency_ms, input_tokens, output_tokens,
+        cost_estimate_usd, error_message,
+    )
 
 
 async def touch_session(conn: asyncpg.Connection, session_id: uuid.UUID) -> None:
