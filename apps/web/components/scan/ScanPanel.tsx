@@ -1,74 +1,41 @@
 "use client";
 // apps/web/components/scan/ScanPanel.tsx
+// Scan tab — Phase 3 redesign.
 //
-// Scan tab — Phase 2 v2.5
+// Layout (top to bottom):
+//   1. Standalone upload zone (unchanged — Scan as a stand-alone QC tool)
+//   2. "Scan N Images" trigger (unchanged)
+//   3. Results header — filter chips + total count
+//   4. ScanCard stack — one card per scanned image, consensus-first
+//   5. ScanCommandBar — sticky bottom with verdict tallies, threshold
+//      slider, and a single "Approve N → Resize" CTA
 //
-// Displays per-image scan results from up to 3 AI providers:
-//   • gemini-2.5-flash  — primary, always active
-//   • gpt-5.4 (OpenAI Responses API)  — optional, SCAN_PROVIDER_OPENAI=true
-//   • claude-sonnet-4-6 / opus-4.7   — optional, SCAN_PROVIDER_ANTHROPIC=true
+// Per-image regen is now an inline `RegenPanel` that opens under a card
+// when the operator clicks ↻ Regenerate. Only one regen panel is open at
+// a time, owned by `regenOpenId` here.
 //
-// ─── CRITICAL API FORMAT DIFFERENCES (DO NOT MIX UP) ───────────────────────
+// ─── CRITICAL API FORMAT DIFFERENCES (BACKEND, FOR REFERENCE) ─────────────
 //
-//  Gemini (backend):
-//    client.aio.models.generate_content(
-//      model='gemini-2.5-flash',
-//      contents=[{'role':'user','parts':[
-//        {'inline_data': {'mime_type': media_type, 'data': image_b64}},  ← raw base64
-//        {'text': SCAN_SYSTEM_PROMPT}
-//      ]}],
-//      config=types.GenerateContentConfig(
-//        response_mime_type='application/json',
-//        response_schema=ScanResult,
-//      ),
-//    )
+//  Gemini:    client.aio.models.generate_content(model='gemini-2.5-flash',
+//             contents=[image, system_prompt], config=GenerateContentConfig(
+//               response_mime_type='application/json', response_schema=ScanResult))
 //
-//  OpenAI gpt-5.4 (backend):
-//    client.responses.parse(                        ← Responses API, NOT chat.completions
-//      model='gpt-5.4',
-//      input=[{'role':'user','content':[
-//        {'type':'input_image',
-//         'image_url': f'data:{media_type};base64,{b64}',  ← WITH "data:…;base64," PREFIX
-//         'detail': 'high'},
-//        {'type':'input_text', 'text': SCAN_SYSTEM_PROMPT}
-//      ]}],
-//      text={'format': {'type':'json_schema', 'name':'ScanResult',
-//                       'schema': ScanResult.model_json_schema(), 'strict': True}},
-//    )
+//  OpenAI:    client.responses.parse(model='gpt-5.4', input=[image, system_prompt],
+//             text_format=ScanResult)
 //
-//  Anthropic claude-sonnet-4-6 (backend):
-//    client.messages.create(
-//      model='claude-sonnet-4-6',    ← or 'claude-opus-4-7' for hard scans
-//      max_tokens=3048,
-//      system=SCAN_SYSTEM_PROMPT,    ← prompt goes top-level, NOT in user content
-//      tools=[{                       ← tool-forced JSON pattern (NOT output_config —
-//        'name': 'report_scan',      that param does not exist in Messages API and
-//        'description': '...',        causes HTTP 400)
-//        'input_schema': ScanResult.model_json_schema(),
-//      }],
-//      tool_choice={'type':'tool', 'name':'report_scan'},
-//      messages=[{'role':'user','content':[
-//        {'type':'image','source':{
-//          'type':'base64',
-//          'media_type': media_type,
-//          'data': image_b64,         ← raw base64, NO "data:…;base64," PREFIX
-//        }},
-//        // user content carries only the image — instructions are in `system`
-//      ]}],
-//    )
-//    # Result lives in the tool_use content block, NOT in a parseable text:
-//    # tool_block = next(b for b in response.content if b.type == 'tool_use')
-//    # result = ScanResult.model_validate(tool_block.input)
+//  Anthropic: client.messages.create(model='claude-sonnet-4-6',
+//             system=SCAN_SYSTEM_PROMPT, tools=[{name, input_schema}],
+//             tool_choice={'type':'tool', 'name':...}, messages=[image only])
+//             # result lands in content[0].input as a dict
 //
-// These format differences are handled entirely on the FastAPI side.
-// This component only reads the results from the BFF polling endpoint.
-// ──────────────────────────────────────────────────────────────────────────────
+// Format diffs handled entirely on the FastAPI side. This component
+// only reads results from /api/scan/results/[id].
+// ──────────────────────────────────────────────────────────────────────────
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import {
-  getAssetUrl,
   enqueueScanBatch,
   enqueueRegen,
   getSignedUploadUrl,
@@ -76,657 +43,98 @@ import {
 } from "../../lib/api";
 import { convertToJpeg, formatBytes } from "../../lib/compress";
 import { useJobPoller } from "../../lib/polling";
+import { computeConsensus } from "../../lib/scan-helpers";
 import type {
-  AnomalyItem,
   ImageScanState,
   JobRecord,
   ProviderScanResult,
-  ScanProvider,
-  ScanVerdict,
 } from "../../lib/types";
+import type { EnhanceProvider } from "../../lib/types-enhance";
+
+import { ScanCard } from "./ScanCard";
+import { ScanFilterChips, type ScanFilter } from "./ScanFilterChips";
+import { ScanCommandBar } from "./ScanCommandBar";
 
 const MAX_UPLOADS = 10;
 
-// Providers available for "Regenerate this image" — mirrors the Enhance tab.
-// Listed in the same order so the visual is consistent between tabs.
-type RegenProvider = "gemini" | "openai" | "grok" | "flux" | "reve";
-const REGEN_PROVIDERS: readonly RegenProvider[] = ["gemini", "openai", "grok", "flux", "reve"] as const;
-
-const REGEN_PROVIDER_LABELS: Record<RegenProvider, string> = {
-  gemini: "Gemini",
-  openai: "OpenAI",
-  grok:   "Grok",
-  flux:   "Flux",
-  reve:   "Reve",
-};
-
-const REGEN_PROVIDER_CHIP_CLASSES: Record<RegenProvider, { selected: string; idle: string }> = {
-  gemini: {
-    selected: "bg-blue-600 text-white border-blue-500",
-    idle:     "bg-zinc-900 text-blue-300 border-zinc-700 hover:border-blue-700",
-  },
-  openai: {
-    selected: "bg-green-600 text-white border-green-500",
-    idle:     "bg-zinc-900 text-green-300 border-zinc-700 hover:border-green-700",
-  },
-  grok: {
-    selected: "bg-orange-600 text-white border-orange-500",
-    idle:     "bg-zinc-900 text-orange-300 border-zinc-700 hover:border-orange-700",
-  },
-  flux: {
-    selected: "bg-purple-600 text-white border-purple-500",
-    idle:     "bg-zinc-900 text-purple-300 border-zinc-700 hover:border-purple-700",
-  },
-  reve: {
-    selected: "bg-fuchsia-600 text-white border-fuchsia-500",
-    idle:     "bg-zinc-900 text-fuchsia-300 border-zinc-700 hover:border-fuchsia-700",
-  },
-};
-
 /**
- * Local state for a file the operator dropped directly onto the Scan
- * tab (standalone mode — bypasses Enhance). Each file is JPEG-converted
- * client-side, uploaded to GCS via a signed PUT, then merged with any
- * Enhance/Send-to-Scan assets before the scan batch fires.
- *
- *   uploading → done  (happy; `assetId` set)
- *   uploading → error ('error' string set)
+ * Local state for a file the operator dropped directly onto the Scan tab
+ * (standalone mode — bypasses Enhance). Each file is JPEG-converted
+ * client-side, uploaded to GCS via signed PUT, then merged into the
+ * scan batch input list.
  */
 interface StandaloneUpload {
-  id:         string;        // local UUID, used as React key
-  filename:   string;        // post-convertToJpeg name
-  previewUrl: string;        // createObjectURL on the original File
-  size:       number;        // post-convertToJpeg bytes
+  id:         string;
+  filename:   string;
+  previewUrl: string;
+  size:       number;
   status:     "uploading" | "done" | "error";
-  progress:   number;        // 0-100 during upload, 100 when done
-  assetId?:   string;        // populated when status flips to done
-  error?:     string;        // populated when status flips to error
+  progress:   number;
+  assetId?:   string;
+  error?:     string;
 }
 
-// ─── Constants ────────────────────────────────────────────────────────────────
+// ─── Pipeline asset shape ─────────────────────────────────────────────────
 
-const PROVIDER_LABELS: Record<ScanProvider, string> = {
-  gemini:    "Gemini",
-  openai:    "OpenAI",
-  anthropic: "Anthropic",
-};
-
-const PROVIDER_COLORS: Record<ScanProvider, string> = {
-  gemini:    "text-blue-400 bg-blue-950/60 border-blue-800",
-  openai:    "text-green-400 bg-green-950/60 border-green-800",
-  anthropic: "text-orange-400 bg-orange-950/60 border-orange-800",
-};
-
-// The three providers we render placeholder progress cards for while a scan
-// is in flight. Matches the worker's fan-out (gemini + openai + anthropic),
-// which is gated server-side by SCAN_PROVIDER_OPENAI / SCAN_PROVIDER_ANTHROPIC
-// env flags — if one is disabled there it just won't produce a result and
-// the placeholder will sit until job completion. Considered acceptable since
-// production has both flags enabled (see deploy-api.yml).
-const EXPECTED_SCAN_PROVIDERS: readonly ScanProvider[] = ["gemini", "openai", "anthropic"] as const;
-
-const SEVERITY_COLORS: Record<string, string> = {
-  high:   "text-red-400 bg-red-950/60 border-red-800",
-  medium: "text-yellow-400 bg-yellow-950/60 border-yellow-800",
-  low:    "text-zinc-400 bg-zinc-900/60 border-zinc-700",
-};
-
-// ─── Auto-prompt builder ─────────────────────────────────────────────────────
-//
-// The regen path sends a verbatim `custom_prompt` that bypasses the
-// worker's wrapper, so the prompt assembled here must carry the FULL
-// enhance treatment instructions on its own. The text below is a
-// near-verbatim port of `_build_enhance_prompt` in
-// apps/api/src/cleanshot_api/workers/enhance_worker.py
-// (master + standard_treatment + guardrails). The only regen-specific
-// addition is an "ISSUES TO ADDRESS" block, which slots into the same
-// position the backend reserves for toggle-driven "ADDITIONAL EMPHASIS".
-//
-// If you change one side, change the other — drift here means regen
-// quality silently diverges from enhance quality.
-
-const ENHANCE_MASTER = (
-  "You are editing a photograph of a USED forklift. The goal is a "
-  + "thorough makeover of the SAME machine in the SAME place: clean "
-  + "paint, sharp decals, dressed tires — like the unit just rolled "
-  + "out of a professional detail bay. The output MUST be visibly "
-  + "improved versus the input. A reasonable viewer should be able "
-  + "to see at a glance that the machine has been cleaned up. "
-  + "\"Used lift with a really good makeover\" — not brand-new from "
-  + "factory, not a stock photo, not a studio composite."
-);
-
-const ENHANCE_STANDARD_TREATMENT = [
-  "STANDARD TREATMENT — apply ALL of the following to every request. These are the changes the output MUST reflect:",
-  "",
-  "• PAINT REFRESH. Repaint every visibly-worn body panel so the machine looks like it just came out of a professional detail bay. Concretely:",
-  "    – Where any panel is currently yellowed, cream-coloured, or dingy white, render it as clean, bright, even white.",
-  "    – Where any panel is currently dull, faded, dirty, or chalky red, render it as clean, saturated, evenly painted red.",
-  "    – Anywhere you see chips, scratches, scuffs, scrapes, paint loss, oxidation, stains, or dirt streaks, replace those areas with a smooth uniform coat of paint matching the surrounding panel's colour.",
-  "  The cab roof, overhead guard, mast, main body, step panels, and counterweight should all visibly look freshly painted in the output. Keep the same colours and the same panel-to-colour mapping — only the surface condition changes.",
-  "",
-  "• DECAL RESTORATION. Restore every OEM decal, brand logo, capacity sticker, model badge, and safety label to crisp, fully legible condition. Keep their original text, layout, and position. Do not invent new decals, add manufacturer logos that were not present, or change any model / capacity numbering.",
-  "",
-  "• RUST + CORROSION. Where rust, corrosion, oxidation, or surface pitting is visible, replace those areas with clean painted metal in the surrounding OEM colour. Do NOT add or imply rust or wear that was not in the source.",
-  "",
-  "• TIRE REFRESH. Clean and refresh the EXISTING tires — darker rubber, no dust or grime, freshly dressed appearance. Keep the same tires (same type, tread, sidewall, wear profile); do NOT swap them for new tires.",
-  "",
-  "• LIGHTING / EXPOSURE. Lift the deepest shadows just enough to reveal detail, recover any blown highlights, and neutralize obvious colour casts. Keep the scene's original light direction and ambient mood — do NOT replace it with studio lighting.",
-].join("\n");
-
-const ENHANCE_GUARDRAILS = [
-  "GUARDRAILS — while applying everything above, the following must stay identical to the source. These are limits on HOW you change the image, not reasons to skip the standard treatment:",
-  "• Background, floor, walls, surroundings — keep the exact same location. Never isolate the forklift on a white / studio / gradient backdrop. Never blur or replace the scene.",
-  "• Lighting direction, ambient colour, and shadow placement. Refresh exposure, but keep the same lighting character.",
-  "• Camera angle, framing, distance, proportions. No zoom, crop, rotate, horizon-leveling, or re-posing.",
-  "• Make, model, year, trim level. Same mast configuration, fork count, fork length, overhead guard shape, counterweight shape, and tire type.",
-  "• Do NOT add lamps, beacons, mirrors, antennas, attachments, or any bolt-on hardware that is not already in the source.",
-  "• Every OEM decal, capacity plate, VIN / serial number, and data tag remains present, legible, and unchanged. Do not invent or alter any text, digits, or logos on the machine.",
-  "• Do not introduce damage, rust, dents, or wear that was not in the source image.",
-].join("\n");
-
-function buildRegenPrompt(results: ProviderScanResult[]): string {
-  // Collect all anomalies across providers, deduplicated by type+location
-  const seen = new Set<string>();
-  const anomalies: AnomalyItem[] = [];
-
-  for (const r of results) {
-    for (const a of r.anomalies) {
-      const key = `${a.type}:${a.location}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        anomalies.push(a);
-      }
-    }
-  }
-
-  // ISSUES block — regen's analogue of the enhance prompt's
-  // toggle-driven "ADDITIONAL EMPHASIS" section. Sits between
-  // STANDARD TREATMENT and GUARDRAILS, same as on the enhance side.
-  let issuesBlock = "";
-  if (anomalies.length > 0) {
-    const lines = anomalies
-      .sort((a, b) => {
-        const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
-        return (order[a.severity] ?? 2) - (order[b.severity] ?? 2);
-      })
-      .map((a) => `• Fix [${a.severity.toUpperCase()}] ${a.type} at ${a.location}: ${a.description}`);
-    issuesBlock = [
-      "ISSUES TO ADDRESS — apply ON TOP of the standard treatment. Each item below was flagged by an AI scan of this same image:",
-      "",
-      ...lines,
-    ].join("\n");
-  }
-
-  const sections = [ENHANCE_MASTER, ENHANCE_STANDARD_TREATMENT];
-  if (issuesBlock) sections.push(issuesBlock);
-  sections.push(ENHANCE_GUARDRAILS);
-  return sections.join("\n\n");
+interface PipelineAsset {
+  assetId:      string;
+  filename:     string;
+  thumbnailUrl: string;
+  outputUrl?:   string;
+  provider?:    string;
 }
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-function VerdictBadge({ verdict, confidence }: { verdict: ScanVerdict; confidence: number }) {
-  const isPassed = verdict === "pass";
-  return (
-    <span
-      className={`
-        inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold border
-        ${isPassed
-          ? "text-green-400 bg-green-950/60 border-green-800"
-          : "text-red-400 bg-red-950/60 border-red-800"}
-      `}
-      aria-label={`${isPassed ? "Pass" : "Fail"} — ${Math.round(confidence * 100)}% confidence`}
-    >
-      {isPassed ? "✓ PASS" : "✗ FAIL"}
-      <span className="text-[10px] opacity-75">{Math.round(confidence * 100)}%</span>
-    </span>
-  );
-}
-
-function ConfidenceMeter({ value }: { value: number }) {
-  const pct = Math.round(value * 100);
-  const color =
-    pct >= 80 ? "bg-green-500" :
-    pct >= 50 ? "bg-yellow-500" :
-                "bg-red-500";
-  return (
-    <div className="flex items-center gap-2" aria-label={`Confidence: ${pct}%`}>
-      <div className="flex-1 bg-zinc-800 rounded-full h-1.5">
-        <div
-          className={`h-1.5 rounded-full transition-all ${color}`}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
-      <span className="text-[10px] text-zinc-500 w-7 text-right">{pct}%</span>
-    </div>
-  );
-}
-
-function AnomalyList({ anomalies }: { anomalies: AnomalyItem[] }) {
-  if (anomalies.length === 0) {
-    return <p className="text-xs text-zinc-600 italic">No anomalies detected</p>;
-  }
-  return (
-    <ul className="space-y-1.5" role="list" aria-label="Detected anomalies">
-      {anomalies.map((a, i) => (
-        <li
-          key={i}
-          className={`text-xs px-2.5 py-1.5 rounded border ${SEVERITY_COLORS[a.severity] ?? SEVERITY_COLORS.low}`}
-        >
-          <span className="font-medium capitalize">{a.type}</span>
-          {" — "}
-          <span className="opacity-75">{a.location}</span>
-          {": "}
-          {a.description}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/**
- * Placeholder card rendered while the scan job is still in flight.
- * One per expected provider, with an indeterminate progress bar so the user
- * can see all three are running in parallel. Replaced by a ProviderResultCard
- * once the real verdict arrives.
- *
- * The bar is purely indeterminate (CSS keyframes) — the worker fans out to
- * all three providers concurrently and only writes results when the whole
- * job is done, so we have no per-provider milestone to report. The visual
- * still tells the operator "all three are working."
- */
-function ProviderProgressCard({ provider }: { provider: ScanProvider }) {
-  return (
-    <div className={`rounded-lg border overflow-hidden ${PROVIDER_COLORS[provider]}`}>
-      <div className="flex items-center justify-between px-3 py-2">
-        <div className="flex items-center gap-2">
-          <svg
-            className="animate-spin w-3.5 h-3.5 opacity-80"
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-          </svg>
-          <span className="text-xs font-semibold">{PROVIDER_LABELS[provider]}</span>
-        </div>
-        <span className="text-[10px] uppercase tracking-[0.16em] opacity-60">
-          Scanning…
-        </span>
-      </div>
-      <div
-        className="h-1 bg-current bg-opacity-10 overflow-hidden"
-        role="progressbar"
-        aria-label={`${PROVIDER_LABELS[provider]} scan in progress`}
-      >
-        <div className="h-full w-1/3 bg-current opacity-70 animate-[scanbar_1.2s_ease-in-out_infinite]" />
-      </div>
-    </div>
-  );
-}
-
-function ProviderResultCard({
-  result,
-  provider,
-}: {
-  result: ProviderScanResult;
-  provider: ScanProvider;
-}) {
-  const [expanded, setExpanded] = useState(result.verdict === "fail");
-
-  return (
-    <div className={`rounded-lg border overflow-hidden ${PROVIDER_COLORS[provider]}`}>
-      <button
-        className="w-full flex items-center justify-between px-3 py-2 text-left hover:opacity-80 transition-opacity"
-        onClick={() => setExpanded((v) => !v)}
-        aria-expanded={expanded}
-      >
-        <div className="flex items-center gap-2">
-          <span className="text-xs font-semibold">{PROVIDER_LABELS[provider]}</span>
-          <VerdictBadge verdict={result.verdict} confidence={result.confidence} />
-        </div>
-        <svg
-          className={`w-3.5 h-3.5 transition-transform ${expanded ? "rotate-180" : ""}`}
-          fill="none" viewBox="0 0 24 24" stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-        </svg>
-      </button>
-
-      {expanded && (
-        <div className="px-3 pb-3 space-y-2 border-t border-current border-opacity-20">
-          <ConfidenceMeter value={result.confidence} />
-          <p className="text-xs opacity-80 italic">{result.summary}</p>
-          <AnomalyList anomalies={result.anomalies} />
-          <p className="text-[10px] opacity-40 text-right">{result.latencyMs}ms</p>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Per-image card with regen ────────────────────────────────────────────────
-
-function ImageScanCard({
-  scan,
-  sessionId,
-  sent,
-  onRegenComplete,
-  onSend,
-}: {
-  scan: ImageScanState;
-  sessionId: string;
-  /** True once the user has already sent this scan to the Resize tab. */
-  sent: boolean;
-  onRegenComplete: (scan: ImageScanState, outputAssetId: string) => void;
-  /**
-   * Per-card "Send to Resize" handler. The card supplies the most-recent
-   * asset id + URL — the regen output when one exists, otherwise the
-   * enhanced original that came from the Enhance tab.
-   */
-  onSend: (item: {
-    assetId: string;
-    filename: string;
-    thumbnailUrl: string;
-    outputUrl?: string;
-  }) => void;
-}) {
-  const [regenJobId, setRegenJobId]   = useState<string | null>(scan.regenJobId ?? null);
-  const [regenStatus, setRegenStatus] = useState<string>(scan.regenStatus ?? "idle");
-  const [regenUrl, setRegenUrl]       = useState<string | null>(null);
-  // Track the regen output asset id locally so "Send to Resize" can hand
-  // it up instead of the original enhanced asset when a regen has run.
-  const [regenAssetId, setRegenAssetId] = useState<string | null>(null);
-  const [promptText, setPromptText]   = useState<string>(
-    scan.regenPrompt ?? buildRegenPrompt(scan.providerResults)
-  );
-  const [showPrompt, setShowPrompt]   = useState(false);
-  const [regenError, setRegenError]   = useState<string | null>(null);
-  // Operator-selected provider for the regen pass. Defaults to gemini to
-  // preserve the previous behaviour, but the chip row lets them pick any of
-  // the five providers (same set as the Enhance tab) on a per-card basis.
-  const [regenProvider, setRegenProvider] = useState<RegenProvider>("gemini");
-
-  // Poll regen job
-  useJobPoller(
-    regenJobId,
-    (job) => setRegenStatus(job.status),
-    async (job) => {
-      setRegenStatus("complete");
-      if (job.outputAssetId) {
-        try {
-          const { url } = await getAssetUrl(job.outputAssetId);
-          setRegenUrl(url);
-          setRegenAssetId(job.outputAssetId);
-          onRegenComplete(scan, job.outputAssetId);
-        } catch {
-          setRegenError("Could not fetch regenerated image URL");
-        }
-      }
-    },
-    (job) => {
-      setRegenStatus("failed");
-      setRegenError(job.error ?? "Regeneration failed");
-    }
-  );
-
-  const handleRegen = async () => {
-    setRegenError(null);
-    setRegenStatus("enqueuing");
-    try {
-      const { jobId } = await enqueueRegen({
-        sessionId,
-        assetId: scan.assetId,
-        regenPrompt: promptText,
-        provider: regenProvider,
-        idempotencyKey: `regen-${scan.assetId}-${uuidv4()}`,
-      });
-      setRegenJobId(jobId);
-      setRegenStatus("queued");
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Failed to start regeneration";
-      setRegenError(msg);
-      setRegenStatus("idle");
-    }
-  };
-
-  const hasFailedProvider = scan.providerResults.some((r) => r.verdict === "fail");
-  const isRegening = ["enqueuing", "queued", "processing"].includes(regenStatus);
-
-  // Consensus display
-  const consensus = scan.consensusVerdict;
-  const consensusColor =
-    consensus === "pass"  ? "text-green-400 border-green-800 bg-green-950/30" :
-    consensus === "fail"  ? "text-red-400 border-red-800 bg-red-950/30" :
-    consensus === "split" ? "text-yellow-400 border-yellow-800 bg-yellow-950/30" :
-                            "text-zinc-400 border-zinc-700 bg-zinc-900/30";
-
-  return (
-    <article
-      className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden"
-      aria-label={`Scan result for ${scan.filename}`}
-    >
-      {/* Header row — filename + consensus pill */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-900 gap-3">
-        <p className="text-sm font-mono text-zinc-200 truncate flex-1" title={scan.filename}>
-          {scan.filename}
-        </p>
-        {consensus && (
-          <div className={`shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${consensusColor}`}>
-            {consensus === "pass"  ? "✓ PASS" :
-             consensus === "fail"  ? "✗ FAIL" :
-                                     "⚡ SPLIT"}
-            {scan.consensusConfidence !== undefined && (
-              <span className="opacity-60 text-[10px]">
-                {Math.round(scan.consensusConfidence * 100)}%
-              </span>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Single large image — the thing being scanned. scan.thumbnailUrl
-          is already the enhanced version (sent from the Enhance tab); when
-          a regen runs, regenUrl supersedes it. No "original" pair — the
-          user just wants to see the image the AI is actually judging. */}
-      {(() => {
-        const displayUrl = regenUrl ?? scan.thumbnailUrl;
-        const isRegen   = !!regenUrl;
-        return (
-          <figure className="flex flex-col gap-2 p-5 pb-3">
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
-              {isRegen ? "Regenerated" : "Enhanced"}
-            </span>
-            <a href={displayUrl} target="_blank" rel="noopener noreferrer" className="block">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={displayUrl}
-                alt={`${isRegen ? "Regenerated" : "Enhanced"}: ${scan.filename}`}
-                className={`w-full aspect-square object-contain bg-black rounded-lg border transition-colors ${
-                  isRegen
-                    ? "border-amber-900 hover:border-amber-700"
-                    : "border-zinc-800 hover:border-zinc-600"
-                }`}
-              />
-            </a>
-          </figure>
-        );
-      })()}
-
-      {/* Provider verdicts */}
-      <div className="px-5 pb-4">
-        <div className="space-y-1.5">
-          {scan.providerResults.length === 0 ? (
-            EXPECTED_SCAN_PROVIDERS.map((p) => (
-              <ProviderProgressCard key={p} provider={p} />
-            ))
-          ) : (
-            scan.providerResults.map((r) => (
-              <ProviderResultCard key={r.provider} result={r} provider={r.provider} />
-            ))
-          )}
-        </div>
-      </div>
-
-      {/* Regenerate section — shown when at least one provider failed */}
-      {hasFailedProvider && (
-        <div className="border-t border-zinc-800 bg-zinc-900/50 p-3 space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-medium text-zinc-400">Regenerate this image</span>
-            <button
-              onClick={() => setShowPrompt((v) => !v)}
-              className="text-[11px] text-blue-400 hover:text-blue-300 transition-colors"
-            >
-              {showPrompt ? "Hide prompt" : "Edit prompt"}
-            </button>
-          </div>
-
-          {/* Provider picker — single-select chip row. Same five providers
-              the Enhance tab offers; the operator chooses one per click.
-              Disabled while a regen is already in flight to keep the
-              selection in sync with the running job. */}
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 mr-1">
-              Model
-            </span>
-            {REGEN_PROVIDERS.map((p) => {
-              const selected = regenProvider === p;
-              const cls = REGEN_PROVIDER_CHIP_CLASSES[p];
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => setRegenProvider(p)}
-                  disabled={isRegening}
-                  aria-pressed={selected}
-                  className={`
-                    text-[10px] uppercase tracking-[0.12em] font-semibold px-2 py-1 rounded border transition-colors
-                    ${selected ? cls.selected : cls.idle}
-                    ${isRegening ? "opacity-60 cursor-not-allowed" : ""}
-                  `}
-                >
-                  {REGEN_PROVIDER_LABELS[p]}
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Auto-generated prompt (editable) */}
-          {showPrompt && (
-            <textarea
-              value={promptText}
-              onChange={(e) => setPromptText(e.target.value)}
-              rows={4}
-              className="w-full bg-zinc-950 border border-zinc-700 rounded-lg px-3 py-2 text-xs text-zinc-300 font-mono resize-y focus:outline-none focus:ring-1 focus:ring-blue-500"
-              aria-label="Regeneration prompt"
-            />
-          )}
-
-          {regenError && (
-            <p className="text-xs text-red-400" role="alert">{regenError}</p>
-          )}
-
-          {regenStatus === "complete" && (
-            <p className="text-xs text-green-400">✓ Regeneration complete — see updated preview above</p>
-          )}
-
-          <button
-            onClick={handleRegen}
-            disabled={isRegening}
-            className={`
-              w-full py-2 px-4 rounded-lg text-xs font-semibold transition-all
-              ${isRegening
-                ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-                : "bg-amber-600 hover:bg-amber-500 text-white"}
-            `}
-            aria-busy={isRegening}
-          >
-            {isRegening ? (
-              <span className="flex items-center justify-center gap-2">
-                <svg className="animate-spin w-3.5 h-3.5" viewBox="0 0 24 24" fill="none">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
-                </svg>
-                {regenStatus === "enqueuing" ? "Enqueuing…" : "Regenerating…"}
-              </span>
-            ) : (
-              `↻ Regenerate with ${REGEN_PROVIDER_LABELS[regenProvider]}`
-            )}
-          </button>
-        </div>
-      )}
-
-      {/* Send-to-Resize footer — always shown so the operator can hand
-          off whichever scans they want to size, regardless of pass/fail
-          verdict. Sends the regen output when one exists, otherwise the
-          original enhanced asset from the Enhance tab. */}
-      <div className="border-t border-zinc-800 bg-zinc-900/50 p-3 flex items-center justify-end gap-2">
-        {sent ? (
-          <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-500 px-3 py-2">
-            ✓ Sent to Resize
-          </span>
-        ) : (
-          <button
-            onClick={() =>
-              onSend({
-                assetId:      regenAssetId ?? scan.assetId,
-                filename:     scan.filename,
-                thumbnailUrl: regenUrl ?? scan.thumbnailUrl,
-                outputUrl:    regenUrl ?? scan.outputUrl,
-              })
-            }
-            className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-red-600 hover:bg-red-500 border border-red-500 transition-colors px-3 py-2 rounded"
-          >
-            Send to Resize →
-          </button>
-        )}
-      </div>
-    </article>
-  );
-}
-
-// ─── Main Scan Panel ─────────────────────────────────────────────────────────
 
 export interface ScanPanelProps {
-  sessionId: string;
-  enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string; provider?: string }>;
-  onScanComplete?: (scans: ImageScanState[]) => void;
+  sessionId:      string;
+  enhancedAssets: PipelineAsset[];
   /**
    * Called by "Reset scan" — wipes the workspace's enhancedAssets pipeline
-   * so the next "Scan all" doesn't include images the user already
-   * dismissed. The local scanStates / batchJobIds reset happens inline.
+   * so the next "Scan all" doesn't include images the user already dismissed.
    */
   onClearPipeline: () => void;
   /**
-   * Called when the user explicitly clicks "Send to Resize" (per-card) or
-   * "Send all to Resize" (batch). The workspace appends to its
-   * resizeAssets pipeline and switches to the Resize tab. Sends the
-   * latest version of the image (regen output if a regen has run,
-   * otherwise the enhanced thumbnail URL).
+   * Called when the operator approves a scan (per-card or bulk). Workspace
+   * appends to its resizeAssets pipeline + switches to the Resize tab.
    */
-  onSendToResize: (items: Array<{ assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string; provider?: string }>) => void;
+  onSendToResize:  (items: PipelineAsset[]) => void;
+  /**
+   * Workspace-scoped auto-advance toggle. When ON, any newly-complete
+   * scan with `verdict === "pass" && avgConfidence >= threshold` is
+   * auto-approved + auto-forwarded to Resize. Mixed and fail verdicts
+   * never auto-advance regardless of threshold.
+   */
+  autoAdvance:     boolean;
 }
 
 export function ScanPanel({
   sessionId,
   enhancedAssets,
-  onScanComplete,
   onClearPipeline,
   onSendToResize,
+  autoAdvance,
 }: ScanPanelProps) {
-  const [scanStates, setScanStates] = useState<ImageScanState[]>([]);
-  const [batchJobIds, setBatchJobIds] = useState<string[]>([]);
-  const [scanError, setScanError]     = useState<string | null>(null);
+  // ─── Core scan state ────────────────────────────────────────────────────
 
-  // Standalone-upload state. Identical pattern to ResizePanel — operator
-  // drops files here when the Scan tab is being used as a stand-alone
-  // QC tool (no Enhance run first). Files are JPEG-converted client-
-  // side, uploaded direct to GCS via signed PUT, then merged with
-  // `enhancedAssets` into `allAssets` for the scan batch.
-  const [uploads, setUploads] = useState<StandaloneUpload[]>([]);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [scanStates, setScanStates]     = useState<ImageScanState[]>([]);
+  const [batchJobIds, setBatchJobIds]   = useState<string[]>([]);
+  const [scanError, setScanError]       = useState<string | null>(null);
+
+  /** Per-asset ms timestamp captured from the first poll's job.createdAt. */
+  const [jobStartedMs, setJobStartedMs] = useState<Map<string, number>>(new Map());
+
+  // ─── Redesign-specific UI state ─────────────────────────────────────────
+
+  const [filter, setFilter]               = useState<ScanFilter>("all");
+  const [threshold, setThreshold]         = useState<number>(0.80);
+  const [approved, setApproved]           = useState<Set<string>>(new Set());
+  const [rejected, setRejected]           = useState<Set<string>>(new Set());
+  const [regenOpenId, setRegenOpenId]     = useState<string | null>(null);
+  const [detailsOpenId, setDetailsOpenId] = useState<string | null>(null);
+
+  // ─── Standalone-upload state ────────────────────────────────────────────
+
+  const [uploads, setUploads]   = useState<StandaloneUpload[]>([]);
+  const fileInputRef            = useRef<HTMLInputElement | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const patchUpload = useCallback((id: string, patch: Partial<StandaloneUpload>) => {
@@ -825,138 +233,126 @@ export function ScanPanel({
     [addFiles],
   );
 
-  // Done uploads merged with the prop-supplied enhanced assets — both
-  // feed into the scan batch. Standalone uploads have no provider tag
-  // (they bypassed Enhance), which is fine — the "Send to Resize"
-  // pipeline collapses missing provider to undefined.
-  const standaloneAssets = uploads
-    .filter((u) => u.status === "done" && u.assetId)
-    .map((u) => ({
-      assetId:      u.assetId as string,
-      filename:     u.filename,
-      thumbnailUrl: u.previewUrl,
-      outputUrl:    undefined as string | undefined,
-      provider:     undefined as string | undefined,
-    }));
-  const allAssets = [...enhancedAssets, ...standaloneAssets];
+  // ─── Merged input set ───────────────────────────────────────────────────
+
+  const standaloneAssets: PipelineAsset[] = useMemo(
+    () => uploads
+      .filter((u) => u.status === "done" && u.assetId)
+      .map((u) => ({
+        assetId:      u.assetId as string,
+        filename:     u.filename,
+        thumbnailUrl: u.previewUrl,
+        outputUrl:    undefined,
+        provider:     undefined,
+      })),
+    [uploads],
+  );
+  const allAssets = useMemo(
+    () => [...enhancedAssets, ...standaloneAssets],
+    [enhancedAssets, standaloneAssets],
+  );
   const anyUploadInFlight = uploads.some((u) => u.status === "uploading");
 
-  // Track which scan asset IDs the user has already pushed to the Resize
-  // tab so the per-card button shows "✓ Sent" and the batch button knows
-  // who's left. Keyed by scan.assetId (the original enhanced asset id) —
-  // the card itself decides whether to send regen or original payload.
-  const [sentToResizeAssetIds, setSentToResizeAssetIds] = useState<Set<string>>(new Set());
-
-  // Quick lookup of provider per assetId so per-card and bulk sends
-  // can attach the provider tag the Workspace → Resize → export
-  // pipeline needs to differentiate duplicate variants. Standalone-
-  // upload assets get a Map entry with provider=undefined so the lookup
-  // doesn't lose them.
   const providerByAssetId = useMemo(
     () => new Map(allAssets.map((a) => [a.assetId, a.provider])),
     [allAssets],
   );
 
-  const sendOneToResize = useCallback(
-    (item: { assetId: string; filename: string; thumbnailUrl: string; outputUrl?: string }, scanAssetId: string) => {
-      if (sentToResizeAssetIds.has(scanAssetId)) return;
-      onSendToResize([{ ...item, provider: providerByAssetId.get(item.assetId) }]);
-      setSentToResizeAssetIds((prev) => new Set(prev).add(scanAssetId));
-    },
-    [onSendToResize, sentToResizeAssetIds, providerByAssetId]
+  // ─── Now-ticker for ScanProgressStrip ───────────────────────────────────
+
+  const [nowMs, setNowMs] = useState<number>(() => Date.now());
+  const anyScanning = useMemo(
+    () => scanStates.some((s) => s.providerResults.length === 0),
+    [scanStates],
   );
 
-  const unsentScans = scanStates.filter(
-    (s) => s.providerResults.length > 0 && !sentToResizeAssetIds.has(s.assetId)
-  );
+  useEffect(() => {
+    if (!anyScanning) return;
+    const handle = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(handle);
+  }, [anyScanning]);
 
-  const sendAllToResize = useCallback(() => {
-    if (unsentScans.length === 0) return;
-    onSendToResize(
-      unsentScans.map((s) => ({
-        assetId:      s.assetId,
-        filename:     s.filename,
-        provider:     providerByAssetId.get(s.assetId),
-        thumbnailUrl: s.thumbnailUrl,
-        outputUrl:    s.outputUrl,
-      }))
-    );
-    setSentToResizeAssetIds((prev) => {
-      const next = new Set(prev);
-      for (const s of unsentScans) next.add(s.assetId);
-      return next;
-    });
-  }, [onSendToResize, unsentScans]);
-
-  // isScanning is derived: a scan is active iff we have states and at least
-  // one of them hasn't received any provider results yet (and we haven't
-  // errored out trying to start the batch).
-  const isScanning =
-    !scanError &&
-    scanStates.length > 0 &&
-    scanStates.some((s) => s.providerResults.length === 0);
-
-  // ─── Poll each scan job and merge results ─────────────────────────────────
+  // ─── Polling callbacks ──────────────────────────────────────────────────
 
   const updateScanState = useCallback((assetId: string, patch: Partial<ImageScanState>) => {
-    setScanStates((prev) =>
-      prev.map((s) => (s.assetId === assetId ? { ...s, ...patch } : s))
-    );
+    setScanStates((prev) => prev.map((s) => (s.assetId === assetId ? { ...s, ...patch } : s)));
   }, []);
 
-  // ─── Fetch scan results for a completed job ───────────────────────────────
+  const handleJobUpdate = useCallback((job: JobRecord) => {
+    // Capture the first observed createdAt so ScanProgressStrip's elapsed
+    // counter is anchored to the actual job start time (vs. when the user
+    // clicked the Scan button — which can lag if Cloud Tasks queues fan
+    // out slowly on big batches).
+    const ms = new Date(job.createdAt).getTime();
+    setJobStartedMs((prev) => {
+      if (prev.get(job.inputAssetId) === ms) return prev;
+      const next = new Map(prev);
+      next.set(job.inputAssetId, ms);
+      return next;
+    });
+  }, []);
 
   const fetchScanResults = useCallback(async (job: JobRecord) => {
-    // The BFF /api/jobs/:id returns the job record.
-    // Scan results are fetched from /api/sessions/:id (full state)
-    // or from a dedicated /api/scan-results/:jobId endpoint.
-    // For now we pull them via the session state which includes all scan_results.
-    // A dedicated endpoint is cleaner — wire up when backend route is confirmed.
-    // TODO: replace with /api/scan/results/:jobId once backend route is added.
     try {
       const res = await fetch(`/api/scan/results/${job.id}`, { cache: "no-store" });
       if (!res.ok) return;
-      const data = await res.json() as {
-        providerResults: ProviderScanResult[];
-        consensusVerdict?: string;
+      const data = (await res.json()) as {
+        providerResults:      ProviderScanResult[];
+        consensusVerdict?:    string;
         consensusConfidence?: number;
       };
-      const assetId = job.inputAssetId;
-      updateScanState(assetId, {
-        providerResults: data.providerResults,
-        consensusVerdict: data.consensusVerdict as ImageScanState["consensusVerdict"],
+      updateScanState(job.inputAssetId, {
+        providerResults:     data.providerResults,
+        consensusVerdict:    data.consensusVerdict as ImageScanState["consensusVerdict"],
         consensusConfidence: data.consensusConfidence,
-        regenPrompt: buildRegenPrompt(data.providerResults),
       });
     } catch {
       // Non-fatal: state stays with empty providerResults
     }
   }, [updateScanState]);
 
-  // ─── Start scan batch ─────────────────────────────────────────────────────
+  const handleJobComplete = useCallback(
+    (job: JobRecord) => fetchScanResults(job),
+    [fetchScanResults],
+  );
+
+  const handleJobError = useCallback((job: JobRecord) => {
+    updateScanState(job.inputAssetId, {
+      providerResults: [
+        {
+          provider:  "gemini",
+          verdict:   "fail",
+          confidence: 0,
+          anomalies: [],
+          summary:   job.error ?? "Scan failed",
+          latencyMs: 0,
+        },
+      ],
+    });
+  }, [updateScanState]);
+
+  // ─── Scan trigger ───────────────────────────────────────────────────────
 
   const handleStartScan = async () => {
-    // Scan whatever is queued: Enhance-handed-down assets + standalone
-    // uploads completed on this tab.
     if (allAssets.length === 0) return;
     setScanError(null);
 
-    // Initialise scan states
     const initial: ImageScanState[] = allAssets.map((a) => ({
-      assetId: a.assetId,
-      inputJobId: "",
-      filename: a.filename,
-      thumbnailUrl: a.thumbnailUrl,
-      outputUrl: a.outputUrl,
+      assetId:         a.assetId,
+      inputJobId:      "",
+      filename:        a.filename,
+      thumbnailUrl:    a.thumbnailUrl,
+      outputUrl:       a.outputUrl,
       providerResults: [],
     }));
     setScanStates(initial);
+    setJobStartedMs(new Map());
 
     try {
       const { jobIds } = await enqueueScanBatch({
         sessionId,
-        assetIds: allAssets.map((a) => a.assetId),
-        idempotencyKey: `scan-batch-${uuidv4()}`,
+        assetIds:        allAssets.map((a) => a.assetId),
+        idempotencyKey:  `scan-batch-${uuidv4()}`,
       });
       setBatchJobIds(jobIds);
     } catch (err: unknown) {
@@ -965,73 +361,172 @@ export function ScanPanel({
     }
   };
 
-  // ─── One poller per job ───────────────────────────────────────────────────
-  // We spawn individual pollers via a child component to keep hook rules clean.
+  // ─── Filter + tallies ───────────────────────────────────────────────────
 
-  const handleJobComplete = useCallback(
-    (job: JobRecord) => fetchScanResults(job),
-    [fetchScanResults]
-  );
-
-  const handleJobError = useCallback((job: JobRecord) => {
-    const assetId = job.inputAssetId;
-    updateScanState(assetId, {
-      providerResults: [
-        {
-          provider: "gemini",
-          verdict: "fail",
-          confidence: 0,
-          anomalies: [],
-          summary: job.error ?? "Scan failed",
-          latencyMs: 0,
-        },
-      ],
-    });
-  }, [updateScanState]);
-
-  // ─── Regen complete ───────────────────────────────────────────────────────
-
-  const handleRegenComplete = useCallback(
-    (_scan: ImageScanState, outputAssetId: string) => {
-      // Caller can re-scan the new asset; for now just note it
-      console.info("Regen complete for", outputAssetId);
-    },
-    []
-  );
-
-  // ─── Notify parent when all scans have results (once per batch) ───────────
-
-  const completedRef = useRef(false);
-  const allDone =
-    scanStates.length > 0 &&
-    scanStates.every((s) => s.providerResults.length > 0);
-
-  useEffect(() => {
-    if (allDone && !completedRef.current) {
-      completedRef.current = true;
-      onScanComplete?.(scanStates);
-    } else if (!allDone) {
-      completedRef.current = false;
+  const filterCounts = useMemo(() => {
+    let pass = 0, mixed = 0, fail = 0, scanning = 0;
+    for (const s of scanStates) {
+      if (s.providerResults.length === 0) {
+        scanning++;
+        continue;
+      }
+      const c = computeConsensus(s.providerResults);
+      if (!c) continue;
+      if (c.verdict === "pass") pass++;
+      else if (c.verdict === "mixed") mixed++;
+      else fail++;
     }
-  }, [allDone, scanStates, onScanComplete]);
+    return {
+      all:      scanStates.length,
+      pass,
+      mixed,
+      fail,
+      scanning,
+    };
+  }, [scanStates]);
 
-  const passCount = scanStates.filter((s) =>
-    s.providerResults.some((r) => r.verdict === "pass") &&
-    s.providerResults.every((r) => r.verdict === "pass")
-  ).length;
-  const failCount = scanStates.filter((s) =>
-    s.providerResults.some((r) => r.verdict === "fail")
-  ).length;
+  const filteredScans = useMemo(() => {
+    if (filter === "all") return scanStates;
+    return scanStates.filter((s) => {
+      const isScanning = s.providerResults.length === 0;
+      if (filter === "scanning") return isScanning;
+      if (isScanning) return false;
+      const c = computeConsensus(s.providerResults);
+      return c?.verdict === filter;
+    });
+  }, [scanStates, filter]);
+
+  // Eligible-for-bulk-approve: pass consensus at ≥ threshold, not yet
+  // approved/rejected. Mixed/fail excluded regardless of threshold — bulk
+  // should never approve against AI dissent.
+  const eligibleForBulk = useMemo(() => {
+    return scanStates.filter((s) => {
+      if (approved.has(s.assetId) || rejected.has(s.assetId)) return false;
+      if (s.providerResults.length === 0) return false;
+      const c = computeConsensus(s.providerResults);
+      return c !== null && c.verdict === "pass" && c.avgConfidence >= threshold;
+    });
+  }, [scanStates, approved, rejected, threshold]);
+
+  // Command-bar verdict tallies — exclude already-decided cards so the
+  // numbers always reflect work remaining.
+  const verdictTallies = useMemo(() => {
+    let pass = 0, mixed = 0, fail = 0, scanning = 0;
+    for (const s of scanStates) {
+      if (approved.has(s.assetId) || rejected.has(s.assetId)) continue;
+      if (s.providerResults.length === 0) { scanning++; continue; }
+      const c = computeConsensus(s.providerResults);
+      if (!c) continue;
+      if (c.verdict === "pass") pass++;
+      else if (c.verdict === "mixed") mixed++;
+      else fail++;
+    }
+    return { pass, mixed, fail, scanning };
+  }, [scanStates, approved, rejected]);
+
+  // ─── Approve / Reject / Bulk approve / Regen handlers ──────────────────
+
+  const buildResizeItem = useCallback(
+    (scan: ImageScanState): PipelineAsset => ({
+      assetId:      scan.assetId,
+      filename:     scan.filename,
+      thumbnailUrl: scan.thumbnailUrl,
+      outputUrl:    scan.outputUrl,
+      provider:     providerByAssetId.get(scan.assetId),
+    }),
+    [providerByAssetId],
+  );
+
+  const handleApprove = useCallback(
+    (assetId: string) => {
+      if (approved.has(assetId) || rejected.has(assetId)) return;
+      const scan = scanStates.find((s) => s.assetId === assetId);
+      if (!scan || scan.providerResults.length === 0) return;
+      onSendToResize([buildResizeItem(scan)]);
+      setApproved((prev) => new Set(prev).add(assetId));
+    },
+    [approved, rejected, scanStates, onSendToResize, buildResizeItem],
+  );
+
+  const handleReject = useCallback(
+    (assetId: string) => {
+      if (approved.has(assetId) || rejected.has(assetId)) return;
+      setRejected((prev) => new Set(prev).add(assetId));
+      // Close any regen panel/detail open for this card.
+      setRegenOpenId((cur) => (cur === assetId ? null : cur));
+      setDetailsOpenId((cur) => (cur === assetId ? null : cur));
+    },
+    [approved, rejected],
+  );
+
+  const handleApproveBulk = useCallback(() => {
+    if (eligibleForBulk.length === 0) return;
+    onSendToResize(eligibleForBulk.map(buildResizeItem));
+    setApproved((prev) => {
+      const next = new Set(prev);
+      for (const s of eligibleForBulk) next.add(s.assetId);
+      return next;
+    });
+  }, [eligibleForBulk, onSendToResize, buildResizeItem]);
+
+  const handleApplyRegen = useCallback(
+    async (assetId: string, payload: { prompt: string; provider: EnhanceProvider }) => {
+      try {
+        await enqueueRegen({
+          sessionId,
+          assetId,
+          regenPrompt:    payload.prompt,
+          provider:       payload.provider,
+          idempotencyKey: `regen-${assetId}-${uuidv4()}`,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Failed to enqueue regen";
+        setScanError(msg);
+      } finally {
+        setRegenOpenId(null);
+      }
+    },
+    [sessionId],
+  );
+
+  // ─── Auto-advance — auto-approve eligible passes ────────────────────────
+  // Forwarding to Resize + marking approved in lock-step IS the side-effect
+  // here; marking approved is what prevents the re-derive loop because the
+  // eligibleForBulk memo filters by approved.
+  useEffect(() => {
+    if (!autoAdvance || eligibleForBulk.length === 0) return;
+    onSendToResize(eligibleForBulk.map(buildResizeItem));
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional, see comment above.
+    setApproved((prev) => {
+      const next = new Set(prev);
+      for (const s of eligibleForBulk) next.add(s.assetId);
+      return next;
+    });
+  }, [autoAdvance, eligibleForBulk, onSendToResize, buildResizeItem]);
+
+  // ─── Reset scan ─────────────────────────────────────────────────────────
+
+  const handleResetScan = () => {
+    uploads.forEach((u) => URL.revokeObjectURL(u.previewUrl));
+    setUploads([]);
+    setScanStates([]);
+    setBatchJobIds([]);
+    setScanError(null);
+    setApproved(new Set());
+    setRejected(new Set());
+    setRegenOpenId(null);
+    setDetailsOpenId(null);
+    setJobStartedMs(new Map());
+    setFilter("all");
+    onClearPipeline();
+  };
+
+  // ─── Render ────────────────────────────────────────────────────────────
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
 
       {/* ── Standalone upload zone ── */}
-      {/* Operators using Scan as a stand-alone QC tool drop image files
-          here; they bypass Enhance and get scanned directly. Once scan
-          results come back, the normal "Send to Resize" handoff still
-          works the same way. Hidden once a scan batch is in flight to
-          discourage adding more assets mid-scan. */}
       {scanStates.length === 0 && (
         <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
           <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
@@ -1184,53 +679,35 @@ export function ScanPanel({
           )}
 
           <button
+            type="button"
             onClick={handleStartScan}
-            disabled={allAssets.length === 0 || isScanning || anyUploadInFlight}
+            disabled={allAssets.length === 0 || anyUploadInFlight}
             className={`
               px-8 py-3 rounded-xl font-semibold text-sm transition-all
-              ${allAssets.length > 0 && !isScanning && !anyUploadInFlight
+              ${allAssets.length > 0 && !anyUploadInFlight
                 ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
                 : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
             `}
           >
-            {isScanning
-              ? "Scanning…"
-              : anyUploadInFlight
-                ? "Wait for uploads…"
-                : `Scan ${allAssets.length} Image${allAssets.length !== 1 ? "s" : ""}`}
+            {anyUploadInFlight
+              ? "Wait for uploads…"
+              : `Scan ${allAssets.length} Image${allAssets.length !== 1 ? "s" : ""}`}
           </button>
         </div>
       )}
 
-      {/* ── Results header ── */}
+      {/* ── Results header — filter chips + total + reset ── */}
       {scanStates.length > 0 && (
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h3 className="text-sm font-semibold text-zinc-200">
-              {scanStates.length} image{scanStates.length !== 1 ? "s" : ""} scanned
-            </h3>
-            {passCount > 0 && (
-              <span className="text-xs text-green-400 font-medium">✓ {passCount} passed</span>
-            )}
-            {failCount > 0 && (
-              <span className="text-xs text-red-400 font-medium">✗ {failCount} failed</span>
-            )}
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4 flex-wrap">
+            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-[0.18em]">
+              Scan results — {scanStates.length} image{scanStates.length !== 1 ? "s" : ""}
+            </h2>
+            <ScanFilterChips counts={filterCounts} active={filter} onChange={setFilter} />
           </div>
           <button
-            onClick={() => {
-              // Wipe local scan state AND tell the workspace to drop the
-              // enhancedAssets pipeline — otherwise a fresh "Scan all"
-              // would re-scan the same images the user just dismissed.
-              // Revoke standalone-upload preview URLs before wiping state
-              // so the browser releases the blob memory.
-              uploads.forEach((u) => URL.revokeObjectURL(u.previewUrl));
-              setUploads([]);
-              setScanStates([]);
-              setBatchJobIds([]);
-              setScanError(null);
-              setSentToResizeAssetIds(new Set());
-              onClearPipeline();
-            }}
+            type="button"
+            onClick={handleResetScan}
             className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
           >
             Reset scan
@@ -1238,45 +715,54 @@ export function ScanPanel({
         </div>
       )}
 
-      {/* ── Per-image cards ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {scanStates.map((scan, i) => (
-          <div key={scan.assetId}>
-            {/* Mount a hidden poller for each job */}
-            {batchJobIds[i] && (
-              <ScanJobPoller
-                jobId={batchJobIds[i]}
-                onComplete={handleJobComplete}
-                onError={handleJobError}
-              />
-            )}
-            <ImageScanCard
-              scan={scan}
-              sessionId={sessionId}
-              sent={sentToResizeAssetIds.has(scan.assetId)}
-              onRegenComplete={handleRegenComplete}
-              onSend={(item) => sendOneToResize(item, scan.assetId)}
-            />
-          </div>
-        ))}
-      </div>
+      {/* ── ScanCard list ── */}
+      {scanStates.length > 0 && (
+        <div className="space-y-3 pb-4">
+          {filteredScans.map((scan) => {
+            // Find the original index so we can mount the matching headless
+            // poller. Newly-arriving scans keep their batchJobIds slot.
+            const originalIndex = scanStates.findIndex((s) => s.assetId === scan.assetId);
+            const jobId = originalIndex >= 0 ? batchJobIds[originalIndex] : undefined;
+            return (
+              <div key={scan.assetId}>
+                {jobId && (
+                  <ScanJobPoller
+                    jobId={jobId}
+                    onUpdate={handleJobUpdate}
+                    onComplete={handleJobComplete}
+                    onError={handleJobError}
+                  />
+                )}
+                <ScanCard
+                  scan={scan}
+                  approved={approved.has(scan.assetId)}
+                  rejected={rejected.has(scan.assetId)}
+                  regenOpen={regenOpenId === scan.assetId}
+                  detailsOpen={detailsOpenId === scan.assetId}
+                  scanStartedMs={jobStartedMs.get(scan.assetId) ?? null}
+                  nowMs={nowMs}
+                  onToggleRegen={() =>
+                    setRegenOpenId((cur) => (cur === scan.assetId ? null : scan.assetId))
+                  }
+                  onToggleDetails={() =>
+                    setDetailsOpenId((cur) => (cur === scan.assetId ? null : scan.assetId))
+                  }
+                  onApprove={() => handleApprove(scan.assetId)}
+                  onReject={() => handleReject(scan.assetId)}
+                  onApplyRegen={(payload) => handleApplyRegen(scan.assetId, payload)}
+                />
+              </div>
+            );
+          })}
 
-      {/* ── Send-all-to-Resize batch button ── */}
-      {scanStates.some((s) => s.providerResults.length > 0) && (
-        <button
-          onClick={sendAllToResize}
-          disabled={unsentScans.length === 0}
-          className={`
-            w-full py-4 px-6 rounded-xl font-bold text-sm uppercase tracking-[0.18em] transition-all border-2
-            ${unsentScans.length > 0
-              ? "bg-red-600 hover:bg-red-500 border-red-500 text-white shadow-lg shadow-red-900/40"
-              : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"}
-          `}
-        >
-          {unsentScans.length > 0
-            ? <>Send {unsentScans.length} image{unsentScans.length !== 1 ? "s" : ""} to Resize tab →</>
-            : <>✓ All sent to Resize</>}
-        </button>
+          {filteredScans.length === 0 && (
+            <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/30 p-12 text-center text-sm text-zinc-500">
+              No images match the{" "}
+              <span className="uppercase tracking-[0.18em] text-zinc-400 font-semibold">{filter}</span>{" "}
+              filter.
+            </div>
+          )}
+        </div>
       )}
 
       {/* ── Model attribution ── */}
@@ -1293,22 +779,43 @@ export function ScanPanel({
           {" "}on hard cases)
         </p>
       )}
+
+      {/* ── Sticky command bar ── */}
+      {scanStates.length > 0 && (
+        <ScanCommandBar
+          passCount={verdictTallies.pass}
+          mixedCount={verdictTallies.mixed}
+          failCount={verdictTallies.fail}
+          scanningCount={verdictTallies.scanning}
+          approvedCount={approved.size}
+          rejectedCount={rejected.size}
+          eligibleCount={eligibleForBulk.length}
+          threshold={threshold}
+          onThreshold={setThreshold}
+          onApproveBulk={handleApproveBulk}
+          autoAdvance={autoAdvance}
+        />
+      )}
     </div>
   );
 }
 
-// ─── Headless poller component ────────────────────────────────────────────────
-// Mounts a useJobPoller per scan job without violating hook rules.
+// ─── Headless poller component ──────────────────────────────────────────────
+// Mounts a useJobPoller per scan job without violating hook rules. onUpdate
+// fires on every poll tick — used to capture job.createdAt for the
+// ScanProgressStrip's elapsed counter.
 
 function ScanJobPoller({
   jobId,
+  onUpdate,
   onComplete,
   onError,
 }: {
-  jobId: string;
+  jobId:      string;
+  onUpdate:   (job: JobRecord) => void;
   onComplete: (job: JobRecord) => void;
-  onError: (job: JobRecord) => void;
+  onError:    (job: JobRecord) => void;
 }) {
-  useJobPoller(jobId, () => {}, onComplete, onError);
+  useJobPoller(jobId, onUpdate, onComplete, onError);
   return null;
 }

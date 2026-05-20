@@ -270,6 +270,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 enhancedAssets={enhancedAssets}
                 onClearPipeline={handleClearPipeline}
                 onSendToResize={handleSendToResize}
+                autoAdvance={autoAdvance}
               />
             )}
           </PanelSlot>
