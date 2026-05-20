@@ -568,6 +568,12 @@ export interface EnhancePanelProps {
    */
   onSendToScan: (items: CompletedEnhanceItem[]) => void;
   /**
+   * Shortcut for operators who don't need the scan step — pushes
+   * straight to the Resize tab's queue, bypassing Scan. Same items
+   * shape as onSendToScan.
+   */
+  onSendToResize: (items: CompletedEnhanceItem[]) => void;
+  /**
    * Called when the user clicks "Clear all". Wipes downstream pipeline
    * state in the workspace (enhancedAssets, resizeResults) so Scan and
    * Resize tabs don't keep stale jobs queued.
@@ -575,7 +581,7 @@ export interface EnhancePanelProps {
   onClearPipeline: () => void;
 }
 
-export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onClearPipeline }: EnhancePanelProps) {
+export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSendToResize, onClearPipeline }: EnhancePanelProps) {
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Ref to the per-job rows section — scrolled into view when the user
@@ -726,6 +732,21 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
     });
     setSelectedJobIds(new Set());
   }, [selectedItems, onSendToScan]);
+
+  // Bypass-Scan path. Same selection set, same sentJobIds bookkeeping
+  // (a row that goes straight to Resize is still "sent" — operator
+  // can't double-send it through Scan afterwards). Switches the active
+  // tab to Resize via the workspace handler.
+  const sendSelectedToResize = useCallback(() => {
+    if (selectedItems.length === 0) return;
+    onSendToResize(selectedItems);
+    setSentJobIds((prev) => {
+      const next = new Set(prev);
+      for (const it of selectedItems) next.add(it.jobId);
+      return next;
+    });
+    setSelectedJobIds(new Set());
+  }, [selectedItems, onSendToResize]);
 
   // Per-provider unsent-counts power the bulk-select bar's button labels.
   const unsentCountByProvider = useMemo(() => {
@@ -1518,20 +1539,43 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onCl
 
       {/* ── Send-selected-to-Scan batch button ── */}
       {completed.size > 0 && (
-        <button
-          onClick={sendSelected}
-          disabled={selectedItems.length === 0}
-          className={`
-            w-full py-4 px-6 rounded-xl font-bold text-sm uppercase tracking-[0.18em] transition-all border-2
-            ${selectedItems.length > 0
-              ? "bg-red-600 hover:bg-red-500 border-red-500 text-white shadow-lg shadow-red-900/40"
-              : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"}
-          `}
-        >
-          {selectedItems.length > 0
-            ? <>Send {selectedItems.length} selected image{selectedItems.length !== 1 ? "s" : ""} to Scan tab →</>
-            : <>✓ All sent to Scan</>}
-        </button>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+          <button
+            onClick={sendSelected}
+            disabled={selectedItems.length === 0}
+            className={`
+              w-full py-4 px-6 rounded-xl font-bold text-sm uppercase tracking-[0.18em] transition-all border-2
+              ${selectedItems.length > 0
+                ? "bg-red-600 hover:bg-red-500 border-red-500 text-white shadow-lg shadow-red-900/40"
+                : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"}
+            `}
+          >
+            {selectedItems.length > 0
+              ? <>Send {selectedItems.length} to Scan tab →</>
+              : <>✓ Nothing to send</>}
+          </button>
+
+          {/* Skip-Scan shortcut — for operators who already trust the
+              enhance output and just want to crop + export. Same
+              selection set; routes straight to the Resize tab and
+              marks the rows as sent so they can't double-go to Scan
+              afterwards. */}
+          <button
+            onClick={sendSelectedToResize}
+            disabled={selectedItems.length === 0}
+            className={`
+              w-full py-4 px-6 rounded-xl font-bold text-sm uppercase tracking-[0.18em] transition-all border-2
+              ${selectedItems.length > 0
+                ? "bg-blue-600 hover:bg-blue-500 border-blue-500 text-white shadow-lg shadow-blue-900/40"
+                : "bg-zinc-900 border-zinc-800 text-zinc-600 cursor-not-allowed"}
+            `}
+            title="Skip the Scan step and send selected results straight to the Resize tab"
+          >
+            {selectedItems.length > 0
+              ? <>Skip Scan → Send {selectedItems.length} to Resize tab</>
+              : <>Skip Scan → Resize</>}
+          </button>
+        </div>
       )}
 
       {/* ── Model attribution ── */}

@@ -157,6 +157,31 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     setActiveTab("resize");
   };
 
+  // Shortcut path: send straight from Enhance to Resize, skipping the
+  // Scan tab entirely. Used by operators who already trust the
+  // enhance output and just want to crop + export. Same shape /
+  // provider-suffix logic as handleSendToScan — only the destination
+  // tab differs.
+  const handleEnhanceToResize = (items: Array<{
+    jobId: string;
+    outputAssetId: string;
+    filename: string;
+    outputUrl: string;
+    provider?: string;
+  }>) => {
+    setResizeAssets((prev) => {
+      const additions = items.map((it): PipelineAsset => ({
+        assetId:      it.outputAssetId,
+        filename:     providerSuffixedFilename(it.filename, it.provider),
+        thumbnailUrl: it.outputUrl,
+        outputUrl:    it.outputUrl,
+        provider:     it.provider,
+      }));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+    setActiveTab("resize");
+  };
+
   return (
     <div className="min-h-screen bg-black text-white flex flex-col">
       <Header bypassed={bypassed} isAdmin={isAdmin} />
@@ -182,6 +207,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 meta={meta}
                 onMetaChange={setMeta}
                 onSendToScan={handleSendToScan}
+                onSendToResize={handleEnhanceToResize}
                 onClearPipeline={handleClearPipeline}
               />
             )}
