@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gcloud run *)",
+      "Bash(gcloud secrets *)"
+    ]
+  }
+}
