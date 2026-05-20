@@ -1235,8 +1235,8 @@ export function EnhancePanel({ sessionId, meta, onMetaChange, onSendToScan, onSe
               <p className="text-sm font-semibold text-zinc-200">
                 xAI Grok
               </p>
-              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-950/60 border border-amber-800 rounded px-1.5 py-0.5">
-                Moderate
+              <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-emerald-200 bg-emerald-900/70 border border-emerald-600 rounded px-1.5 py-0.5">
+                Fastest
               </span>
               <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-sky-100 bg-sky-600 rounded px-1.5 py-0.5 shadow-sm shadow-sky-900/60 animate-pulse">
                 New
