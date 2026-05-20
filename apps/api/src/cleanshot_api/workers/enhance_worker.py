@@ -73,11 +73,13 @@ FLUX_POLL_MAX_ATTEMPTS = 60        # ~90s total budget; FLUX 2 MAX typically fin
 
 # Reve endpoint — synchronous JSON request, returns base64-encoded PNG +
 # credit accounting in the same response. Auth via Bearer token in
-# Authorization header. The `version="latest"` default points to the
-# most-recent Reve image-edit model; pin to a dated slug like
-# "reve-edit@20250915" if you want frozen behaviour across versions.
+# Authorization header. We pin to `latest-fast` (resolves to
+# reve-edit-fast@20251030) instead of `latest` for RPM headroom; the
+# full-quality model trips Reve's undocumented per-minute cap on small
+# bursts. Pin to a dated slug like "reve-edit-fast@20251030" if you
+# need frozen behaviour across versions.
 REVE_GENERATE_URL = "https://api.reve.com/v1/image/edit"
-ENHANCE_MODEL_REVE = "reve-edit-latest"
+ENHANCE_MODEL_REVE = "reve-edit-fast-latest"
 # Reve's edit_instruction field caps at 2560 chars — our stock prompt
 # can exceed that with all toggles on, so we truncate. The Reve docs
 # explicitly say "this instruction will be automatically enhanced by
@@ -481,14 +483,18 @@ async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
       body: {
         edit_instruction: <prompt — capped to REVE_PROMPT_MAX_CHARS>,
         reference_image:  <base64 source bytes>,
-        version:          "latest",
-        mode:             "fast",
+        version:          "latest-fast",
       }
 
-    `mode` defaults to "fastest", which slams Reve's undocumented per-minute
-    cap (we saw 429s after ~7 successful calls in a row even with the
-    3-per-30s limiter). Dropping to "fast" trades a few extra seconds of
-    per-image render time for headroom under their RPM ceiling.
+    Reve exposes its speed/quality knob via the `version` string itself,
+    not a separate `mode` field (a `mode` parameter 400s with
+    "One or more of your parameters is not recognized."). Valid versions
+    are `latest`, `latest-fast`, `reve-edit@20250915`, and
+    `reve-edit-fast@20251030`. We pin to `latest-fast` because the
+    full-quality model reliably trips Reve's undocumented per-minute
+    cap (~7 successful edits then a wall of 429s even with our
+    3-per-30s limiter in front). The fast variant is materially cheaper
+    in credits + has noticeably more RPM headroom.
 
     Response shape (when accept=json):
       {
@@ -518,8 +524,7 @@ async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
     body = {
         "edit_instruction": prompt[:REVE_PROMPT_MAX_CHARS],
         "reference_image":  image_b64,
-        "version":          "latest",
-        "mode":             "fast",
+        "version":          "latest-fast",
     }
     headers = {
         "Authorization": f"Bearer {settings.reve_api_key}",

@@ -50,8 +50,10 @@ PER_IMAGE_USD: dict[str, float] = {
     # budget. Without a published USD-per-credit conversion we use a
     # conservative $0.03/edit placeholder. After a few real runs,
     # inspect the actual credits_used + Reve's pricing page and
-    # update this entry.
-    "reve-edit-latest":               0.030,
+    # update this entry. The -fast variant we now pin to is cheaper in
+    # credits than the full-quality model; refine once we have real
+    # invoices to calibrate against.
+    "reve-edit-fast-latest":          0.030,
 
     # xAI Grok image edit (https://docs.x.ai). Public pricing for
     # /v1/images/edits isn't published yet — placeholder of $0.07 per
