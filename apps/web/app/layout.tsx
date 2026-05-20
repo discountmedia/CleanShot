@@ -2,6 +2,7 @@
 // TODO: add Inter font via next/font/google
 import '@/styles/globals.css'
 import type { Metadata } from 'next'
+import { Analytics } from '@vercel/analytics/next'
 
 export const metadata: Metadata = {
   title: 'CleanShot',
@@ -11,7 +12,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body>{children}</body>
+      <body>
+        {children}
+        <Analytics />
+      </body>
     </html>
   )
 }
