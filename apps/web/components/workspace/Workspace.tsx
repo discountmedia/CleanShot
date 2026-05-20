@@ -272,7 +272,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onSendToResize={handleSendToResize}
                 autoAdvance={autoAdvance}
                 equipmentType={meta.equipmentType ?? "forklift"}
-                make={meta.make ?? null}
+                //make={meta.make ?? null}
               />
             )}
           </PanelSlot>

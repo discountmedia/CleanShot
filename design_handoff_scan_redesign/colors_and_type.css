@@ -1,0 +1,254 @@
+/* ────────────────────────────────────────────────────────────────────────────
+   CleanShot Design Tokens
+   Source of truth: apps/web/styles/globals.css + the live components.
+   The Tailwind v4 @theme block in the codebase still has some legacy blue
+   "brand-*" colors from an early draft — the SHIPPED app does not use them.
+   The real brand is black surfaces + Tailwind zinc neutrals + a single red-600
+   accent (sourced from Discount Forklift's red wordmark).
+   ──────────────────────────────────────────────────────────────────────────── */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+:root {
+  /* ─── Type ──────────────────────────────────────────────────────────────── */
+  --font-sans: 'Inter', system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  /* Tracked-out uppercase labels are the defining type pattern in CleanShot.
+     `.18em` is used everywhere — tab labels, section headers, KPI captions,
+     row status, badges. Anything under 12px and uppercase is tracked .16em. */
+  --tracking-label:        0.18em;
+  --tracking-label-tight:  0.16em;
+
+  /* ─── Brand ─────────────────────────────────────────────────────────────── */
+  /* Sole accent colour. Pulled from Discount Forklift's italic wordmark.
+     Used for: header underline, active tab, primary CTA, danger badges, the
+     spinning forklift heart on the splash. There is no secondary brand colour. */
+  --color-brand-red:       #dc2626;  /* tailwind red-600  — buttons, header stripe */
+  --color-brand-red-hover: #ef4444;  /* tailwind red-500  — hover state */
+  --color-brand-red-text:  #f87171;  /* tailwind red-400  — danger text on dark */
+  --color-brand-red-mute:  #7f1d1d;  /* tailwind red-900  — borders, ring */
+  --color-brand-red-bg:    rgb(69 10 10 / 0.30);  /* red-950/30 — alert fill */
+
+  /* ─── Surfaces (black-first, dark mode is the only mode) ────────────────── */
+  --color-bg:              #000000;       /* root page background */
+  --color-surface-1:       #09090b;       /* zinc-950 — top of cards */
+  --color-surface-2:       rgb(9 9 11 / 0.60);  /* zinc-950/60 — preferred card fill */
+  --color-surface-3:       #18181b;       /* zinc-900 — inputs, secondary buttons */
+  --color-surface-4:       #27272a;       /* zinc-800 — hover states, dropdowns */
+
+  /* Borders. Default to zinc-800 for cards, zinc-700 for inputs, zinc-900 for
+     subtle hairlines (tab bar bottom, table rows). */
+  --color-border-faint:    #18181b;       /* zinc-900 */
+  --color-border:          #27272a;       /* zinc-800 — DEFAULT card border */
+  --color-border-input:    #3f3f46;       /* zinc-700 — form fields */
+  --color-border-strong:   #52525b;       /* zinc-600 — hover on cards */
+
+  /* ─── Foreground (zinc ramp; uppercase tracked labels live at -500) ─── */
+  --color-fg-1:            #ffffff;       /* primary headings, KPI values */
+  --color-fg-2:            #e4e4e7;       /* zinc-200 — body, table cells */
+  --color-fg-3:            #a1a1aa;       /* zinc-400 — secondary copy */
+  --color-fg-4:            #71717a;       /* zinc-500 — UPPERCASE LABELS, captions */
+  --color-fg-5:            #52525b;       /* zinc-600 — placeholders, empty states */
+  --color-fg-6:            #3f3f46;       /* zinc-700 — disabled */
+  --color-fg-7:            #27272a;       /* zinc-800 — footer attribution */
+
+  /* ─── Status / Semantic ─────────────────────────────────────────────────── */
+  /* Used for: KPI tile values, job status pills, scan verdicts.
+     The colour name is the role — never use these for decoration. */
+  --color-success:         #4ade80;       /* green-400 — PASS, complete, +badge */
+  --color-success-bg:      rgb(5 46 22 / 0.60);    /* green-950/60 */
+  --color-success-border:  #166534;       /* green-800 */
+
+  --color-warn:            #facc15;       /* yellow-400 — queued, pending, ≤5d expiry */
+  --color-warn-bg:         rgb(66 32 6 / 0.60);    /* yellow-950/60 */
+  --color-warn-border:     #854d0e;       /* yellow-800 */
+
+  --color-danger:          #f87171;       /* red-400 — FAIL text */
+  --color-info:            #60a5fa;       /* sky/blue-400 — processing */
+  --color-attn:            #fb923c;       /* orange-400 — Anthropic, alerts */
+  --color-amber:           #f59e0b;       /* amber-500 — Dev bypass tag */
+
+  /* ─── AI Provider Palette ───────────────────────────────────────────────── */
+  /* Each enhance/scan provider gets a distinct hue so the operator can
+     identify rows at a glance. These are FIXED — they are documented in
+     CLAUDE.md as part of the product. */
+  --color-prov-gemini:     #60a5fa;       /* blue-400 */
+  --color-prov-openai:     #4ade80;       /* green-400 */
+  --color-prov-flux:       #a78bfa;       /* violet-400 */
+  --color-prov-reve:       #e879f9;       /* fuchsia-400 */
+  --color-prov-grok:       #fb923c;       /* orange-400 */
+  --color-prov-anthropic:  #fb923c;       /* orange-400 (scan only) */
+
+  /* ─── Radii ─────────────────────────────────────────────────────────────── */
+  --radius-input:   0.375rem;   /* 6px  — text inputs */
+  --radius-button:  0.375rem;   /* 6px  — small buttons, badges */
+  --radius-pill:    9999px;     /* badges, verdict chips */
+  --radius-card:    0.75rem;    /* 12px — cards, alerts, KPI tiles */
+  --radius-modal:   1rem;       /* 16px — dropdowns, sign-in card */
+
+  /* ─── Spacing ───────────────────────────────────────────────────────────── */
+  --space-card-x:   1.25rem;    /* 20px — card horizontal padding (px-5) */
+  --space-card-y:   1rem;       /* 16px — card vertical padding (py-4) */
+  --space-row:      0.75rem;    /* 12px — vertical rhythm between rows */
+  --space-section:  1.5rem;     /* 24px — between major page sections */
+
+  /* ─── Shadows ───────────────────────────────────────────────────────────── */
+  /* CleanShot uses shadows VERY sparingly — only on overlays (dropdowns,
+     modals) and on the login splash icon (red-tinted glow). Cards are
+     bordered, not elevated. */
+  --shadow-dropdown: 0 25px 50px -12px rgb(0 0 0 / 0.50);
+  --shadow-red-glow: 0 25px 50px -12px rgb(127 29 29 / 0.40);
+
+  /* ─── Motion ────────────────────────────────────────────────────────────── */
+  --duration-fast:   150ms;     /* hover, focus, colour swaps */
+  --duration-base:   200ms;     /* tab switches, dropdowns */
+  --duration-slow:   500ms;     /* progress-bar fill */
+  --easing-default:  cubic-bezier(0.4, 0, 0.2, 1);   /* tailwind default */
+}
+
+/* ────────────────────────────────────────────────────────────────────────────
+   Semantic helpers — apply directly to elements.
+   The codebase uses Tailwind utility classes; these are the canonical
+   equivalents documented for designers reading this file outside of code.
+   ──────────────────────────────────────────────────────────────────────────── */
+
+body {
+  font-family: var(--font-sans);
+  background: var(--color-bg);
+  color: var(--color-fg-1);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* H1 — app title in header. Always uppercase, tracked, BOLD, tiny (14px). */
+.cs-h1 {
+  font-family: var(--font-sans);
+  font-size: 0.875rem;            /* 14px */
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-fg-1);
+}
+
+/* H2 — section header inside a panel. Larger, semibold, NOT uppercase. */
+.cs-h2 {
+  font-size: 1.125rem;            /* 18px */
+  font-weight: 600;
+  color: var(--color-fg-1);
+  letter-spacing: -0.01em;
+}
+
+/* H3 — sub-section / card title. */
+.cs-h3 {
+  font-size: 0.875rem;            /* 14px */
+  font-weight: 600;
+  color: var(--color-fg-2);
+}
+
+/* KPI numeric — huge, bold, tabular. The 4xl scale is the largest type in
+   the entire product; reserved for KPI tiles. */
+.cs-kpi-value {
+  font-size: 2.25rem;             /* 36px */
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-fg-1);
+  line-height: 1.1;
+}
+
+/* Tracked uppercase label — THE signature CleanShot type style.
+   Used for: tab labels, KPI captions, status pills, section header eyebrows,
+   button text (for primary actions). */
+.cs-label {
+  font-size: 0.625rem;            /* 10px */
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  color: var(--color-fg-4);
+}
+
+/* Slightly larger tracked-label variant — tab bar, primary nav. */
+.cs-label-tab {
+  font-size: 0.75rem;             /* 12px */
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label-tight);
+}
+
+/* Body — small (14px). Long-form copy in CleanShot is rare; default body
+   text in panels is 14px. */
+.cs-body {
+  font-size: 0.875rem;            /* 14px */
+  font-weight: 400;
+  color: var(--color-fg-2);
+  line-height: 1.5;
+}
+
+.cs-body-sm {
+  font-size: 0.75rem;             /* 12px */
+  color: var(--color-fg-3);
+  line-height: 1.45;
+}
+
+/* Mono — filenames, IDs, GCS paths, error stacks. */
+.cs-mono {
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;           /* 13px */
+  color: var(--color-fg-2);
+}
+
+/* Card — the most common surface in CleanShot. */
+.cs-card {
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-card);
+  padding: var(--space-card-y) var(--space-card-x);
+}
+
+/* Primary CTA button — red. Used for "Send to Scan", "Approve All", "Save Project". */
+.cs-btn-primary {
+  background: var(--color-brand-red);
+  color: var(--color-fg-1);
+  border: 1px solid var(--color-brand-red-hover);
+  border-radius: var(--radius-button);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  transition: background var(--duration-fast) var(--easing-default);
+}
+.cs-btn-primary:hover { background: var(--color-brand-red-hover); }
+
+/* Secondary button — zinc outline, no fill. */
+.cs-btn-secondary {
+  background: transparent;
+  color: var(--color-fg-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-button);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+.cs-btn-secondary:hover {
+  color: var(--color-fg-1);
+  border-color: var(--color-border-strong);
+}
+
+/* Input field. */
+.cs-input {
+  background: var(--color-surface-3);
+  border: 1px solid var(--color-border-input);
+  border-radius: var(--radius-input);
+  padding: 0.5rem 0.75rem;
+  color: var(--color-fg-1);
+  font-size: 0.875rem;
+}
+.cs-input::placeholder { color: var(--color-fg-5); }
+.cs-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-brand-red);
+  border-color: transparent;
+}

@@ -21,7 +21,7 @@ interface ClientRequest {
   toggles: Record<string, boolean>;
   // We forward `.make` as the top-level `make` field; the rest of
   // forkliftMeta is project-side state and lands via /api/projects/save.
-  forkliftMeta?: Record<string, string>;
+ // forkliftMeta?: Record<string, string>;
   provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
   /**
    * Drives the per-type anatomy block in _build_enhance_prompt. Optional
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
       // Forward the OEM make so the worker's RENTAL-FLEET BRANDING block
       // can restore Toyota / Hyster / etc. decals where rental wraps had
       // been stripped. Pulled from the operator's meta form.
-      ...(body.forkliftMeta?.make?.trim() ? { make: body.forkliftMeta.make.trim() } : {}),
+     // ...(body.forkliftMeta?.make?.trim() ? { make: body.forkliftMeta.make.trim() } : {}),
       // Only forward custom_prompt when non-empty; omitting lets FastAPI
       // use its `None` default and the worker falls through to toggles.
       ...(body.customPrompt?.trim() ? { custom_prompt: body.customPrompt } : {}),

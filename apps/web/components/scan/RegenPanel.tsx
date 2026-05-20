@@ -32,7 +32,7 @@ interface RegenPanelProps {
    * OEM make — feeds the RENTAL-FLEET BRANDING block's OEM-decal
    * restoration sentence. Null/missing => no OEM restoration on regen.
    */
-  make?: string | null;
+  //make?: string | null;
   onApply:  (payload: { prompt: string; provider: EnhanceProvider }) => void;
   onCancel: () => void;
 }
@@ -41,13 +41,13 @@ export function RegenPanel({
   unified,
   defaultProvider = "gemini",
   equipmentType = "forklift",
-  make = null,
+  //make = null,
   onApply,
   onCancel,
 }: RegenPanelProps) {
   const initialPrompt = useMemo(
-    () => buildRegenPrompt(unified, { equipmentType, make }),
-    [unified, equipmentType, make],
+    () => buildRegenPrompt(unified, { equipmentType }),
+    [unified, equipmentType],
   );
   const [prompt, setPrompt] = useState(initialPrompt);
   const [provider, setProvider] = useState<EnhanceProvider>(defaultProvider);

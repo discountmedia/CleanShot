@@ -141,7 +141,6 @@ EQUIPMENT_ANATOMY: dict[str, str] = {
 def _build_enhance_prompt(
     toggles: EnhanceToggles,
     equipment_type: str = "forklift",
-    make: str | None = None,
 ) -> str:
     """
     Build a Gemini image-edit instruction.
@@ -215,25 +214,11 @@ def _build_enhance_prompt(
     )
 
     if toggles.remove_rental_branding:
-        make_clean = (make or "").strip()
+        #make_clean = (make or "").strip()
         # When a make is known, instruct the model to restore OEM-style
         # brand decals where the rental wrap had stripped them. When the
         # make field is empty, just clean the rental branding away and
         # leave the panel plain — don't have the model guess a brand.
-        oem_restoration = (
-            f" Where the removed rental branding covered a substantial "
-            f"body panel area that an OEM-shipped {make_clean} unit would "
-            f"normally carry brand identification on (typical positions: "
-            f"side cab panels, rear counterweight / chassis, mast cross-"
-            f"member or boom side), restore an OEM-style \"{make_clean}\" "
-            f"brand wordmark or logo in the manufacturer's typical decal "
-            f"style and placement for that make. Do NOT invent capacity "
-            f"numbers, model numbers, serial numbers, or specifications "
-            f"that aren't already visible elsewhere in the source — only "
-            f"the {make_clean} brand identification."
-            if make_clean
-            else ""
-        )
         standard_bullets.append(
             "RENTAL-FLEET BRANDING. Remove decals, stickers, vinyl wraps, "
             "painted lettering, and asset-tag numbers that advertise "
@@ -246,7 +231,7 @@ def _build_enhance_prompt(
             "colours). Where a rental decal is removed, leave the "
             "underlying panel surface matching the surrounding panel — "
             "do not leave a ghost outline."
-            + oem_restoration
+            #+ oem_restoration
             + " PRESERVE all OEM manufacturer decals (Toyota, Hyster, "
               "Yale, Crown, Komatsu, Mitsubishi, Caterpillar, Skyjack, "
               "Genie, JLG, Bobcat, etc.), capacity plates, VIN / serial "
@@ -850,7 +835,7 @@ async def _run_enhance(
             prompt = _build_enhance_prompt(
                 payload.toggles,
                 equipment_type=payload.equipment_type,
-                make=payload.make,
+                #make=payload.make,
             )
 
         # Dispatch to the requested provider. The Gemini semaphore is

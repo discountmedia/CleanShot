@@ -117,7 +117,7 @@ export interface ScanPanelProps {
    * can request OEM-style brand restoration where rental wraps were
    * stripped. Null when the operator hasn't filled in Make yet.
    */
-  make:            string | null;
+  //make:            string | null;
 }
 
 export function ScanPanel({
@@ -127,7 +127,7 @@ export function ScanPanel({
   onSendToResize,
   autoAdvance,
   equipmentType,
-  make,
+  //make,
 }: ScanPanelProps) {
   // ─── Core scan state ────────────────────────────────────────────────────
 
@@ -772,7 +772,7 @@ export function ScanPanel({
                   scanStartedMs={jobStartedMs.get(scan.assetId) ?? null}
                   nowMs={nowMs}
                   equipmentType={equipmentType}
-                  make={make}
+                  //make={make}
                   onToggleRegen={() =>
                     setRegenOpenId((cur) => (cur === scan.assetId ? null : scan.assetId))
                   }
