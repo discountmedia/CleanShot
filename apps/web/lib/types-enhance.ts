@@ -38,3 +38,52 @@ export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
   reve:   "bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-800",
   grok:   "bg-orange-950/40 text-orange-300 border-orange-800",
 };
+
+/**
+ * Per-provider descriptive metadata — speed pill copy + classes + the
+ * one-line "what this is" description that used to live in the verbose
+ * checkbox card stack. Restored to the redesigned ProviderRow so the
+ * operator still sees latency expectations and routing details.
+ */
+export interface EnhanceProviderMeta {
+  speedLabel:   "Fast" | "Fastest" | "Moderate" | "Slow";
+  /** Tailwind classes for the speed pill. Tone tracks the label (emerald for fast, amber moderate, red slow). */
+  speedClass:   string;
+  /** One-sentence "what this is" line shown under the provider name. */
+  description:  string;
+  /** True if the provider got a "New" tag in the prior verbose layout. */
+  isNew:        boolean;
+}
+
+export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta> = {
+  gemini: {
+    speedLabel:  "Fast",
+    speedClass:  "text-emerald-300 bg-emerald-950/60 border-emerald-800",
+    description: "Fastest and cheapest. Routes through gemini-3.1-flash-image-preview.",
+    isNew:       false,
+  },
+  openai: {
+    speedLabel:  "Slow",
+    speedClass:  "text-red-300 bg-red-950/60 border-red-800",
+    description: "Slower but can be more literal. Routes through gpt-image-2-2026-04-21.",
+    isNew:       false,
+  },
+  grok: {
+    speedLabel:  "Fastest",
+    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
+    description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
+    isNew:       true,
+  },
+  flux: {
+    speedLabel:  "Moderate",
+    speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
+    description: "Black Forest Labs FLUX 2 MAX — best for editorial-style edits, async polling.",
+    isNew:       true,
+  },
+  reve: {
+    speedLabel:  "Fast",
+    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
+    description: "Reve image-edit (latest) — synchronous /v1/image/edit; auto-enhances the instruction internally.",
+    isNew:       true,
+  },
+};

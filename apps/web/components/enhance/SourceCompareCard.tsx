@@ -227,6 +227,7 @@ export function SourceCompareCard({
                     chosen={chosen === p}
                     nowMs={nowMs}
                     onChoose={() => onChoose(p)}
+                    onRegen={() => onRetry(p)}
                   />
                 );
               })}
@@ -278,9 +279,18 @@ interface VariantThumbProps {
   chosen: boolean;
   nowMs: number;
   onChoose: () => void;
+  /**
+   * Re-runs enhance on this (file, provider) pair. EnhancePanel maps it
+   * to `retryProvider`, which is the same handler that powers the
+   * failed-variant retry strip — same idempotency-key bump, same eviction
+   * of the prior completed/jobStateMap entry. Surfaced here as a small
+   * ↻ button on completed thumbs so the operator can regenerate a single
+   * variant without unchecking its provider in the ProviderRow.
+   */
+  onRegen: () => void;
 }
 
-function VariantThumb({ provider, variant, chosen, nowMs, onChoose }: VariantThumbProps) {
+function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen }: VariantThumbProps) {
   const status = variant?.job?.status ?? (variant ? "queued" : "idle");
   const isComplete = status === "complete";
   const isProcessing = status === "queued" || status === "processing";
@@ -302,11 +312,23 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose }: VariantThu
       ? Math.max(5, Math.min(95, Math.round((elapsedSeconds / expectedSeconds) * 100)))
       : 0;
 
+  // The thumb's outer element is a div with role="button" rather than a
+  // native <button> so we can safely nest a separate regen <button>
+  // inside it without producing invalid HTML (button-in-button).
+  const handleSelect = isComplete ? onChoose : undefined;
+
   return (
-    <button
-      type="button"
-      onClick={isComplete ? onChoose : undefined}
-      disabled={!isComplete}
+    <div
+      role="button"
+      tabIndex={isComplete ? 0 : -1}
+      onClick={handleSelect}
+      onKeyDown={(e) => {
+        if (!isComplete) return;
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          onChoose();
+        }
+      }}
       aria-pressed={chosen || undefined}
       aria-disabled={!isComplete || undefined}
       className={`group relative flex flex-col items-stretch text-left rounded-lg overflow-hidden border transition-all
@@ -339,6 +361,38 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose }: VariantThu
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
+        )}
+
+        {/* Per-variant regen — visible on completed thumbs. Re-enqueues
+            the same provider via the same retry handler the failed-strip
+            uses; the thumb resets to a spinner via EnhancePanel's
+            eviction of the old jobId. stopPropagation so the click
+            doesn't also trigger the outer "pick winner" select. */}
+        {isComplete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onRegen();
+            }}
+            title={`Regenerate with ${ENHANCE_PROVIDER_LABELS[provider]}`}
+            aria-label={`Regenerate ${ENHANCE_PROVIDER_LABELS[provider]} variant`}
+            className="absolute top-1.5 left-1.5 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-amber-700 text-amber-300 hover:text-white border border-amber-800 hover:border-amber-500 transition-colors"
+          >
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
+            </svg>
+          </button>
         )}
 
         {isProcessing && (
@@ -411,6 +465,6 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose }: VariantThu
               : "—"}
         </span>
       </div>
-    </button>
+    </div>
   );
 }

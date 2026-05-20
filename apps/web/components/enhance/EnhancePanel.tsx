@@ -252,8 +252,12 @@ export function EnhancePanel({
   const [customPromptOpen, setCustomPromptOpen] = useState(false);
   const [customPrompt, setCustomPrompt] = useState("");
 
-  const [advancedOpen, setAdvancedOpen] = useState(false);
-  const [metaExpanded, setMetaExpanded] = useState(false);
+  // Both default OPEN: operators wanted the full Make/Model/Year row and
+  // the toggle/custom-prompt advanced section in view from the first
+  // render rather than hidden behind disclosure clicks. They can still
+  // collapse either if they want a cleaner workspace.
+  const [advancedOpen, setAdvancedOpen] = useState(true);
+  const [metaExpanded, setMetaExpanded] = useState(true);
 
   const regenSeqRef = useRef(0);
 
