@@ -92,3 +92,9 @@ jobs:
                     "$URL/health")
           echo "Health status: $STATUS"
           [ "$STATUS" = "200" ] || exit 1
+
+# 2026-05-19: api:cache tag was deleted before this run because a prior
+# build cached pre-dual-client code and shipped it under a 18ad434-tagged
+# image. This bump forces a fresh build with no stale layers so the real
+# dual-Gemini-client lifespan code lands, and the new GEMINI_API_KEY
+# secret mount actually activates the AI Studio path.
