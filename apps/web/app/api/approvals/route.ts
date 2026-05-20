@@ -28,8 +28,15 @@ export async function POST(request: NextRequest) {
     userEmail = email;
   }
 
-  const body = await request.json();
+  const body = (await request.json()) as {
+    sessionId: string;
+    assetIds: string[];
+    projectMeta?: { make?: string; model?: string; year?: string };
+  };
 
+  // FastAPI's approval schema is snake_case. Translate at the BFF
+  // boundary — same pattern as /api/sessions and /api/projects/save.
+  // userEmail is injected here (not trusted from the client body).
   const res = await fetch(
     `${process.env.FASTAPI_INTERNAL_URL}/api/v1/approvals`,
     {
@@ -37,9 +44,14 @@ export async function POST(request: NextRequest) {
       headers: {
         "Content-Type": "application/json",
         "X-Api-Key":    process.env.FASTAPI_INTERNAL_KEY!,
-        "X-User-Email": userEmail,   // Backend uses this to key GCS path + DB row
+        "X-User-Email": userEmail,   // Backend cross-checks this against user_email in body
       },
-      body: JSON.stringify({ ...body, userEmail }),
+      body: JSON.stringify({
+        session_id:   body.sessionId,
+        asset_ids:    body.assetIds,
+        user_email:   userEmail,
+        project_meta: body.projectMeta,
+      }),
       signal: request.signal,
       cache: "no-store",
     }
