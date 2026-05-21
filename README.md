@@ -30,10 +30,10 @@ AI-powered forklift image processing platform. Upload raw forklift photos, enhan
 
 CleanShot takes raw forklift photos and runs them through a four-step pipeline:
 
-1. **Enhance** — Gemini Pro Image removes rust, restores decals, improves lighting, paints forks, and replaces backgrounds based on user-selected toggles.
-2. **Scan** — Up to three AI providers (Gemini Flash, GPT-5.4, Claude Sonnet) each give a pass/fail verdict with confidence scores and an anomaly list. Failed images can be regenerated in-place without starting over.
+1. **Enhance** — Operator picks any subset of **4 image-edit providers** (Google Gemini Nano Banana, OpenAI gpt-5 + image_generation tool, xAI Grok Imagine, BFL Flux Kontext Max via RunComfy) and gets side-by-side variants per source image. A toggle row drives the curated treatment (paint refresh, rust removal, decal restoration, rental-branding strip, etc.). A per-variant **Erase tool** opens a mask-drawing canvas for surgical removal of stickers, scratches, or background clutter via BFL's `flux-tools/erase-v1`.
+2. **Scan** — Up to three AI providers (Gemini Flash, GPT-5.4, Claude Sonnet/Opus) each give a pass/fail verdict with confidence scores and an anomaly list. Per-provider failures are isolated — one vendor's 429 no longer cancels the others. Failed images can be regenerated in-place without starting over.
 3. **Resize** — Auto-crops to 1024×731 (7:5), zoom-to-fill, JPEG compressed to ≤99 KB. Ready for auction platforms and dealer inventory systems.
-4. **Export** — Individual downloads, ZIP batch, or PRO preset exports. Approved sets are saved to each user's GCS library for 30 days.
+4. **Export** — Individual downloads, ZIP batch, or PRO preset exports. Approved sets are saved to each user's GCS library for 60 days.
 
 ---
 
@@ -172,21 +172,32 @@ cleanshot/
 
 ## AI Models
 
-| Operation | Model | Provider | Notes |
+The Enhance tab offers **4 generation providers** (operator picks any subset per image) plus a **per-variant Erase tool** (mask-drawing canvas for surgical object removal). Scan uses up to 3 vision models with consensus voting.
+
+| Operation | Model | Provider / Endpoint | Notes |
 |---|---|---|---|
-| Enhance | `gemini-2.5-flash-image` | Vertex AI (ADC) | No API key — IAM auth |
-| Enhance fallback | `gemini-2.5-flash-image` | Vertex AI | Activated if primary fails |
+| Enhance | `gemini-3.1-flash-image-preview` | Google AI Studio (`x-goog-api-key`) | Preview models live on AI Studio, not Vertex |
+| Enhance | `gpt-5` + `image_generation` tool | OpenAI Responses API | gpt-5 reads input + dispatches the image tool (forced via `tool_choice`) |
+| Enhance | `grok-imagine-image-quality` | xAI `/v1/images/edits` | OpenAI-compatible image-edit API |
+| Enhance | `flux-1-kontext/max/edit` | RunComfy proxy → BFL Kontext Max | Async submit/poll/result; identity-preserving |
+| Erase tool | `flux-tools/erase-v1` | BFL direct (`x-key`) | Mask-based object removal, async polling |
+| Cleanup / Regen | `gemini-3.1-flash-image-preview` | Google AI Studio | Same model as enhance |
 | Scan — primary | `gemini-2.5-flash` | Vertex AI (ADC) | Always active |
-| Scan — optional | `gpt-5.4` | OpenAI | Enable: `SCAN_PROVIDER_OPENAI=true` |
-| Scan — optional | `claude-sonnet-4-6` | Anthropic | Enable: `SCAN_PROVIDER_ANTHROPIC=true` |
+| Scan — optional | `gpt-5.4` | OpenAI Responses API | Enable: `SCAN_PROVIDER_OPENAI=true` |
+| Scan — optional | `claude-sonnet-4-6` | Anthropic Messages API | Enable: `SCAN_PROVIDER_ANTHROPIC=true` |
 | Scan — hard cases | `claude-opus-4-7` | Anthropic | Auto-routed when confidence < 0.6 |
-| Cleanup / Regen | `gemini-2.5-flash-image` | Vertex AI (ADC) | Same model as enhance |
+
+**Why two Gemini clients?** Scan uses the Vertex backend (`app.state.genai` — IAM auth, can read GCS URIs directly). Enhance + Cleanup use the AI Studio backend (`app.state.genai_aistudio` — static API key, image input must be inlined via `Part.from_bytes`). Preview image-gen models like `gemini-3.1-flash-image-preview` ship to AI Studio first; the dual-client setup is the workaround.
 
 **Critical API format differences** (do not mix up — each provider requires a different image input format):
 
-- **Gemini:** Pass the GCS URI directly via `file_data.file_uri` — no base64 transfer needed
-- **OpenAI:** Data URL **with** `data:image/jpeg;base64,` prefix — uses Responses API (`client.responses.parse`)
-- **Anthropic:** Raw base64 **without** any prefix — uses GA structured output via `output_config`
+- **Gemini (Vertex, scan):** `Part.from_uri("gs://...")` directly — no base64 transfer.
+- **Gemini (AI Studio, enhance):** `Part.from_bytes(image_bytes, mime_type=...)` after a GCS download — Studio backend can't read GCS URIs.
+- **OpenAI (enhance):** `responses.create` with `tools=[{"type":"image_generation"}]` + `tool_choice={"type":"image_generation"}`. Result PNG is base64 on the `image_generation_call` output item.
+- **OpenAI (scan):** `responses.parse(..., text_format=ScanResult)` — let the SDK do the strict-mode JSON schema conversion (Pydantic's `model_json_schema()` is missing `additionalProperties: false` and gets rejected).
+- **Anthropic (scan):** Raw base64 **without** any prefix, structured output via the tool-call pattern (`tools=[{name, input_schema}]` + `tool_choice={"type":"tool", "name":...}`). No `output_config` parameter — it 400s.
+- **BFL (Kontext via RunComfy):** Image passed as `image_url` (singular HTTPS string, NOT `images` array). Provider prefix is `blackforestlabs` (collapsed, no hyphens).
+- **BFL (Erase tool, direct):** `x-key` header, `{ image: base64, mask: base64, prompt? }`. Mask must match source dimensions exactly — the backend runs the source through `pyvips.autorot()` + nearest-neighbour mask resize to handle EXIF orientation mismatches.
 
 ---
 
@@ -310,12 +321,18 @@ Changes take effect on the next deployment. For immediate effect without a deplo
 | `WORKER_URL` | Yes | Cloud Run service URL (used as OIDC audience) |
 | `API_KEY` | Yes | Internal key checked by `X-Api-Key` header |
 | `API_KEY_PREV` | No | Previous key — kept during rotation window |
-| `OPENAI_API_KEY` | When scan enabled | Only needed if `SCAN_PROVIDER_OPENAI=true` |
+| `OPENAI_API_KEY` | Yes | Powers both enhance (gpt-5 + image_generation tool) AND scan (gpt-5.4). Both share the same `/v1/responses` quota — bump tier if you see 429s. |
 | `ANTHROPIC_API_KEY` | When scan enabled | Only needed if `SCAN_PROVIDER_ANTHROPIC=true` |
+| `GEMINI_API_KEY` | Yes | Google AI Studio key for enhance/cleanup (`gemini-3.1-flash-image-preview`). Scan uses Vertex IAM (no key) on a separate client. |
+| `BFL_API_KEY` | Yes | Black Forest Labs — powers the per-variant **Erase tool** (`flux-tools/erase-v1`). No longer used for generation (Flux was retired as a generator). |
+| `XAI_API_KEY` | Yes | xAI Grok image-edit (`grok-imagine-image-quality`). |
+| `RUNCOMFY_API_KEY` | Yes | RunComfy proxy — powers the **Kontext** generator (BFL `flux-1-kontext/max/edit`). |
 | `SCAN_PROVIDER_OPENAI` | No | `"true"` to activate GPT-5.4 scan |
 | `SCAN_PROVIDER_ANTHROPIC` | No | `"true"` to activate Claude scan |
 | `GCP_PROJECT` | No | Defaults to `cleanshot-493512` |
 | `ENVIRONMENT` | No | `"local"` runs auto-migrations on startup |
+
+**Removed:** `REVE_API_KEY` was retired alongside the Reve provider on 2026-05-20. The `cleanshot-reve-key` secret can be deleted from Secret Manager whenever you're sure nothing else references it.
 
 ---
 
@@ -486,25 +503,24 @@ gcloud run services update-traffic cleanshot-api \
 
 ### Enhance tab
 
-1. Drop up to 10 images into the upload zone (drag-and-drop or file picker)
-2. Files over 4.5 MB are automatically compressed client-side before upload (Vercel limit)
-3. Optionally fill in forklift metadata: Make, Model, Year, Tire Type, Capacity, Fuel Type — helps Gemini cross-reference the captioned library
-4. Toggle the enhancements you want:
-   - **New Paint Job** — uniform factory colour restoration
-   - **Remove Rust** — clean corrosion from all surfaces
-   - **Restore Decals** — rebuild faded OEM labels and logos
-   - **Remove People** — erase bystanders from the scene
-   - **Paint Forks Red w/ Yellow Tips** — OSHA safety colour convention
-   - **Shine Tires** — clean, black, conditioned appearance
-   - **Improve Lighting** — exposure, shadows, white point
-5. Click **Enhance** — images upload directly to GCS, enhance jobs are enqueued, per-image status rows appear
+1. Drop up to 10 images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.
+2. Pick the equipment type (forklift / scissor lift / telehandler) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest also pre-fills the Resize tab's Save Project form.
+3. **Pick one or more AI providers** from the provider chips: Gemini, OpenAI (gpt-5), Grok, Kontext. Each selected provider runs as an independent variant per source image.
+4. Open the **Advanced** section to toggle curated treatment emphasis (paint refresh, rust removal, decal restoration, fork colours, lighting, rental-branding strip), or open the **Custom prompt** field for full prompt override (bypasses all toggles).
+5. Click **Enhance** — images upload to GCS, enhance jobs enqueue per provider, the SourceCompareCard grid renders with one card per source image and a column for each variant.
+6. **Pick a winner** from each card's variants and either let auto-advance ship them to Scan or hit **Send N to Scan →** manually.
+7. **Per-variant tools** sit on each completed thumbnail: ↻ to regenerate with a different roll of the same provider, or the eraser icon to open the **Erase dialog** for mask-based surgical removal of stickers, scratches, or background objects.
+
+### Erase tool (per-variant)
+
+Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), optionally type a one-line hint for what should fill the cleaned area, and submit. Routes through BFL's `flux-tools/erase-v1`. On accept, the cleaned image replaces the variant in-place — the winner-pick + sent-to-Scan state stays coherent.
 
 ### Scan tab
 
-1. Images arrive automatically after enhancement completes
-2. Each image shows results from up to three AI providers with verdict chips, confidence bars, and anomaly lists
-3. Failed images show a **Regenerate** button with an auto-generated prompt built from the detected anomalies — edit the prompt or use it as-is
-4. Click **Approve All** when satisfied — all images are saved to your GCS library and moved to the Resize tab
+1. Images arrive automatically after enhancement completes (or operator can use the Skip-Scan→Resize shortcut to bypass).
+2. Each image shows results from up to three AI providers with verdict chips, confidence bars, and anomaly lists. Per-provider failures are isolated and surfaced as "provider — failed" instead of hanging on "pending" forever.
+3. Failed images show a **Regenerate** button with an auto-generated prompt built from the detected anomalies — edit the prompt or use it as-is, pick which provider runs the regen.
+4. **Bulk-approve undecided** advances every image without an explicit reject; or hit Save Project from the Resize tab once you're done curating.
 
 ### Resize tab
 
@@ -607,24 +623,25 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ---
 
-## Cost Reference (Tier 1 — 100 users, 50 images/month each)
+## Cost Reference (placeholder estimates — multi-provider lineup)
 
-| Line Item | Monthly |
+Per-call placeholders that drive `usage_events.cost_estimate_usd` (see [services/pricing.py](apps/api/src/cleanshot_api/services/pricing.py)). Refine these from real invoices.
+
+**Per-image (enhance + erase):**
+
+| Model | Placeholder |
 |---|---|
-| Gemini Pro Image (5,000 enhance ops) | ~$670 |
-| Gemini Flash Image (5,000 scans) | ~$335 |
-| OpenAI gpt-5.4 (5,000 scans, if enabled) | ~$60 |
-| Anthropic claude-sonnet-4-6 (5,000 scans, if enabled) | ~$75 |
-| Cloud Run API (warm, request billing) | ~$13 |
-| Cloud Run Worker Pool | ~$20 |
-| Memorystore Valkey 1 GiB | ~$36 |
-| Cloud SQL Postgres 17 | ~$25 |
-| GCS storage + egress | ~$15 |
-| Vercel Pro | ~$40 |
-| **Total (Gemini scan only)** | **~$1,154/month** |
-| **Total (all 3 scan providers)** | **~$1,289/month** |
+| `gemini-3.1-flash-image-preview` (enhance, default) | $0.039 |
+| `gpt-5` + image_generation tool (enhance) | $0.080 |
+| `grok-imagine-image-quality` (enhance) | $0.070 |
+| `flux-1-kontext-max-edit` via RunComfy (enhance) | $0.080 |
+| `flux-erase-v1` (per-variant erase tool) | $0.040 |
 
-The single biggest lever is Gemini Pro Image IPM quota. Upgrade from Tier 1 to Tier 2 (~$250 cumulative GCP spend) to raise throughput from 10 IPM to 20 IPM, halving batch wait times.
+**Per-token (scan + multimodal LLMs):** OpenAI gpt-5.4 ($5/$15 per M), Anthropic Claude Sonnet 4.6 ($3/$15 per M), Anthropic Claude Opus 4.7 ($15/$75 per M), Gemini 2.5 Flash ($0.075/$0.30 per M).
+
+**Fixed monthly infra:** Cloud Run API + Workers ~$33, Memorystore Valkey 1 GiB ~$36, Cloud SQL Postgres 17 ~$25, GCS storage + egress ~$15, Vercel Pro ~$40. Total infra floor ~$150/month.
+
+The actual AI spend depends entirely on operator selection. Selecting all 4 generators per image quadruples the per-image cost (one call per provider). Encourage operators to pick 2 providers max for routine work and run all 4 only for hero shots they're particularly picky about.
 
 ---
 
