@@ -2,7 +2,8 @@
   "permissions": {
     "allow": [
       "Bash(gcloud run *)",
-      "Bash(gcloud secrets *)"
+      "Bash(gcloud secrets *)",
+      "Bash(git fetch *)"
     ]
   }
 }
