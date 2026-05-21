@@ -74,7 +74,7 @@ jobs:
             --allow-unauthenticated \
             --ingress=all \
             --service-account=forklift-api@cleanshot-493512.iam.gserviceaccount.com \
-            --set-secrets="DATABASE_URL=cleanshot-database-url:latest,API_KEY=cleanshot-api-key:latest,API_KEY_PREV=cleanshot-api-key-prev:latest,OPENAI_API_KEY=cleanshot-openai-key:latest,ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,BFL_API_KEY=cleanshot-bfl-key:latest,GEMINI_API_KEY=cleanshot-gemini-key:latest,REVE_API_KEY=cleanshot-reve-key:latest,XAI_API_KEY=cleanshot-xai-key:latest,TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,WORKER_URL=cleanshot-worker-url:latest" \
+            --set-secrets="DATABASE_URL=cleanshot-database-url:latest,API_KEY=cleanshot-api-key:latest,API_KEY_PREV=cleanshot-api-key-prev:latest,OPENAI_API_KEY=cleanshot-openai-key:latest,ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,BFL_API_KEY=cleanshot-bfl-key:latest,GEMINI_API_KEY=cleanshot-gemini-key:latest,XAI_API_KEY=cleanshot-xai-key:latest,TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,WORKER_URL=cleanshot-worker-url:latest" \
             --set-env-vars="GCP_PROJECT=cleanshot-493512,GCP_REGION=us-central1,GCS_BUCKET_ORIGINALS=cleanshot-originals-prod,GCS_BUCKET_DERIVATIVES=cleanshot-derivatives-prod,VALKEY_URL=valkey://10.122.45.83:6379,TASKS_QUEUE_GEN=cleanshot-image-gen,TASKS_QUEUE_SCAN=cleanshot-image-scan,TASKS_LOCATION=us-central1,ENVIRONMENT=development,LOG_LEVEL=DEBUG,SCAN_PROVIDER_OPENAI=true,SCAN_PROVIDER_ANTHROPIC=true" \
             --vpc-egress=all-traffic \
             --network=default \
@@ -99,7 +99,6 @@ jobs:
 # dual-Gemini-client lifespan code lands, and the new GEMINI_API_KEY
 # secret mount actually activates the AI Studio path.
 #
-# 2026-05-20: retrying the Reve provider deploy — revision 00065 failed
-# because cleanshot-reve-key didn't exist when that deploy ran. Secret
-# was created a few minutes later; this bump retriggers the workflow so
-# the new revision can mount it successfully.
+# 2026-05-20: Reve provider removed from the stack — REVE_API_KEY
+# dropped from --set-secrets. cleanshot-reve-key can be deleted from
+# Secret Manager once we're sure no other tools reference it.

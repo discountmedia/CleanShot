@@ -8,21 +8,19 @@
  * `EnhanceTaskPayload.provider` literal in
  * apps/api/src/cleanshot_api/models/schemas.py.
  */
-export type EnhanceProvider = "gemini" | "openai" | "flux" | "reve" | "grok";
+export type EnhanceProvider = "gemini" | "openai" | "flux" | "grok";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
   "grok",
   "flux",
-  "reve",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
   gemini: "Gemini",
   openai: "OpenAI",
   flux:   "Flux",
-  reve:   "Reve",
   grok:   "Grok",
 };
 
@@ -35,7 +33,6 @@ export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
   gemini: "bg-blue-950/40 text-blue-300 border-blue-800",
   openai: "bg-green-950/40 text-green-300 border-green-800",
   flux:   "bg-purple-950/40 text-purple-300 border-purple-800",
-  reve:   "bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-800",
   grok:   "bg-orange-950/40 text-orange-300 border-orange-800",
 };
 
@@ -78,12 +75,6 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     speedLabel:  "Moderate",
     speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
     description: "Black Forest Labs FLUX 2 MAX — best for editorial-style edits, async polling.",
-    isNew:       true,
-  },
-  reve: {
-    speedLabel:  "Fast",
-    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
-    description: "Reve image-edit (latest) — synchronous /v1/image/edit; auto-enhances the instruction internally.",
     isNew:       true,
   },
 };

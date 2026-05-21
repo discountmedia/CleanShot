@@ -18,6 +18,5 @@ export const ENHANCE_PROVIDER_DURATION_S: Record<EnhanceProvider, number> = {
   gemini: 20,
   openai: 75,
   flux:   25,
-  reve:   20,
   grok:   30,
 };

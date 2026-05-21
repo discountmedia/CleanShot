@@ -82,22 +82,6 @@ FLUX_POLL_INTERVALS_S: tuple[float, ...] = (
 FLUX_POLL_STEADY_INTERVAL_S = 2.0
 FLUX_POLL_MAX_ATTEMPTS = 50        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
 
-# Reve endpoint — synchronous JSON request, returns base64-encoded PNG +
-# credit accounting in the same response. Auth via Bearer token in
-# Authorization header. We pin to `latest-fast` (resolves to
-# reve-edit-fast@20251030) instead of `latest` for RPM headroom; the
-# full-quality model trips Reve's undocumented per-minute cap on small
-# bursts. Pin to a dated slug like "reve-edit-fast@20251030" if you
-# need frozen behaviour across versions.
-REVE_GENERATE_URL = "https://api.reve.com/v1/image/edit"
-ENHANCE_MODEL_REVE = "reve-edit-fast-latest"
-# Reve's edit_instruction field caps at 2560 chars — our stock prompt
-# can exceed that with all toggles on, so we truncate. The Reve docs
-# explicitly say "this instruction will be automatically enhanced by
-# the model", so a clean truncation at a sentence boundary loses less
-# than it would on the more literal providers.
-REVE_PROMPT_MAX_CHARS = 2560
-
 # Grok / xAI image editing — synchronous JSON request to /v1/images/edits.
 # Auth via Bearer header. Source image is sent as a base64 data URI
 # inside the `image` object (NOT the OpenAI-compatible multipart/edit
@@ -637,94 +621,6 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
         )
 
 
-async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
-    """
-    Call Reve's /v1/image/edit endpoint synchronously and return raw PNG
-    bytes.
-
-    Request shape (per https://docs.reve.com):
-      Authorization: Bearer <REVE_API_KEY>
-      Accept: application/json
-      body: {
-        edit_instruction: <prompt — capped to REVE_PROMPT_MAX_CHARS>,
-        reference_image:  <base64 source bytes>,
-        version:          "latest-fast",
-      }
-
-    Reve exposes its speed/quality knob via the `version` string itself,
-    not a separate `mode` field (a `mode` parameter 400s with
-    "One or more of your parameters is not recognized."). Valid versions
-    are `latest`, `latest-fast`, `reve-edit@20250915`, and
-    `reve-edit-fast@20251030`. We pin to `latest-fast` because the
-    full-quality model reliably trips Reve's undocumented per-minute
-    cap (~7 successful edits then a wall of 429s even with our
-    3-per-30s limiter in front). The fast variant is materially cheaper
-    in credits + has noticeably more RPM headroom.
-
-    Response shape (when accept=json):
-      {
-        image:              <base64 PNG>,
-        version:            "reve-edit@...",
-        content_violation:  bool,
-        request_id:         "rsid-...",
-        credits_used:       int,
-        credits_remaining:  int,
-      }
-
-    Aspect ratio is intentionally NOT sent — Reve defaults to the
-    reference image's aspect, which is what we want (we already cap
-    uploads at 1024 long-edge in compress.ts).
-    """
-    settings = get_settings()
-    if not settings.reve_api_key:
-        raise RuntimeError(
-            "Reve provider requested but REVE_API_KEY is not set. "
-            "Mount cleanshot-reve-key:latest via Cloud Run --set-secrets "
-            "and re-deploy."
-        )
-
-    image_bytes, _ct = await _load_image_bytes(gcs_uri)
-    image_b64 = base64.b64encode(image_bytes).decode()
-
-    body = {
-        "edit_instruction": prompt[:REVE_PROMPT_MAX_CHARS],
-        "reference_image":  image_b64,
-        "version":          "latest-fast",
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.reve_api_key}",
-        "Accept":        "application/json",
-        "Content-Type":  "application/json",
-    }
-
-    # Reve is synchronous — a single POST returns the rendered image.
-    # Timeout matches the OpenAI client (300s); Reve typically returns
-    # in 10-30s but we'd rather wait than fail.
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        resp = await client.post(REVE_GENERATE_URL, headers=headers, json=body)
-
-    if resp.status_code >= 400:
-        # Surface the structured error fields if present.
-        try:
-            err = resp.json()
-            detail = err.get("message") or err.get("error_code") or resp.text[:300]
-        except Exception:
-            detail = resp.text[:300]
-        raise ValueError(f"Reve edit failed ({resp.status_code}): {detail}")
-
-    data = resp.json()
-    if data.get("content_violation"):
-        raise ValueError(
-            "Reve flagged the response as a content-policy violation; no image returned."
-        )
-    image_b64_out = data.get("image")
-    if not image_b64_out:
-        raise ValueError(f"Reve returned no image bytes: {data}")
-
-    # Reve returns a base64-encoded PNG payload — decode once to raw bytes.
-    return base64.b64decode(image_b64_out)
-
-
 async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
     """
     Call xAI Grok's /v1/images/edits endpoint and return raw PNG bytes.
@@ -864,21 +760,11 @@ async def _run_enhance(
             output_bytes = await _enhance_with_flux(
                 payload.input_gcs_uri, prompt
             )
-        elif payload.provider == "reve":
-            provider_model = ENHANCE_MODEL_REVE
-            # Reve's docs claim no per-minute cap but the API returns
-            # 429 RPM on bursts. Same sliding-window throttle as the
-            # OpenAI path (5 per 60s) — retune in main.py once we
-            # have data on Reve's actual ceiling.
-            await request.app.state.reve_image_rate_limiter.acquire()
-            output_bytes = await _enhance_with_reve(
-                payload.input_gcs_uri, prompt
-            )
         elif payload.provider == "grok":
             provider_model = ENHANCE_MODEL_GROK
             # xAI doesn't publish a per-minute cap for /v1/images/edits.
-            # Mirroring the Reve treatment (3 per 30s) until we observe
-            # actual behaviour and can retune in main.py.
+            # Defensive throttle of 3 per 30s in main.py — retune once
+            # we observe actual burst behaviour.
             await request.app.state.grok_image_rate_limiter.acquire()
             output_bytes = await _enhance_with_grok(
                 payload.input_gcs_uri, prompt

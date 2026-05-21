@@ -87,8 +87,8 @@ export async function enqueueEnhance(params: {
   /** Image generation provider. Default = "gemini" (gemini-2.5-flash-image).
    * "openai" routes through gpt-image-2-2026-04-21.
    * "flux"   routes through Black Forest Labs FLUX 2 MAX.
-   * "reve"   routes through Reve image-edit (latest). */
-  provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
+   * "grok"   routes through xAI Grok image-edit. */
+  provider?: "gemini" | "openai" | "flux" | "grok";
   /** Equipment category — drives the backend's per-type anatomy block.
    * Defaults to "forklift" server-side if omitted. */
   equipmentType?: "forklift" | "scissor_lift" | "telehandler";
@@ -129,7 +129,7 @@ export async function enqueueRegen(params: {
   regenPrompt: string;
   idempotencyKey: string;
   /** Operator-selected provider for the regen pass. Backend defaults to gemini. */
-  provider?: "gemini" | "openai" | "flux" | "reve" | "grok";
+  provider?: "gemini" | "openai" | "flux" | "grok";
 }): Promise<{ jobId: string }> {
   return post("/api/enhance/regen", params);
 }
@@ -313,7 +313,7 @@ export async function exportProPreviewStream(
      * produced the matching output asset, or null when unknown. The
      * backend uses it to suffix each ZIP filename with the model name
      * so the operator can distinguish duplicate variants of the same
-     * source image (Gemini vs OpenAI vs Flux vs Reve).
+     * source image (Gemini vs OpenAI vs Flux vs Grok).
      */
     providers?: (string | null)[];
   },
