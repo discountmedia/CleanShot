@@ -520,7 +520,66 @@ async def _enhance_with_gemini(
     for part in response.candidates[0].content.parts:
         if part.inline_data and part.inline_data.data:
             return part.inline_data.data
-    raise ValueError("Gemini returned no image part in enhance response")
+
+    # No image came back. Build an actionable error from whatever
+    # diagnostic context Gemini DID return — there are several distinct
+    # reasons this can happen and they need different operator responses:
+    #   • prompt_feedback.block_reason set → prompt-level safety block
+    #   • candidate.finish_reason == SAFETY → output-level safety block
+    #   • candidate.finish_reason == MAX_TOKENS → output budget exhausted
+    #     before the image was generated (rare on Flash Image but possible)
+    #   • text-only response → Gemini interpreted the prompt as conversational
+    raise ValueError(_describe_gemini_no_image(response, "enhance"))
+
+
+def _describe_gemini_no_image(response: Any, operation: str) -> str:
+    """
+    Build a useful error string when a Gemini Flash Image call returns
+    a non-image response. Pulled out so _enhance_with_gemini AND
+    _tweak_with_gemini share the same diagnostic plumbing.
+    """
+    bits: list[str] = [f"Gemini returned no image part in {operation} response"]
+
+    # Prompt-level block: Gemini refused the request before generating.
+    prompt_fb = getattr(response, "prompt_feedback", None)
+    block_reason = getattr(prompt_fb, "block_reason", None) if prompt_fb else None
+    if block_reason:
+        bits.append(f"prompt_feedback.block_reason={block_reason}")
+
+    # Candidate-level: what happened during/after generation.
+    candidates = getattr(response, "candidates", None) or []
+    if candidates:
+        c = candidates[0]
+        finish = getattr(c, "finish_reason", None)
+        if finish:
+            bits.append(f"finish_reason={finish}")
+
+        safety = getattr(c, "safety_ratings", None) or []
+        blocked = [
+            f"{getattr(s, 'category', '?')}={getattr(s, 'probability', '?')}"
+            for s in safety
+            if getattr(s, "blocked", False)
+        ]
+        if blocked:
+            bits.append("safety_blocked=[" + ", ".join(blocked) + "]")
+
+        # Surface any TEXT the model emitted in lieu of an image — often
+        # the most useful clue. Capped so we don't dump pages into
+        # usage_events.error_message (column is varchar(500)).
+        content = getattr(c, "content", None)
+        parts = getattr(content, "parts", None) or [] if content else []
+        text_chunks = [
+            getattr(p, "text", "") for p in parts if getattr(p, "text", None)
+        ]
+        if text_chunks:
+            joined = " ".join(t.strip() for t in text_chunks if t).strip()
+            if joined:
+                preview = joined[:160] + ("…" if len(joined) > 160 else "")
+                bits.append(f"text_response={preview!r}")
+    else:
+        bits.append("no_candidates_returned")
+
+    return " | ".join(bits)
 
 
 # Wraps the operator's free-text instruction with a scope guard so the
@@ -575,7 +634,7 @@ async def _tweak_with_gemini(
     for part in response.candidates[0].content.parts:
         if part.inline_data and part.inline_data.data:
             return part.inline_data.data
-    raise ValueError("Gemini returned no image part in tweak response")
+    raise ValueError(_describe_gemini_no_image(response, "tweak"))
 
 
 async def _enhance_with_openai(
