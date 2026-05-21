@@ -603,7 +603,24 @@ async def _erase_with_flux(
         )
 
     image_bytes, _ct = await _load_image_bytes(gcs_uri)
-    image_b64 = base64.b64encode(image_bytes).decode()
+
+    # Normalise the source image dimensions to match what the browser
+    # actually painted on. iPhone-style JPEGs ship EXIF Orientation tags
+    # — the browser respects them when displaying (so naturalWidth /
+    # naturalHeight reflect the post-rotation dims, which our mask is
+    # exported at), but BFL reads the raw JPEG bytes without applying
+    # EXIF and would see pre-rotation dimensions, returning a 422:
+    # "Erase image and mask must have the same dimensions". Re-encoding
+    # to PNG after autorot bakes the rotation in and drops EXIF
+    # entirely so BFL agrees with the browser.
+    def _normalise() -> bytes:
+        import pyvips
+        img = pyvips.Image.new_from_buffer(image_bytes, "")
+        img = img.autorot()
+        return img.write_to_buffer(".png")
+
+    normalised_bytes = await asyncio.to_thread(_normalise)
+    image_b64 = base64.b64encode(normalised_bytes).decode()
 
     auth_headers = {"x-key": settings.bfl_api_key}
     body: dict[str, Any] = {
