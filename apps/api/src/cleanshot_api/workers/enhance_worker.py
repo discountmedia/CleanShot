@@ -50,10 +50,19 @@ logger = logging.getLogger(__name__)
 # all 404'd the same way). Always pin to an explicit dated/numbered
 # image model that's published in us-central1 for this project.
 ENHANCE_MODEL_GEMINI = "gemini-3.1-flash-image-preview"
-# gpt-image-2 dated snapshot (2026-04-21 release). Switch back to a
-# moving alias like "gpt-image-2-latest" if/when one exists and you
-# prefer auto-tracked updates.
-ENHANCE_MODEL_OPENAI = "gpt-image-2-2026-04-21"
+# OpenAI image-edit now goes through gpt-5 + the image_generation
+# tool (Responses API), rather than calling client.images.edit on
+# gpt-image-2 directly. gpt-5 reads the input image + prompt, then
+# orchestrates the image_generation tool which calls an underlying
+# image model (currently gpt-image-1 family per OpenAI's docs). The
+# tradeoff vs the previous direct gpt-image-2 path:
+#   + One unified provider key path (Responses API everywhere)
+#   + gpt-5's reasoning can refine ambiguous prompts before generation
+#   - Extra LLM round-trip vs direct images.edit
+#   - Cost = gpt-5 input/output tokens + underlying image-gen call
+# We force tool_choice so gpt-5 always invokes the tool (no chance of
+# it deciding the prompt is conversational and just replying in text).
+ENHANCE_MODEL_OPENAI = "gpt-5"
 # BFL endpoint URL — flux-2-max is their flagship image editor with
 # product/identity consistency (preserves the input subject while
 # changing context, surface treatment, lighting, etc.). The earlier
@@ -491,35 +500,58 @@ async def _enhance_with_openai(
     prompt: str,
 ) -> bytes:
     """
-    Call OpenAI gpt-image-2's image-edit endpoint. Slower + costlier than
-    Gemini (~$0.04–0.19 per image, ~8–15s typical) but sometimes recovers
-    images that Gemini refuses or under-edits.
+    Call OpenAI gpt-5 via the Responses API with the image_generation
+    tool forced. gpt-5 reads the input image + our enhance prompt,
+    then dispatches the image_generation tool to produce the edited
+    output. The tool internally invokes a gpt-image-* model and
+    returns the result inline as base64 in an image_generation_call
+    output item.
+
+    tool_choice is forced to ensure gpt-5 always invokes the tool —
+    without it, gpt-5 may sometimes decide the prompt is conversational
+    and just reply with text, returning no image.
 
     OpenAI requires the image bytes in the request (no GCS URI ingress),
-    so we download via _load_image_bytes first.
+    so we download via _load_image_bytes first and inline as a data URL.
     """
     image_bytes, ct = await _load_image_bytes(gcs_uri)
+    image_b64 = base64.b64encode(image_bytes).decode()
 
-    # quality="medium" instead of "high": ~3x faster wall-time per call with
-    # marginal quality cost on listing-style edits, and we crop to 1024×731
-    # for export anyway so the high-detail end gets thrown away downstream.
-    # Keeping size="auto" so landscape sources still get a landscape output.
-    response = await openai_client.images.edit(
+    response = await openai_client.responses.create(
         model=ENHANCE_MODEL_OPENAI,
-        # tuple form: (filename, content, content_type) for httpx multipart
-        image=("input.jpg", image_bytes, ct),
-        prompt=prompt,
-        n=1,
-        size="auto",
-        quality="medium",
+        input=[
+            {
+                "role": "user",
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:{ct};base64,{image_b64}",
+                    },
+                ],
+            }
+        ],
+        tools=[{"type": "image_generation"}],
+        tool_choice={"type": "image_generation"},
     )
 
-    if not response.data:
-        raise ValueError("OpenAI returned no data in enhance response")
-    b64 = response.data[0].b64_json
-    if not b64:
-        raise ValueError("OpenAI returned no b64_json image in enhance response")
-    return base64.b64decode(b64)
+    # Responses API returns a list of output items. We want the one
+    # produced by the image_generation tool — it carries the rendered
+    # PNG as a base64 string on `.result`.
+    for item in response.output:
+        if getattr(item, "type", None) == "image_generation_call":
+            b64 = getattr(item, "result", None)
+            if not b64:
+                raise ValueError(
+                    "OpenAI image_generation_call returned no result bytes"
+                )
+            return base64.b64decode(b64)
+
+    raise ValueError(
+        "OpenAI gpt-5 response had no image_generation_call output item — "
+        "gpt-5 may have refused or the tool failed to invoke. "
+        f"Output types: {[getattr(o, 'type', '?') for o in response.output]}"
+    )
 
 
 async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:

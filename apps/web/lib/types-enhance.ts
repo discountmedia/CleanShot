@@ -62,7 +62,7 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
   openai: {
     speedLabel:  "Slow",
     speedClass:  "text-red-300 bg-red-950/60 border-red-800",
-    description: "Slower but can be more literal. Routes through gpt-image-2-2026-04-21.",
+    description: "Slower but can be more literal. gpt-5 reasons + dispatches the image_generation tool.",
     isNew:       false,
   },
   grok: {

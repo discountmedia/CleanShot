@@ -36,10 +36,14 @@ PER_IMAGE_USD: dict[str, float] = {
     "gemini-3.1-flash-image-preview": 0.039,
     "gemini-2.5-flash-image":         0.039,
 
-    # OpenAI gpt-image-2-2026-04-21. We always call with quality="high",
-    # which is the upper rate tier (~$0.19/img at auto size). If we ever
-    # switch to medium / low quality, drop to ~$0.07 / ~$0.04 here.
-    "gpt-image-2-2026-04-21":         0.190,
+    # OpenAI gpt-5 via Responses API with the image_generation tool
+    # forced. Cost is gpt-5 tokens (input image + prompt + a short
+    # reasoning step + tool-call output, typically ~1.2k input / ~200
+    # output) plus the internal image_generation tool invocation
+    # (gpt-image-* family at the tool's default quality tier).
+    # Working placeholder of $0.08/edit — gpt-5 portion ~$0.01,
+    # image-gen tool portion ~$0.07. Refine once real invoices land.
+    "gpt-5":                          0.080,
 
     # Black Forest Labs FLUX 2 MAX. BFL bills credits; ~$0.06 in USD
     # equivalent at current credit rate (1024 credits ≈ $1, ~60 cr/call).
