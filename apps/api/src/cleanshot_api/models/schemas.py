@@ -31,6 +31,13 @@ class OperationEnum(StrEnum):
     # enhance job); the operator paints a binary mask client-side and
     # the worker dispatches both to BFL.
     erase = "erase"
+    # Text-guided variant refinement via Gemini Flash Image (same model
+    # as primary enhance, different intent). Operator writes a free-text
+    # instruction ("remove the propane tank", "add some surface scuffs
+    # to the side panel"), backend sends variant + instruction to
+    # Gemini. Used when the Flux erase tool's mask flow is overkill /
+    # under-powered for the kind of edit needed.
+    tweak = "tweak"
 
 
 class JobStatusEnum(StrEnum):
@@ -259,6 +266,41 @@ class EraseTaskPayload(BaseModel):
     input_gcs_uri: str
     mask_png_base64: str
     instruction: str | None = None
+
+
+class TweakRequest(BaseModel):
+    """
+    BFF → FastAPI request body for text-guided variant refinement.
+
+    Operator clicks Tweak on a completed enhance variant, types a
+    natural-language instruction ("remove the propane tank from the
+    side panel", "add some surface scuffs to the hood"), submits. The
+    backend dispatches variant + instruction to Gemini Flash Image
+    (same model as primary enhance, different intent — conversational
+    edit rather than full enhance).
+
+    No mask: this is the conversational sibling to /enhance/erase.
+    Use Erase for surgical mask-based removal where the area to change
+    is visually obvious; use Tweak for everything else.
+    """
+    session_id: uuid.UUID
+    asset_id: uuid.UUID
+    # 600-char cap is more than enough — Gemini Flash Image's edit
+    # capability responds well to short imperative instructions.
+    instruction: str = Field(min_length=3, max_length=600)
+    idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+
+class TweakResponse(BaseModel):
+    job_id: uuid.UUID
+
+
+class TweakTaskPayload(BaseModel):
+    job_id: uuid.UUID
+    session_id: uuid.UUID
+    input_asset_id: uuid.UUID
+    input_gcs_uri: str
+    instruction: str
 
 
 class ScanBatchRequest(BaseModel):

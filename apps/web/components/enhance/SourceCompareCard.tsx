@@ -46,6 +46,8 @@ interface SourceCompareCardProps {
   onRetry: (provider: EnhanceProvider) => void;
   /** Opens the per-variant Flux erase dialog. */
   onErase: (provider: EnhanceProvider) => void;
+  /** Opens the per-variant Gemini tweak dialog. */
+  onTweak: (provider: EnhanceProvider) => void;
 }
 
 export function SourceCompareCard({
@@ -60,6 +62,7 @@ export function SourceCompareCard({
   onToggleHold,
   onRetry,
   onErase,
+  onTweak,
 }: SourceCompareCardProps) {
   // Stable-ordered list of providers that have a variant for this source.
   // Order follows ENHANCE_PROVIDERS so re-renders don't shuffle.
@@ -238,6 +241,7 @@ export function SourceCompareCard({
                   onChoose={() => onChoose(p)}
                   onRegen={() => onRetry(p)}
                   onErase={() => onErase(p)}
+                  onTweak={() => onTweak(p)}
                 />
               );
             })}
@@ -314,9 +318,15 @@ interface VariantThumbProps {
    * source asset + URL. Only meaningful when the variant is complete.
    */
   onErase: () => void;
+  /**
+   * Opens the per-variant Gemini tweak dialog. Same single-instance
+   * pattern as Erase, just routes to the text-only TweakDialog
+   * instead of the mask-drawing EraseDialog.
+   */
+  onTweak: () => void;
 }
 
-function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onErase }: VariantThumbProps) {
+function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onErase, onTweak }: VariantThumbProps) {
   const status = variant?.job?.status ?? (variant ? "queued" : "idle");
   const isComplete = status === "complete";
   const isProcessing = status === "queued" || status === "processing";
@@ -389,9 +399,41 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onE
           </div>
         )}
 
+        {/* Per-variant tweak — opens the Gemini text-edit dialog.
+            Sits between the regen and erase buttons so the operator
+            sees the quick-action cluster in a clear "↻ ✎ ⌫" order:
+            regen → tweak (text) → erase (mask). */}
+        {isComplete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTweak();
+            }}
+            title="Tweak a detail with text (Gemini)"
+            aria-label="Open tweak tool for this variant"
+            className="absolute top-1.5 left-9 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-blue-700 text-blue-300 hover:text-white border border-blue-800 hover:border-blue-500 transition-colors"
+          >
+            {/* Pencil / magic-wand icon */}
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"
+              />
+            </svg>
+          </button>
+        )}
+
         {/* Per-variant erase — opens the BFL flux-tools/erase-v1 mask
-            dialog. Sits alongside the regen button so the operator's
-            quick actions cluster in one corner. */}
+            dialog. Sits alongside the regen and tweak buttons so the
+            operator's quick actions cluster in one corner. */}
         {isComplete && (
           <button
             type="button"
@@ -399,9 +441,9 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onE
               e.stopPropagation();
               onErase();
             }}
-            title="Erase a detail (Flux)"
+            title="Erase a detail (Flux mask)"
             aria-label="Open erase tool for this variant"
-            className="absolute top-1.5 left-9 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-purple-700 text-purple-300 hover:text-white border border-purple-800 hover:border-purple-500 transition-colors"
+            className="absolute top-1.5 left-17 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-purple-700 text-purple-300 hover:text-white border border-purple-800 hover:border-purple-500 transition-colors"
           >
             {/* Eraser icon */}
             <svg

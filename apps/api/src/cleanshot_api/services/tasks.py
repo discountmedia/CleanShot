@@ -26,6 +26,7 @@ from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
     EraseTaskPayload,
     ScanTaskPayload,
+    TweakTaskPayload,
 )
 
 
@@ -147,6 +148,32 @@ def enqueue_erase(payload: EraseTaskPayload) -> str:
     task = _make_task(
         queue_path=queue_path,
         url=f"{settings.worker_url}/worker/erase",
+        payload=payload.model_dump(mode="json"),
+        task_id=task_id,
+    )
+    response = client.create_task(parent=queue_path, task=task)
+    return response.name
+
+
+def enqueue_tweak(payload: TweakTaskPayload) -> str:
+    """
+    Enqueue a Gemini text-guided tweak task. Shares cleanshot-image-gen
+    with enhance + cleanup + erase. Tweaks pull from the same Gemini AI
+    Studio quota as primary enhance, so they're rate-limited by the
+    same app.state.gemini_semaphore inside the worker rather than by
+    a separate queue.
+    """
+    settings = get_settings()
+    client = _tasks_client()
+    queue_path = (
+        f"projects/{settings.gcp_project}"
+        f"/locations/{settings.tasks_location}"
+        f"/queues/{settings.tasks_queue_gen}"
+    )
+    task_id = f"tweak-{payload.job_id}"
+    task = _make_task(
+        queue_path=queue_path,
+        url=f"{settings.worker_url}/worker/tweak",
         payload=payload.model_dump(mode="json"),
         task_id=task_id,
     )

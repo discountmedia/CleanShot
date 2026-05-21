@@ -8,11 +8,13 @@ from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
     EraseTaskPayload,
     ScanTaskPayload,
+    TweakTaskPayload,
 )
 from cleanshot_api.workers.cleanup_worker import handle_cleanup_task
 from cleanshot_api.workers.enhance_worker import (
     handle_enhance_task,
     handle_erase_task,
+    handle_tweak_task,
 )
 from cleanshot_api.workers.scan_worker import handle_scan_task
 
@@ -86,3 +88,21 @@ async def worker_erase(
     polling happens in background.
     """
     return await handle_erase_task(payload, background_tasks, request)
+
+
+@router.post(
+    "/tweak",
+    dependencies=[Depends(require_tasks_auth)],
+)
+async def worker_tweak(
+    payload: TweakTaskPayload,
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict:
+    """
+    Cloud Tasks target for Gemini text-guided variant tweak jobs. Source
+    asset is a completed enhance variant; operator's instruction text
+    comes inline in the payload. Quick-acknowledge: HTTP 200 immediately,
+    Gemini call happens in background.
+    """
+    return await handle_tweak_task(payload, background_tasks, request)

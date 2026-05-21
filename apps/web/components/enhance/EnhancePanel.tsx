@@ -58,6 +58,7 @@ import {
   type SourceVariant,
 } from "./SourceCompareCard";
 import { EraseDialog, type EraseDialogResult } from "./EraseDialog";
+import { TweakDialog, type TweakDialogResult } from "./TweakDialog";
 
 const MAX_UPLOADS = 10;
 
@@ -297,6 +298,18 @@ export function EnhancePanel({
   // can be in flight at a time, which matches operator expectation
   // (focused detail work, not a batch operation).
   const [eraseTarget, setEraseTarget] = useState<{
+    fileId:        string;
+    provider:      EnhanceProvider;
+    jobId:         string;
+    sourceAssetId: string;
+    sourceUrl:     string;
+  } | null>(null);
+
+  // Per-variant Gemini tweak dialog state — sister to eraseTarget,
+  // same single-instance pattern. Text-only conversational sibling to
+  // the mask-based Erase tool. Operator types one targeted instruction
+  // and Gemini Flash Image applies just that change.
+  const [tweakTarget, setTweakTarget] = useState<{
     fileId:        string;
     provider:      EnhanceProvider;
     jobId:         string;
@@ -862,6 +875,57 @@ export function EnhancePanel({
     [eraseTarget],
   );
 
+  // Same lookup-and-open pattern as handleOpenErase. The dialog needs
+  // the variant's current outputAssetId + signed URL, and the original
+  // jobId so handleTweakAccept can patch the right slot in `completed`
+  // when the operator approves the result.
+  const handleOpenTweak = useCallback(
+    (fileId: string, provider: EnhanceProvider) => {
+      const jobId = enhanceJobs.get(fileId)?.get(provider);
+      if (!jobId) return;
+      const completedItem = completed.get(jobId);
+      if (!completedItem) return;
+      setTweakTarget({
+        fileId,
+        provider,
+        jobId,
+        sourceAssetId: completedItem.outputAssetId,
+        sourceUrl:     completedItem.outputUrl,
+      });
+    },
+    [enhanceJobs, completed],
+  );
+
+  // Mirrors handleEraseAccept — patch the variant in-place under the
+  // SAME jobId so winner-pick / sent-to-Scan flags / pollers stay
+  // coherent. Closing the dialog clears the target.
+  const handleTweakAccept = useCallback(
+    (result: TweakDialogResult) => {
+      if (!tweakTarget) return;
+      const { jobId } = tweakTarget;
+      setCompleted((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, {
+          ...cur,
+          outputAssetId: result.outputAssetId,
+          outputUrl:     result.outputUrl,
+        });
+        return next;
+      });
+      setJobStateMap((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, { ...cur, outputAssetId: result.outputAssetId });
+        return next;
+      });
+      setTweakTarget(null);
+    },
+    [tweakTarget],
+  );
+
   // ─── Derived: SourceCompareCard inputs ─────────────────────────────────
 
   const variantsByFile = useMemo(() => {
@@ -1013,6 +1077,16 @@ export function EnhancePanel({
         sourceImageUrl={eraseTarget?.sourceUrl ?? ""}
         onClose={() => setEraseTarget(null)}
         onAccept={handleEraseAccept}
+      />
+
+      {/* ── Per-variant Tweak dialog (singleton) ── */}
+      <TweakDialog
+        open={tweakTarget !== null}
+        sessionId={sessionId}
+        sourceAssetId={tweakTarget?.sourceAssetId ?? ""}
+        sourceImageUrl={tweakTarget?.sourceUrl ?? ""}
+        onClose={() => setTweakTarget(null)}
+        onAccept={handleTweakAccept}
       />
 
       {/* ── Headless pollers ── */}
@@ -1378,6 +1452,7 @@ export function EnhancePanel({
                   onToggleHold={() => toggleHold(f.id)}
                   onRetry={(provider) => retryProvider(f, provider)}
                   onErase={(provider) => handleOpenErase(f.id, provider)}
+                  onTweak={(provider) => handleOpenTweak(f.id, provider)}
                 />
               );
             })}

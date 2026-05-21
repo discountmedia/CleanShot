@@ -25,6 +25,7 @@ EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 -- safe on PG12+. Add new operation kinds here rather than re-creating
 -- the enum, which would require dropping every column that references it.
 ALTER TYPE operation_enum ADD VALUE IF NOT EXISTS 'erase';
+ALTER TYPE operation_enum ADD VALUE IF NOT EXISTS 'tweak';
 
 DO $$ BEGIN
     CREATE TYPE job_status_enum AS ENUM

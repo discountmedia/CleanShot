@@ -137,6 +137,19 @@ export async function enqueueErase(params: {
   return post("/api/enhance/erase", params);
 }
 
+// ─── Tweak (text-guided variant refinement via Gemini Flash Image) ───────────
+
+export async function enqueueTweak(params: {
+  sessionId: string;
+  /** Asset to tweak — typically the outputAssetId of a completed enhance variant. */
+  assetId: string;
+  /** Natural-language instruction describing the targeted change. 3-600 chars. */
+  instruction: string;
+  idempotencyKey: string;
+}): Promise<{ jobId: string }> {
+  return post("/api/enhance/tweak", params);
+}
+
 // ─── Regen (single image from Scan tab) ──────────────────────────────────────
 
 export async function enqueueRegen(params: {

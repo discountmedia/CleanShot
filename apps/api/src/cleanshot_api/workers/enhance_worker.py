@@ -35,6 +35,7 @@ from cleanshot_api.models.schemas import (
     JobStatusEnum,
     OperationEnum,
     ScanTaskPayload,
+    TweakTaskPayload,
 )
 from cleanshot_api.services.tasks import enqueue_scan
 
@@ -520,6 +521,61 @@ async def _enhance_with_gemini(
         if part.inline_data and part.inline_data.data:
             return part.inline_data.data
     raise ValueError("Gemini returned no image part in enhance response")
+
+
+# Wraps the operator's free-text instruction with a scope guard so the
+# tweak applies ONE targeted change rather than re-rendering the whole
+# unit (Gemini's natural tendency when given any image-edit prompt).
+# Kept short on purpose — long preambles dilute the operator's actual
+# intent. The phrase "Do NOT re-paint or re-render the entire vehicle"
+# is load-bearing; without it, "remove the propane tank" can trigger a
+# full re-enhance.
+TWEAK_PREAMBLE = (
+    "You are making a targeted edit to a photo of a used industrial lift "
+    "truck for a B2B equipment listing. Apply ONLY the change described "
+    "below. Preserve everything else exactly as in the input: the unit's "
+    "identity (make, model, decals, badges, mast/boom/platform anatomy), "
+    "all other paint and surface condition, the background, the lighting, "
+    "and any defects or wear that were NOT explicitly named in the change. "
+    "Do NOT re-paint or re-render the entire vehicle. Do NOT touch anything "
+    "outside the specific change requested.\n\n"
+    "Change to apply: "
+)
+
+
+async def _tweak_with_gemini(
+    genai_client: Any,
+    gcs_uri: str,
+    instruction: str,
+) -> bytes:
+    """
+    Targeted text-guided edit via Gemini Flash Image. Operator-supplied
+    instruction is wrapped with a short scope guard (TWEAK_PREAMBLE) so
+    the model applies one change rather than re-enhancing the unit.
+
+    Same SDK path as _enhance_with_gemini — AI Studio backend,
+    Part.from_bytes after a GCS download (AI Studio rejects gs:// URIs),
+    response_modalities=["IMAGE", "TEXT"], thinking_level="High" (only
+    value gemini-3.1-flash-image-preview accepts).
+    """
+    mime_type = mimetypes.guess_type(gcs_uri)[0] or "image/jpeg"
+    image_bytes, _ct = await _load_image_bytes(gcs_uri)
+    file_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
+    text_part = types.Part.from_text(text=TWEAK_PREAMBLE + instruction.strip())
+
+    response = await genai_client.aio.models.generate_content(
+        model=ENHANCE_MODEL_GEMINI,
+        contents=[types.Content(role="user", parts=[file_part, text_part])],
+        config=types.GenerateContentConfig(
+            response_modalities=["IMAGE", "TEXT"],
+            thinking_config=types.ThinkingConfig(thinking_level="High"),
+        ),
+    )
+
+    for part in response.candidates[0].content.parts:
+        if part.inline_data and part.inline_data.data:
+            return part.inline_data.data
+    raise ValueError("Gemini returned no image part in tweak response")
 
 
 async def _enhance_with_openai(
@@ -1286,4 +1342,127 @@ async def handle_erase_task(
     background. Same shape as handle_enhance_task.
     """
     background_tasks.add_task(_run_erase, request, payload)
+    return {"status": "acknowledged"}
+
+
+# ─── Tweak pipeline (Gemini Flash Image text-guided targeted edits) ──────────
+
+
+async def _run_tweak(
+    request: Request,
+    payload: TweakTaskPayload,
+) -> None:
+    """Background coroutine for Gemini text-guided variant refinement."""
+    pool = request.app.state.pool
+    genai_aistudio_client = request.app.state.genai_aistudio
+    gemini_semaphore: asyncio.Semaphore = request.app.state.gemini_semaphore
+
+    async with pool.acquire() as conn:
+        user_email = await queries.get_session_user_email(conn, payload.session_id)
+        await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
+
+    import time as _time
+    call_started_at = _time.monotonic()
+    provider_model = ENHANCE_MODEL_GEMINI  # same underlying model as enhance
+
+    try:
+        if not genai_aistudio_client:
+            raise RuntimeError(
+                "Tweak requested but the Gemini AI Studio client is not "
+                "initialized. Mount cleanshot-gemini-key:latest as "
+                "GEMINI_API_KEY via Cloud Run --set-secrets."
+            )
+
+        # Use the same Gemini concurrency semaphore as primary enhance.
+        # Tweaks share the AI Studio quota with enhance/cleanup, so we
+        # don't want a burst of tweaks to starve in-flight enhance jobs.
+        async with gemini_semaphore:
+            output_bytes = await _tweak_with_gemini(
+                genai_aistudio_client,
+                payload.input_gcs_uri,
+                payload.instruction,
+            )
+        if not output_bytes:
+            raise ValueError("Gemini tweak returned no image bytes")
+
+        try:
+            async with pool.acquire() as conn:
+                await queries.insert_usage_event(
+                    conn,
+                    user_email=user_email,
+                    session_id=payload.session_id,
+                    job_id=payload.job_id,
+                    provider="gemini",
+                    model=provider_model,
+                    operation="tweak",
+                    status="success",
+                    latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                    cost_estimate_usd=estimate_cost_usd(provider_model),
+                )
+        except Exception:
+            logger.exception("usage_event insert failed (tweak success path)")
+
+        output_gcs_uri = await _write_to_gcs(
+            output_bytes,
+            session_id=payload.session_id,
+            job_id=payload.job_id,
+            operation="tweak",
+            content_type="image/png",
+        )
+
+        async with pool.acquire() as conn:
+            output_asset = await queries.create_asset(
+                conn,
+                session_id=payload.session_id,
+                operation=OperationEnum.tweak,
+                gcs_uri=output_gcs_uri,
+                content_hash=_sha256_hex(output_bytes),
+            )
+            await queries.update_job_status(
+                conn,
+                payload.job_id,
+                JobStatusEnum.complete,
+                output_asset_id=output_asset.id,
+            )
+
+        logger.info("Tweak complete for job %s", payload.job_id)
+
+    except Exception as exc:
+        logger.exception("Tweak worker failed for job %s", payload.job_id)
+        async with pool.acquire() as conn:
+            await queries.update_job_status(
+                conn,
+                payload.job_id,
+                JobStatusEnum.failed,
+                error=str(exc)[:500],
+            )
+            try:
+                await queries.insert_usage_event(
+                    conn,
+                    user_email=user_email,
+                    session_id=payload.session_id,
+                    job_id=payload.job_id,
+                    provider="gemini",
+                    model=provider_model,
+                    operation="tweak",
+                    status="failed",
+                    latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                    cost_estimate_usd=estimate_cost_usd(provider_model),
+                    error_message=str(exc)[:500],
+                )
+            except Exception:
+                logger.exception("usage_event insert failed (tweak failure path)")
+
+
+async def handle_tweak_task(
+    payload: TweakTaskPayload,
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict:
+    """
+    FastAPI route handler for POST /worker/tweak. Quick-acknowledge
+    pattern: returns HTTP 200 immediately, Gemini call happens in the
+    background. Same shape as handle_erase_task.
+    """
+    background_tasks.add_task(_run_tweak, request, payload)
     return {"status": "acknowledged"}
