@@ -88,32 +88,36 @@ FLUX_POLL_INTERVALS_S: tuple[float, ...] = (
 FLUX_POLL_STEADY_INTERVAL_S = 2.0
 FLUX_POLL_MAX_ATTEMPTS = 50        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
 
-# Bytedance Seedream 4.5 image-edit via the RunComfy proxy. RunComfy
+# BFL Flux Kontext Max image-edit via the RunComfy proxy. RunComfy
 # is async — submit returns a request_id; we poll
 # /v1/requests/{request_id}/status until "completed", then GET
-# /v1/requests/{request_id}/result for the rendered image URL. Unlike
-# the other image-edit providers, Seedream consumes its input image as
-# a publicly fetchable HTTPS URL rather than a base64 blob, so we mint
-# a short-lived signed GCS GET URL with services.gcs.mint_read_url and
-# pass that through. Auth is Bearer token on the same Authorization
-# header for every endpoint in the flow.
-SEEDREAM_SUBMIT_URL = "https://model-api.runcomfy.net/v1/models/bytedance/seedream-4-5/edit"
-SEEDREAM_STATUS_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/status"
-SEEDREAM_RESULT_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/result"
-ENHANCE_MODEL_SEEDREAM = "seedream-4-5-edit"
-# RunComfy docs cap the prompt at "no more than 600 English words" —
-# enforce a char ceiling that maps to that budget with some headroom
-# (600 words × ~5 chars/word + spaces ≈ 3,800). Our stock prompt with
-# all toggles on can exceed this so we truncate at the same spot the
-# other long-prompt providers do.
-SEEDREAM_PROMPT_MAX_CHARS = 3800
-# Match Flux's poll cadence — Seedream typical finish is 15–40s, the
-# tail is the same 90-second budget.
-SEEDREAM_POLL_INTERVALS_S: tuple[float, ...] = (
+# /v1/requests/{request_id}/result for the rendered image URL. Like
+# Seedream, Kontext consumes its input image as a publicly fetchable
+# HTTPS URL rather than a base64 blob, so we mint a short-lived
+# signed GCS GET URL with services.gcs.mint_read_url and pass that
+# through. Auth is Bearer token on the same Authorization header for
+# every endpoint in the flow.
+#
+# Why Kontext specifically: BFL positions it as purpose-built for
+# identity-preserving edits — "change anything except the subject."
+# That matches CleanShot's brief better than general-purpose
+# image-edit models, which sometimes hallucinate model badges or
+# alter the unit's silhouette under heavy paint refresh prompts.
+KONTEXT_SUBMIT_URL = "https://model-api.runcomfy.net/v1/models/black-forest-labs/flux-1-kontext/max/edit"
+KONTEXT_STATUS_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/status"
+KONTEXT_RESULT_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/result"
+ENHANCE_MODEL_KONTEXT = "flux-1-kontext-max-edit"
+# Reasonable per-call prompt ceiling. Kontext's docs don't publish a
+# hard cap but most BFL models tolerate up to ~4k chars; staying
+# inside that bound matches what we send to the other providers.
+KONTEXT_PROMPT_MAX_CHARS = 3800
+# Match Flux's poll cadence — Kontext typical finish is 15–40s with
+# the same ~90-second tail budget.
+KONTEXT_POLL_INTERVALS_S: tuple[float, ...] = (
     0.75, 0.75, 1.0, 1.25, 1.5, 1.5, 1.75, 2.0,
 )
-SEEDREAM_POLL_STEADY_INTERVAL_S = 2.0
-SEEDREAM_POLL_MAX_ATTEMPTS = 50
+KONTEXT_POLL_STEADY_INTERVAL_S = 2.0
+KONTEXT_POLL_MAX_ATTEMPTS = 50
 
 # Grok / xAI image editing — synchronous JSON request to /v1/images/edits.
 # Auth via Bearer header. Source image is sent as a base64 data URI
@@ -804,25 +808,25 @@ async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
     return img_resp.content
 
 
-async def _enhance_with_seedream(gcs_uri: str, prompt: str) -> bytes:
+async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
     """
-    Call Bytedance Seedream 4.5 via the RunComfy async proxy.
+    Call BFL Flux Kontext Max via the RunComfy async proxy.
 
       1. mint_read_url(gcs_uri) → short-lived signed GCS GET URL
-      2. POST SEEDREAM_SUBMIT_URL with { prompt, images: [signed_url] }
+      2. POST KONTEXT_SUBMIT_URL with { prompt, images: [signed_url] }
          → { request_id }
-      3. GET SEEDREAM_STATUS_URL.format(request_id=...) every
-         SEEDREAM_POLL_INTERVALS_S until status == "completed"
+      3. GET KONTEXT_STATUS_URL.format(request_id=...) every
+         KONTEXT_POLL_INTERVALS_S until status == "completed"
          (also handles "cancelled" / "failed" / "in_queue" /
          "in_progress").
-      4. GET SEEDREAM_RESULT_URL.format(request_id=...) → result.image
+      4. GET KONTEXT_RESULT_URL.format(request_id=...) → result.image
          (single URL) or result.images[0] (array).
       5. Fetch that URL for the rendered bytes.
     """
     settings = get_settings()
     if not settings.runcomfy_api_key:
         raise RuntimeError(
-            "Seedream provider requested but RUNCOMFY_API_KEY is not set. "
+            "Kontext provider requested but RUNCOMFY_API_KEY is not set. "
             "Mount cleanshot-runcomfy-key:latest via Cloud Run --set-secrets "
             "and re-deploy."
         )
@@ -838,33 +842,33 @@ async def _enhance_with_seedream(gcs_uri: str, prompt: str) -> bytes:
         "Content-Type":  "application/json",
     }
     body = {
-        "prompt": prompt[:SEEDREAM_PROMPT_MAX_CHARS],
+        "prompt": prompt[:KONTEXT_PROMPT_MAX_CHARS],
         "images": [signed_get_url],
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # ── 1. Submit ──────────────────────────────────────────────
-        submit = await client.post(SEEDREAM_SUBMIT_URL, headers=auth_headers, json=body)
+        submit = await client.post(KONTEXT_SUBMIT_URL, headers=auth_headers, json=body)
         if submit.status_code >= 400:
             raise ValueError(
-                f"RunComfy/Seedream submit failed ({submit.status_code}): "
+                f"RunComfy/Kontext submit failed ({submit.status_code}): "
                 f"{submit.text[:300]}"
             )
         submit_data = submit.json()
         request_id = submit_data.get("request_id") or submit_data.get("id")
         if not request_id:
             raise ValueError(
-                f"RunComfy/Seedream submit returned no request_id: {submit_data}"
+                f"RunComfy/Kontext submit returned no request_id: {submit_data}"
             )
 
         # ── 2. Poll ────────────────────────────────────────────────
-        status_url = SEEDREAM_STATUS_URL.format(request_id=request_id)
+        status_url = KONTEXT_STATUS_URL.format(request_id=request_id)
         terminal_status = None
-        for attempt in range(SEEDREAM_POLL_MAX_ATTEMPTS):
+        for attempt in range(KONTEXT_POLL_MAX_ATTEMPTS):
             interval = (
-                SEEDREAM_POLL_INTERVALS_S[attempt]
-                if attempt < len(SEEDREAM_POLL_INTERVALS_S)
-                else SEEDREAM_POLL_STEADY_INTERVAL_S
+                KONTEXT_POLL_INTERVALS_S[attempt]
+                if attempt < len(KONTEXT_POLL_INTERVALS_S)
+                else KONTEXT_POLL_STEADY_INTERVAL_S
             )
             await asyncio.sleep(interval)
             poll = await client.get(
@@ -873,7 +877,7 @@ async def _enhance_with_seedream(gcs_uri: str, prompt: str) -> bytes:
             )
             if poll.status_code >= 400:
                 raise ValueError(
-                    f"RunComfy/Seedream poll failed ({poll.status_code}): "
+                    f"RunComfy/Kontext poll failed ({poll.status_code}): "
                     f"{poll.text[:300]}"
                 )
             poll_data = poll.json()
@@ -885,30 +889,30 @@ async def _enhance_with_seedream(gcs_uri: str, prompt: str) -> bytes:
             if status_val in ("cancelled", "failed", "error"):
                 detail = poll_data.get("error") or poll_data.get("message") or "no detail"
                 raise ValueError(
-                    f"RunComfy/Seedream terminal status '{status_val}': {detail}"
+                    f"RunComfy/Kontext terminal status '{status_val}': {detail}"
                 )
             # Otherwise still "in_queue" / "in_progress" — keep polling.
 
         if terminal_status != "completed":
             budget_s = (
-                sum(SEEDREAM_POLL_INTERVALS_S)
-                + max(0, SEEDREAM_POLL_MAX_ATTEMPTS - len(SEEDREAM_POLL_INTERVALS_S))
-                  * SEEDREAM_POLL_STEADY_INTERVAL_S
+                sum(KONTEXT_POLL_INTERVALS_S)
+                + max(0, KONTEXT_POLL_MAX_ATTEMPTS - len(KONTEXT_POLL_INTERVALS_S))
+                  * KONTEXT_POLL_STEADY_INTERVAL_S
             )
             raise TimeoutError(
-                f"RunComfy/Seedream did not complete within {budget_s:.0f}s "
-                f"({SEEDREAM_POLL_MAX_ATTEMPTS} polls)"
+                f"RunComfy/Kontext did not complete within {budget_s:.0f}s "
+                f"({KONTEXT_POLL_MAX_ATTEMPTS} polls)"
             )
 
         # ── 3. Fetch result ───────────────────────────────────────
-        result_url = SEEDREAM_RESULT_URL.format(request_id=request_id)
+        result_url = KONTEXT_RESULT_URL.format(request_id=request_id)
         result_resp = await client.get(
             result_url,
             headers={"Authorization": auth_headers["Authorization"]},
         )
         if result_resp.status_code >= 400:
             raise ValueError(
-                f"RunComfy/Seedream result fetch failed "
+                f"RunComfy/Kontext result fetch failed "
                 f"({result_resp.status_code}): {result_resp.text[:300]}"
             )
         result_data = result_resp.json() or {}
@@ -920,7 +924,7 @@ async def _enhance_with_seedream(gcs_uri: str, prompt: str) -> bytes:
             image_url = images_arr[0] if images_arr else None
         if not image_url:
             raise ValueError(
-                f"RunComfy/Seedream result missing image/images URL: {result_data}"
+                f"RunComfy/Kontext result missing image/images URL: {result_data}"
             )
 
         # ── 4. Download the rendered image ────────────────────────
@@ -996,11 +1000,11 @@ async def _run_enhance(
             output_bytes = await _enhance_with_grok(
                 payload.input_gcs_uri, prompt
             )
-        elif payload.provider == "seedream":
-            provider_model = ENHANCE_MODEL_SEEDREAM
+        elif payload.provider == "kontext":
+            provider_model = ENHANCE_MODEL_KONTEXT
             # No published RunComfy per-minute cap — start without a
             # limiter and add one if we observe 429s in production.
-            output_bytes = await _enhance_with_seedream(
+            output_bytes = await _enhance_with_kontext(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default

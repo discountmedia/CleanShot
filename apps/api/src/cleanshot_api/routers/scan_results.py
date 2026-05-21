@@ -108,7 +108,7 @@ class RegenRequest(BaseModel):
     idempotency_key: str
     # Operator-selected provider for the regen pass. Defaults to gemini for
     # backward compatibility with existing callers that don't pass one.
-    provider: Literal["gemini", "openai", "grok", "seedream"] = "gemini"
+    provider: Literal["gemini", "openai", "grok", "kontext"] = "gemini"
 
 
 class RegenResponse(BaseModel):

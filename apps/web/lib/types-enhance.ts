@@ -9,24 +9,27 @@
  * apps/api/src/cleanshot_api/models/schemas.py.
  */
 /**
- * Image-edit GENERATION provider. Flux deliberately not in this list
- * any more — it's reserved for mask-based erase on completed variants
+ * Image-edit GENERATION provider. Flux 2 Max deliberately not in this
+ * list — it's reserved for mask-based erase on completed variants
  * (see lib/api.ts enqueueErase) rather than full-image generation.
+ * The Kontext slot is BFL's identity-preserving flux-1-kontext/max
+ * via the RunComfy proxy — same vendor as the erase tool but
+ * different model family.
  */
-export type EnhanceProvider = "gemini" | "openai" | "grok" | "seedream";
+export type EnhanceProvider = "gemini" | "openai" | "grok" | "kontext";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
   "grok",
-  "seedream",
+  "kontext",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
-  gemini:   "Gemini",
-  openai:   "OpenAI",
-  grok:     "Grok",
-  seedream: "Seedream",
+  gemini:  "Gemini",
+  openai:  "OpenAI",
+  grok:    "Grok",
+  kontext: "Kontext",
 };
 
 /**
@@ -35,10 +38,10 @@ export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
  * vocabulary the rest of the app uses.
  */
 export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
-  gemini:   "bg-blue-950/40 text-blue-300 border-blue-800",
-  openai:   "bg-green-950/40 text-green-300 border-green-800",
-  grok:     "bg-orange-950/40 text-orange-300 border-orange-800",
-  seedream: "bg-pink-950/40 text-pink-300 border-pink-800",
+  gemini:  "bg-blue-950/40 text-blue-300 border-blue-800",
+  openai:  "bg-green-950/40 text-green-300 border-green-800",
+  grok:    "bg-orange-950/40 text-orange-300 border-orange-800",
+  kontext: "bg-purple-950/40 text-purple-300 border-purple-800",
 };
 
 /**
@@ -76,10 +79,10 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
     isNew:       true,
   },
-  seedream: {
+  kontext: {
     speedLabel:  "Moderate",
     speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
-    description: "Bytedance Seedream 4.5 (via RunComfy) — async polling, strong on photorealistic detail preservation.",
+    description: "BFL Flux Kontext Max (via RunComfy) — purpose-built for identity-preserving edits. Strong on subject continuity.",
     isNew:       true,
   },
 };

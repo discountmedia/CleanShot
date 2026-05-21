@@ -58,11 +58,11 @@ PER_IMAGE_USD: dict[str, float] = {
     # Update once we have an invoice / real bill to calibrate against.
     "grok-imagine-image-quality":     0.070,
 
-    # Bytedance Seedream 4.5 image-edit via RunComfy proxy
+    # BFL Flux Kontext Max image-edit via the RunComfy proxy
     # (https://www.runcomfy.com). RunComfy bills credits-per-call;
-    # current published rate ~$0.05 per Seedream 4.5 edit at the
-    # default 2K resolution tier. Update after the first real invoice.
-    "seedream-4-5-edit":              0.050,
+    # Kontext Max sits at the higher-quality / higher-cost tier so a
+    # ~$0.08 placeholder is reasonable until the first real invoice.
+    "flux-1-kontext-max-edit":        0.080,
 }
 
 

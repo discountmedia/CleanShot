@@ -180,7 +180,7 @@ class EnhanceRequest(BaseModel):
     # default for image editing per BFL's own docs; async polling pattern;
     # ~$0.03–0.08 per image. Model IDs pinned in
     # apps/api/.../workers/enhance_worker.py.
-    provider: Literal["gemini", "openai", "grok", "seedream"] = "gemini"
+    provider: Literal["gemini", "openai", "grok", "kontext"] = "gemini"
     # What kind of equipment is in the photo — drives the per-type
     # anatomy guardrail block in _build_enhance_prompt + the equipment
     # display name in the master goal ("USED forklift" / "USED scissor
@@ -467,7 +467,7 @@ class EnhanceTaskPayload(BaseModel):
     # passes the operator's selected provider through here (the scan-derived
     # prompt was originally tuned for Gemini, but other providers are now
     # accepted at the operator's discretion).
-    provider: Literal["gemini", "openai", "grok", "seedream"] = "gemini"
+    provider: Literal["gemini", "openai", "grok", "kontext"] = "gemini"
     # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
     # Ignored when custom_prompt is set (the operator's verbatim text wins).
     equipment_type: Literal["forklift", "scissor_lift", "telehandler"] = "forklift"
