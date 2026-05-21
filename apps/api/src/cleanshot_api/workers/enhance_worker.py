@@ -31,6 +31,7 @@ from cleanshot_api.services.pricing import estimate_cost_usd
 from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
     EnhanceToggles,
+    EraseTaskPayload,
     JobStatusEnum,
     OperationEnum,
     ScanTaskPayload,
@@ -63,20 +64,16 @@ ENHANCE_MODEL_GEMINI = "gemini-3.1-flash-image-preview"
 # We force tool_choice so gpt-5 always invokes the tool (no chance of
 # it deciding the prompt is conversational and just replying in text).
 ENHANCE_MODEL_OPENAI = "gpt-5"
-# BFL endpoint URL — flux-2-max is their flagship image editor with
-# product/identity consistency (preserves the input subject while
-# changing context, surface treatment, lighting, etc.). The earlier
-# flux-2-pro endpoint was generation-flavored and tended to fabricate
-# a new subject rather than edit the source.
-#
-# Async pattern: POST returns { id, polling_url }; we poll polling_url
-# until status="Ready", then GET result.sample to fetch the bytes.
-#
-# Request body field for the source image is `input_image` (base64
-# string, no data: prefix). The flux-2-pro endpoint used `image_prompt`
-# for the same field — the rename was a breaking change between the
-# two endpoints.
-FLUX_GENERATE_URL = "https://api.bfl.ai/v1/flux-2-max"
+# BFL erase endpoint. Flux is no longer a generation provider on the
+# Enhance tab — it's reserved for mask-based object removal via
+# /v1/flux-tools/erase-v1 (operator paints a mask in the browser over
+# something on a completed variant they want gone; the backend submits
+# both image + mask to BFL and writes the cleaned result as a new
+# asset). Same async-polling pattern as the prior flux-2-max generator
+# (POST returns { id, polling_url }; poll until "Ready"; GET
+# result.sample for bytes). Auth is via the same x-key header / same
+# BFL_API_KEY secret we already mount.
+FLUX_ERASE_URL = "https://api.bfl.ai/v1/flux-tools/erase-v1"
 # Polling cadence: ramp from 0.5s up to 2.0s instead of a flat 1.5s.
 # Median FLUX 2 MAX finish is 15-25s — the prior flat 1.5s spent ~10
 # poll-intervals at the start of every job rounding up to the next 1.5s
@@ -554,31 +551,26 @@ async def _enhance_with_openai(
     )
 
 
-async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
+async def _erase_with_flux(
+    gcs_uri: str,
+    mask_png_base64: str,
+    instruction: str | None,
+) -> bytes:
     """
-    Call Black Forest Labs FLUX 2 PRO via the async-polling pattern.
+    Call BFL's flux-tools/erase-v1 endpoint to remove the masked region
+    from the source image. Mask is a base64-encoded PNG drawn client-side
+    where white pixels mark areas to erase and black pixels mark areas
+    to preserve.
 
-      1. POST FLUX_GENERATE_URL with prompt + base64 image_prompt →
-         { id, polling_url }
-      2. GET polling_url every FLUX_POLL_INTERVAL_S seconds (auth via
-         x-key) until status == "Ready" (or terminal error).
-      3. GET result.sample (a presigned URL, no auth) → JPEG bytes.
-
-    The polling_url returned by the submit already encodes BFL's region;
-    use it verbatim rather than reconstructing.
-
-    BFL terminal statuses to surface as job failures:
-      "Error" | "Content Moderated" | "Request Moderated" | "Task not found"
-
-    Typical latency: 10-30s. Budget ceiling is the sum of
-    FLUX_POLL_INTERVALS_S plus
-    (FLUX_POLL_MAX_ATTEMPTS - len(FLUX_POLL_INTERVALS_S)) ×
-    FLUX_POLL_STEADY_INTERVAL_S (~90s today).
+    Same async-polling pattern as the (now-removed) flux-2-max generator:
+      1. POST FLUX_ERASE_URL with { image, mask, prompt? } → { id, polling_url }
+      2. GET polling_url every FLUX_POLL_INTERVALS_S until Ready / terminal
+      3. GET result.sample (a presigned URL, no auth) → image bytes
     """
     settings = get_settings()
     if not settings.bfl_api_key:
         raise RuntimeError(
-            "Flux provider requested but BFL_API_KEY is not set. "
+            "Flux erase requested but BFL_API_KEY is not set. "
             "Mount cleanshot-bfl-key:latest via Cloud Run --set-secrets "
             "and re-deploy."
         )
@@ -587,24 +579,33 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
     image_b64 = base64.b64encode(image_bytes).decode()
 
     auth_headers = {"x-key": settings.bfl_api_key}
+    body: dict[str, Any] = {
+        "image": image_b64,
+        "mask":  mask_png_base64,
+    }
+    # BFL accepts an optional prompt to guide what should fill the
+    # erased region. Empty/None means "infer plausible background."
+    if instruction and instruction.strip():
+        body["prompt"] = instruction.strip()
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # ── 1. Submit ─────────────────────────────────────────────────
         submit = await client.post(
-            FLUX_GENERATE_URL,
+            FLUX_ERASE_URL,
             headers={**auth_headers, "Content-Type": "application/json"},
-            json={"prompt": prompt, "input_image": image_b64},
+            json=body,
         )
         if submit.status_code >= 400:
             raise ValueError(
-                f"BFL submit failed ({submit.status_code}): {submit.text[:300]}"
+                f"BFL erase submit failed ({submit.status_code}): "
+                f"{submit.text[:300]}"
             )
         submit_data = submit.json()
         polling_url = submit_data.get("polling_url")
         if not polling_url:
-            raise ValueError(f"BFL submit returned no polling_url: {submit_data}")
+            raise ValueError(
+                f"BFL erase submit returned no polling_url: {submit_data}"
+            )
 
-        # ── 2. Poll ──────────────────────────────────────────────────
         for attempt in range(FLUX_POLL_MAX_ATTEMPTS):
             interval = (
                 FLUX_POLL_INTERVALS_S[attempt]
@@ -615,7 +616,8 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
             poll = await client.get(polling_url, headers=auth_headers)
             if poll.status_code >= 400:
                 raise ValueError(
-                    f"BFL poll failed ({poll.status_code}): {poll.text[:300]}"
+                    f"BFL erase poll failed ({poll.status_code}): "
+                    f"{poll.text[:300]}"
                 )
             poll_data = poll.json()
             status = poll_data.get("status")
@@ -625,9 +627,8 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
                 sample_url = result.get("sample")
                 if not sample_url:
                     raise ValueError(
-                        f"BFL Ready without result.sample URL: {poll_data}"
+                        f"BFL erase Ready without result.sample URL: {poll_data}"
                     )
-                # ── 3. Fetch rendered image (signed URL, no auth) ───
                 image_resp = await client.get(sample_url)
                 image_resp.raise_for_status()
                 return image_resp.content
@@ -638,9 +639,14 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
                 "Request Moderated",
                 "Task not found",
             ):
-                detail = poll_data.get("result") or poll_data.get("error") or "no detail"
-                raise ValueError(f"BFL returned terminal status '{status}': {detail}")
-            # Otherwise still "Pending" / transient — keep polling.
+                detail = (
+                    poll_data.get("result")
+                    or poll_data.get("error")
+                    or "no detail"
+                )
+                raise ValueError(
+                    f"BFL erase returned terminal status '{status}': {detail}"
+                )
 
         budget_s = (
             sum(FLUX_POLL_INTERVALS_S)
@@ -648,8 +654,8 @@ async def _enhance_with_flux(gcs_uri: str, prompt: str) -> bytes:
               * FLUX_POLL_STEADY_INTERVAL_S
         )
         raise TimeoutError(
-            f"BFL FLUX 2 MAX did not finish within "
-            f"{budget_s:.0f}s ({FLUX_POLL_MAX_ATTEMPTS} polls)"
+            f"BFL erase did not finish within {budget_s:.0f}s "
+            f"({FLUX_POLL_MAX_ATTEMPTS} polls)"
         )
 
 
@@ -786,11 +792,6 @@ async def _run_enhance(
             await request.app.state.openai_image_rate_limiter.acquire()
             output_bytes = await _enhance_with_openai(
                 openai_client, payload.input_gcs_uri, prompt
-            )
-        elif payload.provider == "flux":
-            provider_model = "flux-2-max"
-            output_bytes = await _enhance_with_flux(
-                payload.input_gcs_uri, prompt
             )
         elif payload.provider == "grok":
             provider_model = ENHANCE_MODEL_GROK
@@ -970,4 +971,114 @@ async def handle_enhance_task(
     The frontend polls /jobs/{id} and shows the error state.
     """
     background_tasks.add_task(_run_enhance, request, payload)
+    return {"status": "acknowledged"}
+
+
+# ─── Erase pipeline (BFL flux-tools/erase-v1) ────────────────────────────────
+
+
+async def _run_erase(
+    request: Request,
+    payload: EraseTaskPayload,
+) -> None:
+    """Background coroutine for mask-based BFL erase jobs."""
+    pool = request.app.state.pool
+
+    async with pool.acquire() as conn:
+        user_email = await queries.get_session_user_email(conn, payload.session_id)
+        await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
+
+    import time as _time
+    call_started_at = _time.monotonic()
+    provider_model = "flux-erase-v1"
+
+    try:
+        output_bytes = await _erase_with_flux(
+            payload.input_gcs_uri,
+            payload.mask_png_base64,
+            payload.instruction,
+        )
+        if not output_bytes:
+            raise ValueError("BFL erase returned no image bytes")
+
+        try:
+            async with pool.acquire() as conn:
+                await queries.insert_usage_event(
+                    conn,
+                    user_email=user_email,
+                    session_id=payload.session_id,
+                    job_id=payload.job_id,
+                    provider="flux",
+                    model=provider_model,
+                    operation="erase",
+                    status="success",
+                    latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                    cost_estimate_usd=estimate_cost_usd(provider_model),
+                )
+        except Exception:
+            logger.exception("usage_event insert failed (erase success path)")
+
+        output_gcs_uri = await _write_to_gcs(
+            output_bytes,
+            session_id=payload.session_id,
+            job_id=payload.job_id,
+            operation="erase",
+            content_type="image/png",
+        )
+
+        async with pool.acquire() as conn:
+            output_asset = await queries.create_asset(
+                conn,
+                session_id=payload.session_id,
+                operation=OperationEnum.erase,
+                gcs_uri=output_gcs_uri,
+                content_hash=_sha256_hex(output_bytes),
+            )
+            await queries.update_job_status(
+                conn,
+                payload.job_id,
+                JobStatusEnum.complete,
+                output_asset_id=output_asset.id,
+            )
+
+        logger.info("Erase complete for job %s", payload.job_id)
+
+    except Exception as exc:
+        logger.exception("Erase worker failed for job %s", payload.job_id)
+        async with pool.acquire() as conn:
+            await queries.update_job_status(
+                conn,
+                payload.job_id,
+                JobStatusEnum.failed,
+                error=str(exc)[:500],
+            )
+            try:
+                await queries.insert_usage_event(
+                    conn,
+                    user_email=user_email,
+                    session_id=payload.session_id,
+                    job_id=payload.job_id,
+                    provider="flux",
+                    model=provider_model,
+                    operation="erase",
+                    status="failed",
+                    latency_ms=int((_time.monotonic() - call_started_at) * 1000),
+                    cost_estimate_usd=estimate_cost_usd(provider_model),
+                    error_message=str(exc)[:500],
+                )
+            except Exception:
+                logger.exception("usage_event insert failed (erase failure path)")
+
+
+async def handle_erase_task(
+    payload: EraseTaskPayload,
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict:
+    """
+    FastAPI route handler for POST /worker/erase. Quick-acknowledge
+    pattern: returns HTTP 200 immediately, BFL polling happens in the
+    background. Same shape as handle_enhance_task.
+    """
+    background_tasks.add_task(_run_erase, request, payload)
     return {"status": "acknowledged"}

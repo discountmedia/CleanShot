@@ -26,6 +26,11 @@ class OperationEnum(StrEnum):
     scan = "scan"
     cleanup = "cleanup"
     export = "export"
+    # Mask-based object removal via BFL's flux-tools/erase-v1. Source is
+    # an existing enhanced variant (its outputAssetId from a prior
+    # enhance job); the operator paints a binary mask client-side and
+    # the worker dispatches both to BFL.
+    erase = "erase"
 
 
 class JobStatusEnum(StrEnum):
@@ -175,7 +180,7 @@ class EnhanceRequest(BaseModel):
     # default for image editing per BFL's own docs; async polling pattern;
     # ~$0.03–0.08 per image. Model IDs pinned in
     # apps/api/.../workers/enhance_worker.py.
-    provider: Literal["gemini", "openai", "flux", "grok"] = "gemini"
+    provider: Literal["gemini", "openai", "grok"] = "gemini"
     # What kind of equipment is in the photo — drives the per-type
     # anatomy guardrail block in _build_enhance_prompt + the equipment
     # display name in the master goal ("USED forklift" / "USED scissor
@@ -219,6 +224,41 @@ class EnhanceToggles(BaseModel):
 
 class EnhanceResponse(BaseModel):
     job_id: uuid.UUID
+
+
+class EraseRequest(BaseModel):
+    """
+    BFF → FastAPI request body for mask-based object erase.
+
+    The operator clicks "Erase" on a completed enhance variant, paints a
+    binary mask in the browser, and submits both the source asset_id
+    (the variant they want to clean up) and the mask as a base64 PNG.
+    `instruction` is optional — when omitted, BFL falls back to its
+    default "fill with plausible background" behavior.
+    """
+    session_id: uuid.UUID
+    asset_id: uuid.UUID
+    # Base64-encoded PNG of the mask. White (>= 128) pixels mark areas
+    # to erase, black pixels mark areas to preserve. Mask dimensions
+    # must match the source image; the worker resizes if not.
+    mask_png_base64: str
+    # Optional natural-language instruction for what should fill the
+    # erased region. Leave empty for BFL's default behaviour.
+    instruction: str | None = None
+    idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
+
+
+class EraseResponse(BaseModel):
+    job_id: uuid.UUID
+
+
+class EraseTaskPayload(BaseModel):
+    job_id: uuid.UUID
+    session_id: uuid.UUID
+    input_asset_id: uuid.UUID
+    input_gcs_uri: str
+    mask_png_base64: str
+    instruction: str | None = None
 
 
 class ScanBatchRequest(BaseModel):
@@ -427,7 +467,7 @@ class EnhanceTaskPayload(BaseModel):
     # passes the operator's selected provider through here (the scan-derived
     # prompt was originally tuned for Gemini, but other providers are now
     # accepted at the operator's discretion).
-    provider: Literal["gemini", "openai", "flux", "grok"] = "gemini"
+    provider: Literal["gemini", "openai", "grok"] = "gemini"
     # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
     # Ignored when custom_prompt is set (the operator's verbatim text wins).
     equipment_type: Literal["forklift", "scissor_lift", "telehandler"] = "forklift"

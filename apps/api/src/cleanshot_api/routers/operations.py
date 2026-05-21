@@ -16,13 +16,21 @@ from cleanshot_api.models.schemas import (
     EnhanceRequest,
     EnhanceResponse,
     EnhanceTaskPayload,
+    EraseRequest,
+    EraseResponse,
+    EraseTaskPayload,
     JobStatusEnum,
     OperationEnum,
     ScanBatchRequest,
     ScanBatchResponse,
     ScanTaskPayload,
 )
-from cleanshot_api.services.tasks import enqueue_cleanup, enqueue_enhance, enqueue_scan
+from cleanshot_api.services.tasks import (
+    enqueue_cleanup,
+    enqueue_enhance,
+    enqueue_erase,
+    enqueue_scan,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -76,6 +84,54 @@ async def enqueue_enhance_job(
         await queries.set_job_tasks_name(conn, job.id, tasks_name)
 
     return EnhanceResponse(job_id=job.id)
+
+
+@router.post(
+    "/enhance/erase",
+    response_model=EraseResponse,
+    dependencies=[Depends(require_api_key)],
+    status_code=202,
+)
+async def enqueue_erase_job(
+    body: EraseRequest,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> EraseResponse:
+    """
+    Mask-based object erase via BFL flux-tools/erase-v1. The source
+    asset_id is typically the outputAssetId of a completed enhance
+    variant — the operator drew a mask over something they want
+    removed (a sticker, a scratch, background clutter, etc.).
+    Returns 202 immediately; actual BFL work is async.
+    """
+    async with pool.acquire() as conn:
+        asset = await queries.get_asset(conn, body.asset_id)
+        if asset is None or asset.session_id != body.session_id:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND, detail="Asset not found"
+            )
+
+        job = await queries.create_job(
+            conn,
+            session_id=body.session_id,
+            operation=OperationEnum.erase,
+            input_asset_id=body.asset_id,
+            idempotency_key=body.idempotency_key,
+        )
+
+    task_payload = EraseTaskPayload(
+        job_id=job.id,
+        session_id=body.session_id,
+        input_asset_id=body.asset_id,
+        input_gcs_uri=asset.gcs_uri,
+        mask_png_base64=body.mask_png_base64,
+        instruction=body.instruction,
+    )
+    tasks_name = enqueue_erase(task_payload)
+
+    async with pool.acquire() as conn:
+        await queries.set_job_tasks_name(conn, job.id, tasks_name)
+
+    return EraseResponse(job_id=job.id)
 
 
 @router.post(

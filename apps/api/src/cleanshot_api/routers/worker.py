@@ -6,10 +6,14 @@ from cleanshot_api.core.tasks_auth import require_tasks_auth
 from cleanshot_api.models.schemas import (
     CleanupTaskPayload,
     EnhanceTaskPayload,
+    EraseTaskPayload,
     ScanTaskPayload,
 )
 from cleanshot_api.workers.cleanup_worker import handle_cleanup_task
-from cleanshot_api.workers.enhance_worker import handle_enhance_task
+from cleanshot_api.workers.enhance_worker import (
+    handle_enhance_task,
+    handle_erase_task,
+)
 from cleanshot_api.workers.scan_worker import handle_scan_task
 
 router = APIRouter(prefix="/worker", tags=["worker"])
@@ -64,3 +68,21 @@ async def worker_cleanup(
     Quick-acknowledge: HTTP 200 immediately.
     """
     return await handle_cleanup_task(payload, background_tasks, request)
+
+
+@router.post(
+    "/erase",
+    dependencies=[Depends(require_tasks_auth)],
+)
+async def worker_erase(
+    payload: EraseTaskPayload,
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict:
+    """
+    Cloud Tasks target for mask-based BFL erase jobs. Source asset is a
+    completed enhance variant; operator-drawn mask comes inline in the
+    payload as base64 PNG. Quick-acknowledge: HTTP 200 immediately, BFL
+    polling happens in background.
+    """
+    return await handle_erase_task(payload, background_tasks, request)

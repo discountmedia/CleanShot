@@ -24,6 +24,7 @@ from cleanshot_api.core.config import get_settings
 from cleanshot_api.models.schemas import (
     CleanupTaskPayload,
     EnhanceTaskPayload,
+    EraseTaskPayload,
     ScanTaskPayload,
 )
 
@@ -122,6 +123,30 @@ def enqueue_cleanup(payload: CleanupTaskPayload) -> str:
     task = _make_task(
         queue_path=queue_path,
         url=f"{settings.worker_url}/worker/cleanup",
+        payload=payload.model_dump(mode="json"),
+        task_id=task_id,
+    )
+    response = client.create_task(parent=queue_path, task=task)
+    return response.name
+
+
+def enqueue_erase(payload: EraseTaskPayload) -> str:
+    """
+    Enqueue a Flux erase task. Shares cleanshot-image-gen with enhance +
+    cleanup (BFL has plenty of headroom and erase calls are infrequent —
+    no need for a dedicated queue).
+    """
+    settings = get_settings()
+    client = _tasks_client()
+    queue_path = (
+        f"projects/{settings.gcp_project}"
+        f"/locations/{settings.tasks_location}"
+        f"/queues/{settings.tasks_queue_gen}"
+    )
+    task_id = f"erase-{payload.job_id}"
+    task = _make_task(
+        queue_path=queue_path,
+        url=f"{settings.worker_url}/worker/erase",
         payload=payload.model_dump(mode="json"),
         task_id=task_id,
     )

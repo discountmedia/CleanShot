@@ -45,9 +45,12 @@ PER_IMAGE_USD: dict[str, float] = {
     # image-gen tool portion ~$0.07. Refine once real invoices land.
     "gpt-5":                          0.080,
 
-    # Black Forest Labs FLUX 2 MAX. BFL bills credits; ~$0.06 in USD
-    # equivalent at current credit rate (1024 credits ≈ $1, ~60 cr/call).
-    "flux-2-max":                     0.060,
+    # Black Forest Labs flux-tools/erase-v1. Flux no longer ships as a
+    # generation provider — only the mask-based erase tool is wired up.
+    # BFL bills credits; erase tier is published ~$0.04 per call at the
+    # current rate (1024 credits ≈ $1, ~40 cr/erase). Refine once we
+    # have real invoices.
+    "flux-erase-v1":                  0.040,
 
     # xAI Grok image edit (https://docs.x.ai). Public pricing for
     # /v1/images/edits isn't published yet — placeholder of $0.07 per

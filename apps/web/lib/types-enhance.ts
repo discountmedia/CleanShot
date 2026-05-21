@@ -8,19 +8,22 @@
  * `EnhanceTaskPayload.provider` literal in
  * apps/api/src/cleanshot_api/models/schemas.py.
  */
-export type EnhanceProvider = "gemini" | "openai" | "flux" | "grok";
+/**
+ * Image-edit GENERATION provider. Flux deliberately not in this list
+ * any more — it's reserved for mask-based erase on completed variants
+ * (see lib/api.ts enqueueErase) rather than full-image generation.
+ */
+export type EnhanceProvider = "gemini" | "openai" | "grok";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
   "grok",
-  "flux",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
   gemini: "Gemini",
   openai: "OpenAI",
-  flux:   "Flux",
   grok:   "Grok",
 };
 
@@ -32,7 +35,6 @@ export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
 export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
   gemini: "bg-blue-950/40 text-blue-300 border-blue-800",
   openai: "bg-green-950/40 text-green-300 border-green-800",
-  flux:   "bg-purple-950/40 text-purple-300 border-purple-800",
   grok:   "bg-orange-950/40 text-orange-300 border-orange-800",
 };
 
@@ -69,12 +71,6 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     speedLabel:  "Fastest",
     speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
     description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
-    isNew:       true,
-  },
-  flux: {
-    speedLabel:  "Moderate",
-    speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
-    description: "Black Forest Labs FLUX 2 MAX — best for editorial-style edits, async polling.",
     isNew:       true,
   },
 };
