@@ -81,6 +81,25 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   removeRentalBranding: true,    // default ON — most batches are ex-rental units
 };
 
+/**
+ * All-off toggle set. Auto-applied after a batch reaches a fully terminal
+ * state so the next run starts clean — the operator opts back into each
+ * emphasis explicitly rather than accidentally repeating last batch's
+ * settings. Distinct from DEFAULT_TOGGLES (which the manual "Reset"
+ * button restores).
+ */
+export const ALL_OFF_TOGGLES: EnhanceToggles = {
+  newPaintJob: false,
+  removeRust: false,
+  restoreDecals: false,
+  removePeople: false,
+  removeBackgroundSignage: false,
+  paintForksRedYellowTips: false,
+  shineTires: false,
+  improveLighting: false,
+  removeRentalBranding: false,
+};
+
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   newPaintJob: "New Paint Job",
   removeRust: "Remove Rust",

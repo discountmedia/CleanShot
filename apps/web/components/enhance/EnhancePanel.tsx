@@ -28,6 +28,7 @@ import { v4 as uuidv4 } from "uuid";
 
 import { buildEnhanceFilename, convertToJpeg, formatBytes } from "../../lib/compress";
 import {
+  ALL_OFF_TOGGLES,
   DEFAULT_TOGGLES,
   TOGGLE_LABELS,
   TOGGLE_DESCRIPTIONS,
@@ -238,6 +239,16 @@ export function EnhancePanel({
   const [toggles, setToggles] = useState<EnhanceToggles>(DEFAULT_TOGGLES);
   const setMeta = onMetaChange;
 
+  // True when the operator has changed a toggle since the most recent batch
+  // reached a terminal state. Drives the "re-enhance with new toggles"
+  // path on the Enhance button — without this we'd lock them into the
+  // previous batch's settings until they cleared the workspace.
+  const [togglesDirty, setTogglesDirty] = useState(false);
+  // One-shot guard so the auto-reset effect fires exactly once per batch
+  // transition into terminal state. Reset back to false the moment the
+  // batch is no longer terminal (new run started, items cleared, etc.).
+  const resetDoneForBatchRef = useRef(false);
+
   /** Map<fileId, Map<Provider, jobId>>. Each source can have up to 5 concurrent enhance jobs. */
   const [enhanceJobs, setEnhanceJobs] = useState<
     Map<string, Map<EnhanceProvider, string>>
@@ -295,6 +306,40 @@ export function EnhancePanel({
     const handle = window.setInterval(() => setNowMs(Date.now()), 1000);
     return () => window.clearInterval(handle);
   }, [anyActiveJob]);
+
+  // True when there's at least one batch in flight AND every job in every
+  // file's provider map has reached a terminal state. Drives both the
+  // post-batch toggle auto-reset and the re-enhance-button gate below.
+  const batchTerminal = useMemo(() => {
+    if (enhanceJobs.size === 0) return false;
+    for (const providerMap of enhanceJobs.values()) {
+      for (const jobId of providerMap.values()) {
+        const job = jobStateMap.get(jobId);
+        if (!job) return false;
+        if (job.status !== "complete" && job.status !== "failed" && job.status !== "cancelled") {
+          return false;
+        }
+      }
+    }
+    return true;
+  }, [enhanceJobs, jobStateMap]);
+
+  // Auto-reset toggles → all-off once the batch becomes fully terminal.
+  // resetDoneForBatchRef keeps this idempotent: each batch transition into
+  // terminal flips it on once, and any return to non-terminal (new run,
+  // clear, etc.) flips it back so the next batch gets its own reset.
+  useEffect(() => {
+    if (batchTerminal && !resetDoneForBatchRef.current) {
+      resetDoneForBatchRef.current = true;
+      setToggles(ALL_OFF_TOGGLES);
+      // We're the ones moving toggles here — don't count it as a
+      // user-initiated dirty change.
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: the auto-reset IS the side-effect; gated by the one-shot ref so no loop.
+      setTogglesDirty(false);
+    } else if (!batchTerminal && resetDoneForBatchRef.current) {
+      resetDoneForBatchRef.current = false;
+    }
+  }, [batchTerminal]);
 
   // Report file count up to Workspace so the BatchContextStrip can show it.
   useEffect(() => {
@@ -604,6 +649,10 @@ export function EnhancePanel({
         // onClearPipeline wipes Workspace's enhancedAssets + resizeAssets +
         // resizeResults, which is what causes the Scan tab to reset.
         onClearPipeline();
+        // Brand-new batch — clear the dirty flag + auto-reset latch so the
+        // post-batch toggle reset fires fresh when this run completes.
+        setTogglesDirty(false);
+        resetDoneForBatchRef.current = false;
       }
     }
 
@@ -619,6 +668,101 @@ export function EnhancePanel({
     );
     setIsRunning(false);
   };
+
+  /**
+   * Re-enqueue enhance for every already-uploaded file in the batch using
+   * the current toggles. Used by the "Re-enhance with new toggles" path on
+   * the Enhance button after a batch has fully completed and the operator
+   * has changed at least one toggle. Skips upload entirely — each file
+   * still has the original assetId from its first run, so we just spin up
+   * new jobs against the same GCS object.
+   */
+  const handleReEnhance = useCallback(async () => {
+    const eligible = files.filter((f) => f.status === "done" && f.assetId);
+    if (eligible.length === 0) return;
+    if (!makeValid) {
+      setGlobalError("Enter the forklift Make before enhancing.");
+      return;
+    }
+    setGlobalError(null);
+
+    // Same wipe pattern handleEnhanceAll uses for the fresh-batch branch —
+    // re-enhance is morally a new batch over the same uploaded inputs, so
+    // downstream Scan/Resize state has to be cleared too.
+    setEnhanceJobs(new Map());
+    setCompleted(new Map());
+    setSentJobIds(new Set());
+    setJobStateMap(new Map());
+    setChosenByFile(new Map());
+    setHeldFiles(new Set());
+    onClearPipeline();
+    setTogglesDirty(false);
+    resetDoneForBatchRef.current = false;
+    setIsRunning(true);
+
+    requestAnimationFrame(() => {
+      jobsSectionRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    const providerList: EnhanceProvider[] = Array.from(selectedProviders);
+    await Promise.allSettled(
+      eligible.map(async (file) => {
+        const perProviderJobIds = new Map<EnhanceProvider, string>();
+        const enqueueErrors: string[] = [];
+        for (const p of providerList) {
+          try {
+            const { jobId } = await enqueueEnhance({
+              sessionId,
+              assetId:        file.assetId!,
+              toggles,
+              forkliftMeta:   meta,
+              provider:       p,
+              equipmentType:  meta.equipmentType ?? "forklift",
+              customPrompt:   customPromptActive ? customPrompt : undefined,
+              idempotencyKey: `re-enhance-${file.id}-${p}-${++regenSeqRef.current}`,
+            });
+            perProviderJobIds.set(p, jobId);
+          } catch (err) {
+            const detail = err instanceof Error ? err.message : String(err);
+            console.error(`[re-enhance] enqueue failed for provider=${p}`, err);
+            enqueueErrors.push(`${p}: ${detail}`);
+          }
+        }
+        if (perProviderJobIds.size > 0) {
+          setEnhanceJobs((prev) => {
+            const next = new Map(prev);
+            next.set(file.id, perProviderJobIds);
+            return next;
+          });
+        } else if (enqueueErrors.length > 0) {
+          setGlobalError(`Re-enhance enqueue failed: ${enqueueErrors.join("; ")}`);
+        }
+      }),
+    );
+    setIsRunning(false);
+  }, [
+    files,
+    makeValid,
+    selectedProviders,
+    sessionId,
+    toggles,
+    meta,
+    customPromptActive,
+    customPrompt,
+    onClearPipeline,
+  ]);
+
+  /**
+   * Call this from any UI control that mutates `toggles` because the user
+   * touched it (the per-toggle switch + the "Reset" defaults button).
+   * Marks the workspace dirty so the Enhance button re-enables in
+   * re-enhance mode. Gated on batchTerminal so toggling around BEFORE the
+   * first enhance run doesn't bury the operator under a "you changed
+   * something" flag with nothing to re-run yet.
+   */
+  const markUserToggleChange = useCallback(() => {
+    if (batchTerminal) setTogglesDirty(true);
+  }, [batchTerminal]);
 
   // ─── Winner pick / Hold ────────────────────────────────────────────────
 
@@ -779,6 +923,8 @@ export function EnhancePanel({
     setHeldFiles(new Set());
     onClearPipeline();
     setGlobalError(null);
+    setTogglesDirty(false);
+    resetDoneForBatchRef.current = false;
   };
 
   return (
@@ -948,7 +1094,10 @@ export function EnhancePanel({
                 </h3>
                 <button
                   type="button"
-                  onClick={() => setToggles(DEFAULT_TOGGLES)}
+                  onClick={() => {
+                    setToggles(DEFAULT_TOGGLES);
+                    markUserToggleChange();
+                  }}
                   className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
                 >
                   Reset
@@ -978,7 +1127,10 @@ export function EnhancePanel({
                       label={TOGGLE_LABELS[key]}
                       description={TOGGLE_DESCRIPTIONS[key]}
                       checked={toggles[key]}
-                      onChange={(v) => setToggles((prev) => ({ ...prev, [key]: v }))}
+                      onChange={(v) => {
+                        setToggles((prev) => ({ ...prev, [key]: v }));
+                        markUserToggleChange();
+                      }}
                     />
                   ))}
               </div>
@@ -1050,28 +1202,48 @@ export function EnhancePanel({
       )}
 
       {/* ── Enhance button ── */}
-      <button
-        onClick={handleEnhanceAll}
-        disabled={pendingCount === 0 || !makeValid || isRunning}
-        className={`
-          w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
-          ${pendingCount > 0 && makeValid && !isRunning
-            ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-            : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
-        `}
-      >
-        {isRunning
-          ? "Converting, uploading & enhancing…"
-          : pendingCount > 0
-            ? !makeValid
-              ? "Enter forklift Make to continue"
-              : customPromptActive
-                ? `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""} (custom prompt)`
-                : `Enhance ${pendingCount} Image${pendingCount !== 1 ? "s" : ""}`
-            : doneCount > 0
-              ? "All images processing"
-              : "Add images above"}
-      </button>
+      {(() => {
+        const reEnhanceCount = files.filter(
+          (f) => f.status === "done" && f.assetId,
+        ).length;
+        const canReEnhance =
+          togglesDirty && batchTerminal && reEnhanceCount > 0;
+        const buttonActive =
+          (pendingCount > 0 || canReEnhance) && makeValid && !isRunning;
+        const onClick = pendingCount > 0 ? handleEnhanceAll : handleReEnhance;
+        const pluralPending = pendingCount !== 1 ? "s" : "";
+        const pluralReRun = reEnhanceCount !== 1 ? "s" : "";
+        return (
+          <button
+            onClick={onClick}
+            disabled={!buttonActive}
+            className={`
+              w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+              ${buttonActive
+                ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
+                : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+            `}
+          >
+            {isRunning
+              ? "Converting, uploading & enhancing…"
+              : pendingCount > 0
+                ? !makeValid
+                  ? "Enter forklift Make to continue"
+                  : customPromptActive
+                    ? `Enhance ${pendingCount} Image${pluralPending} (custom prompt)`
+                    : `Enhance ${pendingCount} Image${pluralPending}`
+                : canReEnhance
+                  ? !makeValid
+                    ? "Enter forklift Make to continue"
+                    : customPromptActive
+                      ? `Re-enhance ${reEnhanceCount} Image${pluralReRun} (custom prompt)`
+                      : `Re-enhance ${reEnhanceCount} Image${pluralReRun} with new toggles`
+                  : doneCount > 0
+                    ? "All images processing"
+                    : "Add images above"}
+          </button>
+        );
+      })()}
 
       {/* ── SourceCompareCards ── */}
       {(enhanceJobs.size > 0 || isRunning) && (
