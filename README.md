@@ -623,25 +623,80 @@ gcloud iam service-accounts add-iam-policy-binding \
 
 ---
 
-## Cost Reference (placeholder estimates — multi-provider lineup)
+## Cost Reference (5–10 internal users)
 
-Per-call placeholders that drive `usage_events.cost_estimate_usd` (see [services/pricing.py](apps/api/src/cleanshot_api/services/pricing.py)). Refine these from real invoices.
+CleanShot is sized for a small in-house team — Discount Forklift's listing operators, not a public SaaS. The three scenarios below assume roughly 5 forklifts per user per workday with 4–6 photos per unit, which is the actual cadence Discount Forklift's listing flow produces.
 
-**Per-image (enhance + erase):**
+**Per-call rates that drive `usage_events.cost_estimate_usd`** (placeholders in [services/pricing.py](apps/api/src/cleanshot_api/services/pricing.py); refine from real invoices):
 
-| Model | Placeholder |
+| Model | Type | Rate |
+|---|---|---|
+| `gemini-3.1-flash-image-preview` (enhance, default) | per image | $0.039 |
+| `gpt-5` + image_generation tool (enhance) | per image | $0.080 |
+| `grok-imagine-image-quality` (enhance) | per image | $0.070 |
+| `flux-1-kontext-max-edit` via RunComfy (enhance) | per image | $0.080 |
+| `flux-erase-v1` (per-variant erase tool) | per use | $0.040 |
+| `gemini-2.5-flash` (scan, primary) | per token | $0.075 in / $0.30 out per M |
+| `gpt-5.4` (scan, optional) | per token | $5.00 in / $15.00 out per M |
+| `claude-sonnet-4-6` (scan, optional) | per token | $3.00 in / $15.00 out per M |
+| `claude-opus-4-7` (scan, hard cases) | per token | $15.00 in / $75.00 out per M |
+
+**Fixed monthly infrastructure floor** (incurred regardless of usage — this is the bigger lever at small user counts):
+
+| Line item | Monthly |
 |---|---|
-| `gemini-3.1-flash-image-preview` (enhance, default) | $0.039 |
-| `gpt-5` + image_generation tool (enhance) | $0.080 |
-| `grok-imagine-image-quality` (enhance) | $0.070 |
-| `flux-1-kontext-max-edit` via RunComfy (enhance) | $0.080 |
-| `flux-erase-v1` (per-variant erase tool) | $0.040 |
+| Cloud Run API + Worker (min-instances=2) | ~$33 |
+| Memorystore Valkey 1 GiB | ~$36 |
+| Cloud SQL Postgres 17 (db-f1-micro) | ~$25 |
+| GCS storage + egress (modest volume) | ~$15 |
+| Vercel Pro | ~$40 |
+| **Infra floor** | **~$150** |
 
-**Per-token (scan + multimodal LLMs):** OpenAI gpt-5.4 ($5/$15 per M), Anthropic Claude Sonnet 4.6 ($3/$15 per M), Anthropic Claude Opus 4.7 ($15/$75 per M), Gemini 2.5 Flash ($0.075/$0.30 per M).
+### Scenario A — Light usage (5 users, ~500 images/month)
 
-**Fixed monthly infra:** Cloud Run API + Workers ~$33, Memorystore Valkey 1 GiB ~$36, Cloud SQL Postgres 17 ~$25, GCS storage + egress ~$15, Vercel Pro ~$40. Total infra floor ~$150/month.
+5 users × ~5 forklifts/workday × 5 photos × ~20 workdays = ~2,500 source images/month, of which ~500 actually run through the enhance pipeline (most photos don't need touch-up; the rest are pass-through to Resize).
 
-The actual AI spend depends entirely on operator selection. Selecting all 4 generators per image quadruples the per-image cost (one call per provider). Encourage operators to pick 2 providers max for routine work and run all 4 only for hero shots they're particularly picky about.
+| Line item | Monthly |
+|---|---|
+| Enhance (~1.5 providers picked per image avg, ~$0.06/img blended) | ~$30 |
+| Scan (3 providers, ~$0.03/img blended) | ~$15 |
+| Erase tool (~15% of enhanced images) | ~$3 |
+| **AI subtotal** | **~$48** |
+| Infra floor (from above) | $150 |
+| **Total** | **~$198/month** (~$40/user) |
+
+### Scenario B — Moderate usage (8 users, ~2,000 images/month)
+
+8 users at the same per-user pace, all generators slightly more utilised (operators picking 2 providers per image on average for comparison).
+
+| Line item | Monthly |
+|---|---|
+| Enhance (~2 providers per image, ~$0.06/img blended) | ~$120 |
+| Scan (3 providers) | ~$60 |
+| Erase tool (~15% of enhanced images) | ~$12 |
+| **AI subtotal** | **~$192** |
+| Infra floor | $150 |
+| **Total** | **~$342/month** (~$43/user) |
+
+### Scenario C — High usage (10 users, ~3,600 images/month)
+
+Full team running heavy comparison batches — typically 2–3 providers selected per image, with hero shots running all 4.
+
+| Line item | Monthly |
+|---|---|
+| Enhance (~2.5 providers per image avg) | ~$270 |
+| Scan (3 providers) | ~$108 |
+| Erase tool (~20% of enhanced images) | ~$29 |
+| **AI subtotal** | **~$407** |
+| Infra floor | $150 |
+| **Total** | **~$557/month** (~$56/user) |
+
+### Notes for the bill payer
+
+- **Infra dominates at the low end.** At 5 users, the fixed ~$150/month infra floor is 3× the AI spend. If you ever want to drop the bill significantly at light usage, the lever is infra (downsize Cloud SQL, drop Memorystore Valkey and use in-memory caching, etc.) — not AI throttling.
+- **Per-provider selection is the AI lever.** Selecting all 4 generators per image roughly **quadruples** the enhance cost vs picking 1. Default operator behaviour should be 1–2 providers for routine work, all 4 only for hero shots that justify the $0.27/image splurge.
+- **Scan cost is dominated by the optional OpenAI + Anthropic providers.** If `SCAN_PROVIDER_OPENAI=false` and `SCAN_PROVIDER_ANTHROPIC=false`, scan drops to Gemini-only at roughly $0.001/image — and the totals above shrink by ~$15 / ~$60 / ~$108 across the three scenarios.
+- **Real invoices will diverge from these placeholders.** The per-image rates are educated estimates pending the first 30 days of production data; revisit `services/pricing.py` and this section once Cloud Billing exports are accurate enough to back out the true per-call cost.
 
 ---
 
