@@ -57,6 +57,7 @@ import {
   SourceCompareCard,
   type SourceVariant,
 } from "./SourceCompareCard";
+import { EraseDialog, type EraseDialogResult } from "./EraseDialog";
 
 const MAX_UPLOADS = 10;
 
@@ -289,6 +290,19 @@ export function EnhancePanel({
   // from auto-advance. These replace the old `selectedJobIds`.
   const [chosenByFile, setChosenByFile] = useState<Map<string, EnhanceProvider>>(new Map());
   const [heldFiles, setHeldFiles] = useState<Set<string>>(new Set());
+
+  // Per-variant Flux erase dialog state. When a target is set, the
+  // EraseDialog opens with that variant's source asset. Single dialog
+  // instance shared across all SourceCompareCards — only one erase
+  // can be in flight at a time, which matches operator expectation
+  // (focused detail work, not a batch operation).
+  const [eraseTarget, setEraseTarget] = useState<{
+    fileId:        string;
+    provider:      EnhanceProvider;
+    jobId:         string;
+    sourceAssetId: string;
+    sourceUrl:     string;
+  } | null>(null);
 
   // 1s tick used by VariantThumb to render the elapsed-vs-expected
   // progress estimate. Off when nothing is in flight to avoid burning
@@ -787,6 +801,67 @@ export function EnhancePanel({
     });
   }, []);
 
+  // ─── Per-variant erase ─────────────────────────────────────────────────
+
+  /**
+   * Open the EraseDialog for a specific completed variant. The dialog
+   * needs the variant's outputAssetId + its signed URL to load the
+   * image into the canvas. The (fileId, provider) pair lets us look up
+   * the original jobId later when the operator accepts the result so
+   * we can patch the variant in-place.
+   */
+  const handleOpenErase = useCallback(
+    (fileId: string, provider: EnhanceProvider) => {
+      const jobId = enhanceJobs.get(fileId)?.get(provider);
+      if (!jobId) return;
+      const completedItem = completed.get(jobId);
+      if (!completedItem) return;
+      setEraseTarget({
+        fileId,
+        provider,
+        jobId,
+        sourceAssetId: completedItem.outputAssetId,
+        sourceUrl:     completedItem.outputUrl,
+      });
+    },
+    [enhanceJobs, completed],
+  );
+
+  /**
+   * Operator accepted the erased result. Patch the variant in-place —
+   * `completed[jobId]` now points at the new outputAssetId/outputUrl,
+   * and `jobStateMap[jobId].outputAssetId` is updated so the
+   * SourceCompareCard renders the cleaned image. We deliberately keep
+   * the same jobId so the operator's winner-pick, sent-to-Scan flags,
+   * and the existing poller all stay coherent.
+   */
+  const handleEraseAccept = useCallback(
+    (result: EraseDialogResult) => {
+      if (!eraseTarget) return;
+      const { jobId } = eraseTarget;
+      setCompleted((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, {
+          ...cur,
+          outputAssetId: result.outputAssetId,
+          outputUrl:     result.outputUrl,
+        });
+        return next;
+      });
+      setJobStateMap((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, { ...cur, outputAssetId: result.outputAssetId });
+        return next;
+      });
+      setEraseTarget(null);
+    },
+    [eraseTarget],
+  );
+
   // ─── Derived: SourceCompareCard inputs ─────────────────────────────────
 
   const variantsByFile = useMemo(() => {
@@ -929,6 +1004,16 @@ export function EnhancePanel({
 
   return (
     <div className="space-y-4">
+
+      {/* ── Per-variant Erase dialog (singleton) ── */}
+      <EraseDialog
+        open={eraseTarget !== null}
+        sessionId={sessionId}
+        sourceAssetId={eraseTarget?.sourceAssetId ?? ""}
+        sourceImageUrl={eraseTarget?.sourceUrl ?? ""}
+        onClose={() => setEraseTarget(null)}
+        onAccept={handleEraseAccept}
+      />
 
       {/* ── Headless pollers ── */}
       {activeJobIds.map(({ jobId, fileId, provider }) => {
@@ -1292,6 +1377,7 @@ export function EnhancePanel({
                   onChoose={(provider) => chooseWinner(f.id, provider)}
                   onToggleHold={() => toggleHold(f.id)}
                   onRetry={(provider) => retryProvider(f, provider)}
+                  onErase={(provider) => handleOpenErase(f.id, provider)}
                 />
               );
             })}

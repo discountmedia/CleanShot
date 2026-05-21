@@ -44,6 +44,8 @@ interface SourceCompareCardProps {
   onChoose: (provider: EnhanceProvider | null) => void;
   onToggleHold: () => void;
   onRetry: (provider: EnhanceProvider) => void;
+  /** Opens the per-variant Flux erase dialog. */
+  onErase: (provider: EnhanceProvider) => void;
 }
 
 export function SourceCompareCard({
@@ -57,6 +59,7 @@ export function SourceCompareCard({
   onChoose,
   onToggleHold,
   onRetry,
+  onErase,
 }: SourceCompareCardProps) {
   // Stable-ordered list of providers that have a variant for this source.
   // Order follows ENHANCE_PROVIDERS so re-renders don't shuffle.
@@ -234,6 +237,7 @@ export function SourceCompareCard({
                   nowMs={nowMs}
                   onChoose={() => onChoose(p)}
                   onRegen={() => onRetry(p)}
+                  onErase={() => onErase(p)}
                 />
               );
             })}
@@ -304,9 +308,15 @@ interface VariantThumbProps {
    * variant without unchecking its provider in the ProviderRow.
    */
   onRegen: () => void;
+  /**
+   * Opens the per-variant Flux erase dialog. EnhancePanel keeps a
+   * single dialog instance and uses (fileId, provider) to look up the
+   * source asset + URL. Only meaningful when the variant is complete.
+   */
+  onErase: () => void;
 }
 
-function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen }: VariantThumbProps) {
+function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onErase }: VariantThumbProps) {
   const status = variant?.job?.status ?? (variant ? "queued" : "idle");
   const isComplete = status === "complete";
   const isProcessing = status === "queued" || status === "processing";
@@ -377,6 +387,38 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen }: V
               <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
             </svg>
           </div>
+        )}
+
+        {/* Per-variant erase — opens the BFL flux-tools/erase-v1 mask
+            dialog. Sits alongside the regen button so the operator's
+            quick actions cluster in one corner. */}
+        {isComplete && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onErase();
+            }}
+            title="Erase a detail (Flux)"
+            aria-label="Open erase tool for this variant"
+            className="absolute top-1.5 left-9 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-purple-700 text-purple-300 hover:text-white border border-purple-800 hover:border-purple-500 transition-colors"
+          >
+            {/* Eraser icon */}
+            <svg
+              className="w-3.5 h-3.5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M16.862 4.487l3.65 3.65a2 2 0 010 2.828L9.172 22.305H5.025a1 1 0 01-1-1V17.16a2 2 0 01.586-1.414L16.034 4.487a2 2 0 012.828 0z"
+              />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l4 4" />
+            </svg>
+          </button>
         )}
 
         {/* Per-variant regen — visible on completed thumbs. Re-enqueues
