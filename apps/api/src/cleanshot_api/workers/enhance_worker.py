@@ -604,28 +604,52 @@ async def _erase_with_flux(
 
     image_bytes, _ct = await _load_image_bytes(gcs_uri)
 
-    # Normalise the source image dimensions to match what the browser
-    # actually painted on. iPhone-style JPEGs ship EXIF Orientation tags
-    # — the browser respects them when displaying (so naturalWidth /
-    # naturalHeight reflect the post-rotation dims, which our mask is
-    # exported at), but BFL reads the raw JPEG bytes without applying
-    # EXIF and would see pre-rotation dimensions, returning a 422:
-    # "Erase image and mask must have the same dimensions". Re-encoding
-    # to PNG after autorot bakes the rotation in and drops EXIF
-    # entirely so BFL agrees with the browser.
-    def _normalise() -> bytes:
+    # Normalise the source image AND the mask to identical dimensions in
+    # a single pass. We can't trust:
+    #   (a) the source JPEG (iPhone EXIF orientation rotates the browser
+    #       display but BFL reads raw JPEG without applying EXIF), OR
+    #   (b) the mask matching the source (the operator drew at the
+    #       browser's reported naturalWidth × naturalHeight which can
+    #       diverge from the source's true pixel dims for the same EXIF
+    #       reason — or if Seedream / other providers returned slightly
+    #       different resolution than what landed in GCS after the
+    #       browser scaled it).
+    # Fix: re-encode the source to PNG with EXIF baked in, then
+    # explicitly resize the mask to the source's post-autorot dims so
+    # the two are *guaranteed* to match before we send to BFL.
+    def _normalise() -> tuple[bytes, bytes, int, int, int, int]:
         import pyvips
-        img = pyvips.Image.new_from_buffer(image_bytes, "")
-        img = img.autorot()
-        return img.write_to_buffer(".png")
+        src = pyvips.Image.new_from_buffer(image_bytes, "")
+        src = src.autorot()
+        src_w, src_h = src.width, src.height
+        src_png = src.write_to_buffer(".png")
 
-    normalised_bytes = await asyncio.to_thread(_normalise)
-    image_b64 = base64.b64encode(normalised_bytes).decode()
+        mask_raw = base64.b64decode(mask_png_base64)
+        mask = pyvips.Image.new_from_buffer(mask_raw, "")
+        mask_w, mask_h = mask.width, mask.height
+        if mask_w != src_w or mask_h != src_h:
+            # Pixel-resample the mask so its dimensions match the source.
+            # Operator's stroke regions map to roughly the same area;
+            # binary mask is still binary after nearest-neighbour resize.
+            hscale = src_w / mask_w
+            vscale = src_h / mask_h
+            mask = mask.resize(hscale, vscale=vscale, kernel="nearest")
+        mask_png = mask.write_to_buffer(".png")
+        return src_png, mask_png, src_w, src_h, mask_w, mask_h
+
+    src_png, mask_png, src_w, src_h, mask_w_in, mask_h_in = await asyncio.to_thread(_normalise)
+    logger.info(
+        "BFL erase: source %dx%d, incoming mask %dx%d (resized to match if needed)",
+        src_w, src_h, mask_w_in, mask_h_in,
+    )
+
+    image_b64 = base64.b64encode(src_png).decode()
+    mask_b64  = base64.b64encode(mask_png).decode()
 
     auth_headers = {"x-key": settings.bfl_api_key}
     body: dict[str, Any] = {
         "image": image_b64,
-        "mask":  mask_png_base64,
+        "mask":  mask_b64,
     }
     # BFL accepts an optional prompt to guide what should fill the
     # erased region. Empty/None means "infer plausible background."
