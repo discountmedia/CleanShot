@@ -20,6 +20,12 @@ DO $$ BEGIN
         ('upload', 'enhance', 'scan', 'cleanup', 'export');
 EXCEPTION WHEN duplicate_object THEN NULL; END $$;
 
+-- Idempotent additions to operation_enum after the type was first created.
+-- ADD VALUE IF NOT EXISTS is a single-statement op (no DO block needed) and
+-- safe on PG12+. Add new operation kinds here rather than re-creating
+-- the enum, which would require dropping every column that references it.
+ALTER TYPE operation_enum ADD VALUE IF NOT EXISTS 'erase';
+
 DO $$ BEGIN
     CREATE TYPE job_status_enum AS ENUM
         ('queued', 'processing', 'complete', 'failed', 'cancelled');
