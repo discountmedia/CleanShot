@@ -274,39 +274,82 @@ async def _run_scan(
         await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
 
     try:
-        provider_results: dict[str, ScanResult] = {}
-        provider_latencies: dict[str, int] = {}
+        provider_results:   dict[str, ScanResult] = {}
+        provider_latencies: dict[str, int]        = {}
+        provider_errors:    dict[str, str]        = {}
 
-        async with asyncio.TaskGroup() as tg:
-            # Gemini always active
-            async def _gemini() -> None:
+        # Per-provider failures must NOT tank the whole job — multi-model
+        # scan is the whole point of this worker, and a single 429 from
+        # one vendor shouldn't cost the operator the other vendors'
+        # verdicts. asyncio.TaskGroup is the wrong primitive here
+        # because it cancels every sibling on first exception (root
+        # cause of the "Gemini: fail/0%/0ms, OpenAI/Anthropic stuck
+        # pending" bug). asyncio.gather(return_exceptions=True) gives
+        # us independent task lifecycles + lets each provider's outcome
+        # land in its own bucket.
+        async def _safe_gemini() -> None:
+            try:
                 r, lat = await _scan_gemini(genai_client, payload.input_gcs_uri)
-                provider_results["gemini"] = r
+                provider_results["gemini"]   = r
                 provider_latencies["gemini"] = lat
+            except Exception as exc:
+                logger.exception("Gemini scan failed for job %s", payload.job_id)
+                provider_errors["gemini"] = str(exc)[:300]
 
-            tg.create_task(_gemini())
+        async def _safe_openai() -> None:
+            try:
+                r, lat = await _scan_openai(openai_client, payload.input_gcs_uri)
+                provider_results["openai"]   = r
+                provider_latencies["openai"] = lat
+            except Exception as exc:
+                logger.exception("OpenAI scan failed for job %s", payload.job_id)
+                provider_errors["openai"] = str(exc)[:300]
 
-            if settings.scan_provider_openai and openai_client:
-                async def _openai() -> None:
-                    r, lat = await _scan_openai(openai_client, payload.input_gcs_uri)
-                    provider_results["openai"] = r
-                    provider_latencies["openai"] = lat
+        async def _safe_anthropic() -> None:
+            try:
+                r, lat = await _scan_anthropic(
+                    anthropic_client,
+                    payload.input_gcs_uri,
+                    payload.scan_difficulty,
+                )
+                provider_results["anthropic"]   = r
+                provider_latencies["anthropic"] = lat
+            except Exception as exc:
+                logger.exception("Anthropic scan failed for job %s", payload.job_id)
+                provider_errors["anthropic"] = str(exc)[:300]
 
-                tg.create_task(_openai())
+        coros: list = [_safe_gemini()]
+        if settings.scan_provider_openai and openai_client:
+            coros.append(_safe_openai())
+        if settings.scan_provider_anthropic and anthropic_client:
+            coros.append(_safe_anthropic())
 
-            if settings.scan_provider_anthropic and anthropic_client:
-                async def _anthropic() -> None:
-                    r, lat = await _scan_anthropic(
-                        anthropic_client,
-                        payload.input_gcs_uri,
-                        payload.scan_difficulty,
-                    )
-                    provider_results["anthropic"] = r
-                    provider_latencies["anthropic"] = lat
+        # return_exceptions=True is belt-and-braces — every _safe_*
+        # already swallows its own exception, but if anything slips
+        # through it'll land here as a value rather than propagating.
+        await asyncio.gather(*coros, return_exceptions=True)
 
-                tg.create_task(_anthropic())
+        # No successful providers → whole job is failed.
+        if not provider_results:
+            err_summary = "; ".join(
+                f"{p}: {msg}" for p, msg in provider_errors.items()
+            ) or "no providers configured"
+            async with pool.acquire() as conn:
+                await queries.update_job_status(
+                    conn,
+                    payload.job_id,
+                    JobStatusEnum.failed,
+                    error=f"all scan providers failed — {err_summary}"[:500],
+                )
+            logger.error(
+                "Scan job %s failed — every provider errored: %s",
+                payload.job_id, provider_errors,
+            )
+            return
 
-        # Persist per-provider results
+        # Persist successful per-provider results AND failure rows so the
+        # UI can show "<provider> — failed: <reason>" instead of leaving
+        # that provider stuck on "pending" forever.
         async with pool.acquire() as conn:
             for provider, result in provider_results.items():
                 await queries.create_scan_result(
@@ -320,8 +363,20 @@ async def _run_scan(
                     summary=result.summary,
                     latency_ms=provider_latencies[provider],
                 )
+            for provider, err_msg in provider_errors.items():
+                await queries.create_scan_result(
+                    conn,
+                    job_id=payload.job_id,
+                    asset_id=payload.input_asset_id,
+                    provider=provider,
+                    verdict="fail",
+                    confidence=0.0,
+                    anomalies=[],
+                    summary=f"provider error: {err_msg}",
+                    latency_ms=0,
+                )
 
-            # Persist consensus (even for single-provider)
+            # Consensus is computed over the providers that DID respond.
             consensus = _compute_consensus(provider_results)
             await queries.create_consensus_result(
                 conn,
@@ -333,9 +388,10 @@ async def _run_scan(
             await queries.update_job_status(conn, payload.job_id, JobStatusEnum.complete)
 
         logger.info(
-            "Scan complete for job %s | providers=%s | verdict=%s",
+            "Scan complete for job %s | providers=%s | failed=%s | verdict=%s",
             payload.job_id,
             list(provider_results.keys()),
+            list(provider_errors.keys()),
             consensus["verdict"],
         )
 
