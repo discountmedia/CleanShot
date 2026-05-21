@@ -647,4 +647,4 @@ The actual AI spend depends entirely on operator selection. Selecting all 4 gene
 
 ## License
 
-Proprietary — Discount Media. All rights reserved.
+Proprietary — AI App Integrations LLC - designed for Discount Forklift. All rights reserved.
