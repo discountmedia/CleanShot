@@ -13,18 +13,20 @@
  * any more — it's reserved for mask-based erase on completed variants
  * (see lib/api.ts enqueueErase) rather than full-image generation.
  */
-export type EnhanceProvider = "gemini" | "openai" | "grok";
+export type EnhanceProvider = "gemini" | "openai" | "grok" | "seedream";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
   "grok",
+  "seedream",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
-  gemini: "Gemini",
-  openai: "OpenAI",
-  grok:   "Grok",
+  gemini:   "Gemini",
+  openai:   "OpenAI",
+  grok:     "Grok",
+  seedream: "Seedream",
 };
 
 /**
@@ -33,9 +35,10 @@ export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
  * vocabulary the rest of the app uses.
  */
 export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
-  gemini: "bg-blue-950/40 text-blue-300 border-blue-800",
-  openai: "bg-green-950/40 text-green-300 border-green-800",
-  grok:   "bg-orange-950/40 text-orange-300 border-orange-800",
+  gemini:   "bg-blue-950/40 text-blue-300 border-blue-800",
+  openai:   "bg-green-950/40 text-green-300 border-green-800",
+  grok:     "bg-orange-950/40 text-orange-300 border-orange-800",
+  seedream: "bg-pink-950/40 text-pink-300 border-pink-800",
 };
 
 /**
@@ -71,6 +74,12 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     speedLabel:  "Fastest",
     speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
     description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
+    isNew:       true,
+  },
+  seedream: {
+    speedLabel:  "Moderate",
+    speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
+    description: "Bytedance Seedream 4.5 (via RunComfy) — async polling, strong on photorealistic detail preservation.",
     isNew:       true,
   },
 };

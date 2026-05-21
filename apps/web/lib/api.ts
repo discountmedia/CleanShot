@@ -85,10 +85,11 @@ export async function enqueueEnhance(params: {
   toggles: EnhanceToggles;
   forkliftMeta?: Partial<ForkliftMeta>;
   /** Image generation provider. Default = "gemini" (gemini-3.1-flash-image-preview).
-   * "openai" routes through gpt-5 + the image_generation tool.
-   * "grok"   routes through xAI Grok image-edit.
+   * "openai"   routes through gpt-5 + the image_generation tool.
+   * "grok"     routes through xAI Grok image-edit.
+   * "seedream" routes through Bytedance Seedream 4.5 via the RunComfy proxy.
    * Flux is no longer a generator — see enqueueErase() for the mask-based erase tool. */
-  provider?: "gemini" | "openai" | "grok";
+  provider?: "gemini" | "openai" | "grok" | "seedream";
   /** Equipment category — drives the backend's per-type anatomy block.
    * Defaults to "forklift" server-side if omitted. */
   equipmentType?: "forklift" | "scissor_lift" | "telehandler";
@@ -144,7 +145,7 @@ export async function enqueueRegen(params: {
   regenPrompt: string;
   idempotencyKey: string;
   /** Operator-selected provider for the regen pass. Backend defaults to gemini. */
-  provider?: "gemini" | "openai" | "grok";
+  provider?: "gemini" | "openai" | "grok" | "seedream";
 }): Promise<{ jobId: string }> {
   return post("/api/enhance/regen", params);
 }

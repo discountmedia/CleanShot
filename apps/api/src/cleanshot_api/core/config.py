@@ -84,6 +84,12 @@ class Settings(BaseSettings):
     # Bearer-token auth. Mounted from GCP Secret Manager
     # (cleanshot-xai-key) on Cloud Run.
     xai_api_key: str = Field("", alias="XAI_API_KEY")
+    # RunComfy (https://www.runcomfy.com) — proxies the Bytedance
+    # Seedream-4.5/edit image-to-image model with an async submit →
+    # poll → result flow. Bearer-token auth, image inputs are passed
+    # by HTTPS URL (we mint a short-lived signed GCS GET URL). Mounted
+    # from GCP Secret Manager (cleanshot-runcomfy-key) on Cloud Run.
+    runcomfy_api_key: str = Field("", alias="RUNCOMFY_API_KEY")
     # Google AI Studio API key — used for the enhance pipeline's Gemini
     # calls so we can access preview image-gen models (e.g.
     # gemini-3.1-flash-image-preview) that aren't yet published in this

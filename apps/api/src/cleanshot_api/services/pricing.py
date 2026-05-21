@@ -57,6 +57,12 @@ PER_IMAGE_USD: dict[str, float] = {
     # edit (roughly the midpoint of comparable image-edit models).
     # Update once we have an invoice / real bill to calibrate against.
     "grok-imagine-image-quality":     0.070,
+
+    # Bytedance Seedream 4.5 image-edit via RunComfy proxy
+    # (https://www.runcomfy.com). RunComfy bills credits-per-call;
+    # current published rate ~$0.05 per Seedream 4.5 edit at the
+    # default 2K resolution tier. Update after the first real invoice.
+    "seedream-4-5-edit":              0.050,
 }
 
 

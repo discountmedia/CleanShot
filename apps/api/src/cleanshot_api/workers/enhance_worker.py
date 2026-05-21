@@ -88,6 +88,33 @@ FLUX_POLL_INTERVALS_S: tuple[float, ...] = (
 FLUX_POLL_STEADY_INTERVAL_S = 2.0
 FLUX_POLL_MAX_ATTEMPTS = 50        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
 
+# Bytedance Seedream 4.5 image-edit via the RunComfy proxy. RunComfy
+# is async — submit returns a request_id; we poll
+# /v1/requests/{request_id}/status until "completed", then GET
+# /v1/requests/{request_id}/result for the rendered image URL. Unlike
+# the other image-edit providers, Seedream consumes its input image as
+# a publicly fetchable HTTPS URL rather than a base64 blob, so we mint
+# a short-lived signed GCS GET URL with services.gcs.mint_read_url and
+# pass that through. Auth is Bearer token on the same Authorization
+# header for every endpoint in the flow.
+SEEDREAM_SUBMIT_URL = "https://model-api.runcomfy.net/v1/models/bytedance/seedream-4-5/edit"
+SEEDREAM_STATUS_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/status"
+SEEDREAM_RESULT_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/result"
+ENHANCE_MODEL_SEEDREAM = "seedream-4-5-edit"
+# RunComfy docs cap the prompt at "no more than 600 English words" —
+# enforce a char ceiling that maps to that budget with some headroom
+# (600 words × ~5 chars/word + spaces ≈ 3,800). Our stock prompt with
+# all toggles on can exceed this so we truncate at the same spot the
+# other long-prompt providers do.
+SEEDREAM_PROMPT_MAX_CHARS = 3800
+# Match Flux's poll cadence — Seedream typical finish is 15–40s, the
+# tail is the same 90-second budget.
+SEEDREAM_POLL_INTERVALS_S: tuple[float, ...] = (
+    0.75, 0.75, 1.0, 1.25, 1.5, 1.5, 1.75, 2.0,
+)
+SEEDREAM_POLL_STEADY_INTERVAL_S = 2.0
+SEEDREAM_POLL_MAX_ATTEMPTS = 50
+
 # Grok / xAI image editing — synchronous JSON request to /v1/images/edits.
 # Auth via Bearer header. Source image is sent as a base64 data URI
 # inside the `image` object (NOT the OpenAI-compatible multipart/edit
@@ -736,6 +763,132 @@ async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
     return img_resp.content
 
 
+async def _enhance_with_seedream(gcs_uri: str, prompt: str) -> bytes:
+    """
+    Call Bytedance Seedream 4.5 via the RunComfy async proxy.
+
+      1. mint_read_url(gcs_uri) → short-lived signed GCS GET URL
+      2. POST SEEDREAM_SUBMIT_URL with { prompt, images: [signed_url] }
+         → { request_id }
+      3. GET SEEDREAM_STATUS_URL.format(request_id=...) every
+         SEEDREAM_POLL_INTERVALS_S until status == "completed"
+         (also handles "cancelled" / "failed" / "in_queue" /
+         "in_progress").
+      4. GET SEEDREAM_RESULT_URL.format(request_id=...) → result.image
+         (single URL) or result.images[0] (array).
+      5. Fetch that URL for the rendered bytes.
+    """
+    settings = get_settings()
+    if not settings.runcomfy_api_key:
+        raise RuntimeError(
+            "Seedream provider requested but RUNCOMFY_API_KEY is not set. "
+            "Mount cleanshot-runcomfy-key:latest via Cloud Run --set-secrets "
+            "and re-deploy."
+        )
+
+    # Mint a signed GCS GET URL so RunComfy's servers can fetch the
+    # source image. mint_read_url is sync (runs in a thread to keep
+    # the event loop free; the call is fast in practice).
+    from cleanshot_api.services.gcs import mint_read_url
+    signed_get_url, _expires = await asyncio.to_thread(mint_read_url, gcs_uri)
+
+    auth_headers = {
+        "Authorization": f"Bearer {settings.runcomfy_api_key}",
+        "Content-Type":  "application/json",
+    }
+    body = {
+        "prompt": prompt[:SEEDREAM_PROMPT_MAX_CHARS],
+        "images": [signed_get_url],
+    }
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        # ── 1. Submit ──────────────────────────────────────────────
+        submit = await client.post(SEEDREAM_SUBMIT_URL, headers=auth_headers, json=body)
+        if submit.status_code >= 400:
+            raise ValueError(
+                f"RunComfy/Seedream submit failed ({submit.status_code}): "
+                f"{submit.text[:300]}"
+            )
+        submit_data = submit.json()
+        request_id = submit_data.get("request_id") or submit_data.get("id")
+        if not request_id:
+            raise ValueError(
+                f"RunComfy/Seedream submit returned no request_id: {submit_data}"
+            )
+
+        # ── 2. Poll ────────────────────────────────────────────────
+        status_url = SEEDREAM_STATUS_URL.format(request_id=request_id)
+        terminal_status = None
+        for attempt in range(SEEDREAM_POLL_MAX_ATTEMPTS):
+            interval = (
+                SEEDREAM_POLL_INTERVALS_S[attempt]
+                if attempt < len(SEEDREAM_POLL_INTERVALS_S)
+                else SEEDREAM_POLL_STEADY_INTERVAL_S
+            )
+            await asyncio.sleep(interval)
+            poll = await client.get(
+                status_url,
+                headers={"Authorization": auth_headers["Authorization"]},
+            )
+            if poll.status_code >= 400:
+                raise ValueError(
+                    f"RunComfy/Seedream poll failed ({poll.status_code}): "
+                    f"{poll.text[:300]}"
+                )
+            poll_data = poll.json()
+            status_val = (poll_data.get("status") or "").lower()
+
+            if status_val == "completed":
+                terminal_status = "completed"
+                break
+            if status_val in ("cancelled", "failed", "error"):
+                detail = poll_data.get("error") or poll_data.get("message") or "no detail"
+                raise ValueError(
+                    f"RunComfy/Seedream terminal status '{status_val}': {detail}"
+                )
+            # Otherwise still "in_queue" / "in_progress" — keep polling.
+
+        if terminal_status != "completed":
+            budget_s = (
+                sum(SEEDREAM_POLL_INTERVALS_S)
+                + max(0, SEEDREAM_POLL_MAX_ATTEMPTS - len(SEEDREAM_POLL_INTERVALS_S))
+                  * SEEDREAM_POLL_STEADY_INTERVAL_S
+            )
+            raise TimeoutError(
+                f"RunComfy/Seedream did not complete within {budget_s:.0f}s "
+                f"({SEEDREAM_POLL_MAX_ATTEMPTS} polls)"
+            )
+
+        # ── 3. Fetch result ───────────────────────────────────────
+        result_url = SEEDREAM_RESULT_URL.format(request_id=request_id)
+        result_resp = await client.get(
+            result_url,
+            headers={"Authorization": auth_headers["Authorization"]},
+        )
+        if result_resp.status_code >= 400:
+            raise ValueError(
+                f"RunComfy/Seedream result fetch failed "
+                f"({result_resp.status_code}): {result_resp.text[:300]}"
+            )
+        result_data = result_resp.json() or {}
+        # RunComfy nests the actual output under `output` per their schema.
+        output = result_data.get("output") or result_data
+        image_url = output.get("image")
+        if not image_url:
+            images_arr = output.get("images") or []
+            image_url = images_arr[0] if images_arr else None
+        if not image_url:
+            raise ValueError(
+                f"RunComfy/Seedream result missing image/images URL: {result_data}"
+            )
+
+        # ── 4. Download the rendered image ────────────────────────
+        async with httpx.AsyncClient(timeout=60.0) as fetcher:
+            img_resp = await fetcher.get(image_url)
+        img_resp.raise_for_status()
+        return img_resp.content
+
+
 async def _run_enhance(
     request: Request,
     payload: EnhanceTaskPayload,
@@ -800,6 +953,13 @@ async def _run_enhance(
             # we observe actual burst behaviour.
             await request.app.state.grok_image_rate_limiter.acquire()
             output_bytes = await _enhance_with_grok(
+                payload.input_gcs_uri, prompt
+            )
+        elif payload.provider == "seedream":
+            provider_model = ENHANCE_MODEL_SEEDREAM
+            # No published RunComfy per-minute cap — start without a
+            # limiter and add one if we observe 429s in production.
+            output_bytes = await _enhance_with_seedream(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default
