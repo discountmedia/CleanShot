@@ -103,7 +103,7 @@ FLUX_POLL_MAX_ATTEMPTS = 50        # ~90s total budget; FLUX 2 MAX typically fin
 # That matches CleanShot's brief better than general-purpose
 # image-edit models, which sometimes hallucinate model badges or
 # alter the unit's silhouette under heavy paint refresh prompts.
-KONTEXT_SUBMIT_URL = "https://model-api.runcomfy.net/v1/models/black-forest-labs/flux-1-kontext/max/edit"
+KONTEXT_SUBMIT_URL = "https://model-api.runcomfy.net/v1/models/blackforestlabs/flux-1-kontext/max/edit"
 KONTEXT_STATUS_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/status"
 KONTEXT_RESULT_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/result"
 ENHANCE_MODEL_KONTEXT = "flux-1-kontext-max-edit"
@@ -842,8 +842,8 @@ async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
         "Content-Type":  "application/json",
     }
     body = {
-        "prompt": prompt[:KONTEXT_PROMPT_MAX_CHARS],
-        "images": [signed_get_url],
+        "prompt":    prompt[:KONTEXT_PROMPT_MAX_CHARS],
+        "image_url": signed_get_url,
     }
 
     async with httpx.AsyncClient(timeout=30.0) as client:
