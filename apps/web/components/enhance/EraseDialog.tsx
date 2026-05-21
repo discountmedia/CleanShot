@@ -226,10 +226,15 @@ export function EraseDialog({
   );
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!drawingRef.current) return;
-    (e.target as HTMLCanvasElement).releasePointerCapture(e.pointerId);
-    setStrokes((prev) => [...prev, drawingRef.current!]);
+    // CAPTURE the stroke off the ref BEFORE clearing it. React's state
+    // updater callback runs later (during the next state-processing pass);
+    // if we cleared the ref first and read it inside the updater, we'd push
+    // `null` into strokes — the redraw effect would then crash on `s.brush`.
+    const stroke = drawingRef.current;
+    if (!stroke) return;
     drawingRef.current = null;
+    (e.target as HTMLCanvasElement).releasePointerCapture(e.pointerId);
+    setStrokes((prev) => [...prev, stroke]);
   }, []);
 
   // ── Mask export — offscreen canvas at natural source dimensions ──────
