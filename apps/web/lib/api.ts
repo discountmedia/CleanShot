@@ -151,15 +151,19 @@ export interface ModifyBatchResponse {
 }
 
 /**
- * POST /api/modify/batch — apply the same brightness / contrast /
- * saturation adjustments to every assetId. Backend pyvips renders each
- * one, uploads as a new asset row (operation=modify), and returns a
- * preview-URL list in the same order as the input.
+ * POST /api/modify/batch — apply the default adjustments to every
+ * assetId. If `perAsset[assetId]` is set, that override REPLACES the
+ * default for that specific asset (per-image mode).
+ *
+ * Backend pyvips renders each one, uploads as a new asset row
+ * (operation=modify), and returns a preview-URL list in the same
+ * order as the input.
  */
 export async function applyModifyBatch(params: {
   sessionId:   string;
   assetIds:    string[];
   adjustments: ModifyAdjustments;
+  perAsset?:   Record<string, ModifyAdjustments>;
 }): Promise<ModifyBatchResponse> {
   return post("/api/modify/batch", params);
 }

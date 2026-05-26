@@ -466,14 +466,21 @@ class ModifyAdjustments(BaseModel):
 
 class ModifyBatchRequest(BaseModel):
     """
-    Modify-tab batch request. Operator sends a set of asset_ids and one
-    set of adjustments — backend applies the same adjustments to every
-    asset (batch mode). Phase 1 is batch-only; per-image variation
-    arrives in a follow-up.
+    Modify-tab batch request. Operator sends a set of asset_ids and a
+    default ModifyAdjustments applied to every asset, plus an optional
+    `per_asset` map of per-image overrides keyed by asset_id (as str).
+    When `per_asset[asset_id]` exists, it REPLACES the default
+    `adjustments` for that asset's render. Backwards-compatible — batch
+    mode just sends an empty `per_asset` dict.
     """
-    session_id: uuid.UUID
-    asset_ids:  list[uuid.UUID] = Field(min_length=1, max_length=50)
+    session_id:  uuid.UUID
+    asset_ids:   list[uuid.UUID] = Field(min_length=1, max_length=50)
     adjustments: ModifyAdjustments
+    # Per-image overrides. Keys are stringified asset_ids that appear
+    # in `asset_ids`; values are the adjustments to use for THAT asset
+    # in lieu of the default. Empty by default → behaviour is identical
+    # to the prior batch-only schema.
+    per_asset:   dict[str, ModifyAdjustments] = Field(default_factory=dict)
 
 
 class ModifyBatchItem(BaseModel):

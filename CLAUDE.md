@@ -35,7 +35,9 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 | **1. Foundation** (infra, DB, GCS, Cloud Tasks, secrets) | ✅ Complete |
 | **2. AI pipelines** (Enhance, multi-model Scan with consensus) | ✅ Complete & in production |
 | **3. UX + auth** (Resize, Save/Approve flow, Microsoft SSO, profile, admin, support) | ✅ Complete — SSO is live |
-| **4. Rollout & operations** (analytics, rate limiters, scan resilience, Erase tool, Kontext) | 🟡 Ongoing |
+| **4. Rollout & operations** (analytics, rate limiters, scan resilience, Erase tool, Kontext, Ideogram, Recraft, Modify tab) | 🟡 Ongoing |
+
+**Tab order:** `Enhance → Scan → Modify → Resize → Your Photo Library`. The display label "Your Photo Library" is the History tab — internal identifiers (TabId `"history"`, `HistoryList.tsx`, `/api/history`, etc.) stay as-is; only user-facing strings were renamed (commits `9ed4649` + `ce735a5`, 2026-05-26).
 
 ---
 
@@ -133,6 +135,43 @@ Five small icons on every completed enhance variant (top-left, left to right): *
 - **EXIF normalization** is critical for mask-based vendors. iPhone JPEGs carry EXIF Orientation; browsers respect it (so `naturalWidth/Height` reflect post-rotation dims) but BFL/Ideogram read raw JPEG bytes pre-rotation. Fix lives in `_normalise()` inside both `_erase_with_flux` and `_inpaint_with_ideogram`: pyvips `autorot()` → write PNG → resize mask nearest-neighbour to match if dims still diverge.
 - **Result handling:** on Accept, EnhancePanel patches the variant **in-place** — `completed[jobId].outputAssetId/outputUrl` updates to the new asset, original `jobId` stays put so winner-picks + sent-to-Scan flags + the poller all stay coherent. Same patch-in-place semantics across all four tools.
 - **Don't reach for `asyncio.TaskGroup`** anywhere in this stack — the scan worker already learned that lesson (see scan section).
+
+---
+
+## Modify tab — darkroom + standalone tool
+
+Optional tab between Scan and Resize. Deterministic (non-AI) pixel-level operations via pyvips. Operator can EITHER use it as a darkroom pass on whatever's queued for Resize OR upload raw photos directly to use it as a standalone tool — both modes converge into the same `allAssets` pool inside the panel.
+
+**Three modes** in the controls card (tab strip at the top):
+
+| Mode | Controls | Live preview |
+|---|---|---|
+| Adjustments | Brightness / Contrast / Saturation sliders (−100..+100) | CSS `filter` |
+| Crop        | Aspect picker (Free / 1:1 / 4:3 / 7:5 / 16:9) + Zoom slider (50..100%) | Yellow dashed overlay over the keep-region |
+| Straighten  | Rotation slider (−15.0° to +15.0°, 0.1° step) | CSS `transform: rotate()` |
+
+All three modes **combine** on Apply — operator can dial in any subset. Backend runs them in this order so the math composes cleanly: `rotate → wedge-crop → smart-crop (aspect) → brightness/contrast → saturation`.
+
+**Backend pipeline:**
+
+- **Endpoint:** `POST /api/v1/modify/batch` ([routers/modify.py](apps/api/src/cleanshot_api/routers/modify.py)). Parallel GCS fetch + thread-dispatched pyvips work + new asset rows tagged `operation=modify`.
+- **Schema:** `ModifyBatchRequest` wraps `ModifyAdjustments` (`brightness`, `contrast`, `saturation`, `rotation_deg`, `crop_aspect` Literal, `crop_zoom`) in [schemas.py](apps/api/src/cleanshot_api/models/schemas.py).
+- **Service:** `apply_adjustments()` in [image_processing.py](apps/api/src/cleanshot_api/services/image_processing.py). Combined brightness+contrast in one `linear()` op; LCH colourspace round-trip for saturation; rotation via `pyvips.Image.rotate(angle, background=[0,0,0])` followed by centre-crop to the maximum inscribed rectangle (closed-form formula in `_inscribed_rect_after_rotation()`); smart-crop for aspect mode.
+- **DB:** `OperationEnum.modify` value + `ALTER TYPE operation_enum ADD VALUE IF NOT EXISTS 'modify'` in [migrate.py](apps/api/src/cleanshot_api/db/migrate.py) — per hard-won lesson #12 (Pydantic StrEnum additions don't migrate the Postgres type automatically).
+
+**Frontend:**
+
+- [ModifyPanel.tsx](apps/web/components/modify/ModifyPanel.tsx) — combined darkroom + standalone uploader.
+- Slider math (`sliderToBC`, `sliderToSat`) is duplicated as comments in `apply_adjustments` so the CSS-filter preview matches the pyvips render to the third decimal place. Don't drift these.
+- Crop overlay is a dashed yellow rectangle positioned in % units relative to the preview thumb's `aspect-4/3` figure. The math (`cropOverlay` useMemo) handles both "free" mode (symmetric zoom inset) and aspect-locked mode (smaller axis-locked rectangle).
+- Apply replaces `resizeAssets` wholesale via Workspace's `handleModifyApplied` callback (same length + order; modified PNGs land in `derivatives/session/{id}/modify/*.png`).
+- Standalone-upload pattern mirrors ResizePanel — `StandaloneUpload` state, `runUpload` pipeline (convertToJpeg → getSignedUploadUrl → uploadToGcs), uploaded files merge into `allAssets`.
+
+**Phase 2 still pending:**
+
+- Per-image variation (each queued asset gets its own slider state) — currently Phase 1 is batch-only (same adjustments to every queued image).
+- Drag-handle freeform crop (the current aspect+zoom UI is centre-only).
+- Pre-applied client-side preview of the crop+rotate combination (currently the overlay shows the keep-region but doesn't show the rotated-then-cropped result inline).
 
 ---
 

@@ -26,6 +26,19 @@ interface ClientRequest {
   sessionId:   string;
   assetIds:    string[];
   adjustments: ClientAdjustments;
+  /** Optional per-image overrides. Keys are asset IDs from assetIds. */
+  perAsset?:   Record<string, ClientAdjustments>;
+}
+
+function toSnake(a: ClientAdjustments) {
+  return {
+    brightness:   a.brightness,
+    contrast:     a.contrast,
+    saturation:   a.saturation,
+    rotation_deg: a.rotationDeg,
+    crop_aspect:  a.cropAspect,
+    crop_zoom:    a.cropZoom,
+  };
 }
 
 interface FastApiItem {
@@ -52,14 +65,12 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({
       session_id:  body.sessionId,
       asset_ids:   body.assetIds,
-      adjustments: {
-        brightness:   body.adjustments.brightness,
-        contrast:     body.adjustments.contrast,
-        saturation:   body.adjustments.saturation,
-        rotation_deg: body.adjustments.rotationDeg,
-        crop_aspect:  body.adjustments.cropAspect,
-        crop_zoom:    body.adjustments.cropZoom,
-      },
+      adjustments: toSnake(body.adjustments),
+      per_asset:   body.perAsset
+        ? Object.fromEntries(
+            Object.entries(body.perAsset).map(([k, v]) => [k, toSnake(v)]),
+          )
+        : {},
     }),
     signal: request.signal,
     cache: "no-store",

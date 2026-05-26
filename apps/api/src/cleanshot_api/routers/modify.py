@@ -64,7 +64,7 @@ async def modify_batch(
     gcs_client = gcs_lib.Client(project=settings.gcp_project)
     derivatives_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
 
-    adj = body.adjustments
+    default_adj = body.adjustments
 
     async def fetch_bytes(asset_id: uuid.UUID) -> tuple[uuid.UUID, bytes] | None:
         async with pool.acquire() as conn:
@@ -88,6 +88,10 @@ async def modify_batch(
 
     items: list[ModifyBatchItem] = []
     for aid, source in fetched:
+        # Per-asset override beats the default. `per_asset` is keyed
+        # by stringified asset_id (the wire format); UUID-keyed lookup
+        # would require client-side normalisation we don't enforce.
+        adj = body.per_asset.get(str(aid), default_adj)
         # pyvips is CPU-bound — dispatch to a worker thread so the event
         # loop stays responsive for any other in-flight requests.
         modified_bytes = await asyncio.to_thread(

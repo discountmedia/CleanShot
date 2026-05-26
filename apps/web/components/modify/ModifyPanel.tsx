@@ -54,6 +54,29 @@ interface StandaloneUpload {
 }
 
 type ModifyMode = "adjust" | "crop" | "straighten";
+type EditScope  = "batch" | "per-image";
+
+/** Neutral adjustments — used as the default for any asset the operator hasn't tweaked. */
+const NEUTRAL_ADJ: ModifyAdjustments = {
+  brightness:  1.0,
+  contrast:    1.0,
+  saturation:  1.0,
+  rotationDeg: 0.0,
+  cropAspect:  "free",
+  cropZoom:    1.0,
+};
+
+/** True iff `a` and NEUTRAL_ADJ are equivalent (no-op). */
+function isNeutralAdj(a: ModifyAdjustments): boolean {
+  return (
+    a.brightness  === 1.0 &&
+    a.contrast    === 1.0 &&
+    a.saturation  === 1.0 &&
+    a.rotationDeg === 0.0 &&
+    a.cropAspect  === "free" &&
+    a.cropZoom    === 1.0
+  );
+}
 
 /** Aspect-ratio choices for the Crop mode. "free" = no crop (keep source aspect). */
 type CropAspect = "free" | "1:1" | "4:3" | "7:5" | "16:9";
@@ -86,19 +109,17 @@ export function ModifyPanel({
   // ── Mode tab state ────────────────────────────────────────────────────
   const [mode, setMode] = useState<ModifyMode>("adjust");
 
-  // ── Adjustments ───────────────────────────────────────────────────────
-  const [brightnessSlider, setBrightnessSlider] = useState(0);
-  const [contrastSlider,   setContrastSlider]   = useState(0);
-  const [saturationSlider, setSaturationSlider] = useState(0);
-
-  // ── Crop ──────────────────────────────────────────────────────────────
-  const [cropAspect, setCropAspect] = useState<CropAspect>("free");
-  // Zoom slider 50..100 = 0.5..1.0 crop_zoom (1.0 = full source area).
-  const [cropZoomSlider, setCropZoomSlider] = useState(100);
-
-  // ── Straighten ────────────────────────────────────────────────────────
-  // Rotation slider -150..+150 maps to -15.0°..+15.0° (step = 0.1°).
-  const [rotationSliderTenths, setRotationSliderTenths] = useState(0);
+  // ── Edit scope (batch vs per-image) ──────────────────────────────────
+  // Batch: one set of adjustments applies to every queued asset. This
+  //   is the simple/default mode — preserves Phase 1 behaviour.
+  // Per-image: each queued asset keeps its own adjustments in a Map.
+  //   Operator clicks a thumb to select; sliders write to that thumb's
+  //   entry. Selected thumb is highlighted; the global "batch" sliders
+  //   become the FALLBACK for any asset the operator hasn't touched.
+  const [editScope, setEditScope] = useState<EditScope>("batch");
+  const [batchAdj,  setBatchAdj]  = useState<ModifyAdjustments>(NEUTRAL_ADJ);
+  const [perImageAdj, setPerImageAdj] = useState<Map<string, ModifyAdjustments>>(new Map());
+  const [selectedAssetId, setSelectedAssetId] = useState<string | null>(null);
 
   // ── Submission lifecycle ──────────────────────────────────────────────
   const [isApplying, setIsApplying] = useState(false);
@@ -216,39 +237,123 @@ export function ModifyPanel({
   const allAssets = [...resizeAssets, ...standaloneAssets];
   const anyUploadInFlight = uploads.some((u) => u.status === "uploading");
 
-  const brightnessFactor = sliderToBC(brightnessSlider);
-  const contrastFactor   = sliderToBC(contrastSlider);
-  const saturationFactor = sliderToSat(saturationSlider);
-  const cropZoomFactor   = cropZoomSlider / 100;
-  const rotationDeg      = rotationSliderTenths / 10;
+  // The adjustments the operator is currently EDITING — in batch
+  // mode this is the global batchAdj; in per-image mode it's the
+  // selected thumb's per-image entry (falling back to batchAdj if
+  // the operator hasn't touched it yet, so picking up a new
+  // image and tweaking inherits the batch baseline).
+  const currentAdj: ModifyAdjustments = (() => {
+    if (editScope === "batch") return batchAdj;
+    if (!selectedAssetId)     return batchAdj;
+    return perImageAdj.get(selectedAssetId) ?? batchAdj;
+  })();
 
-  const isAdjustNeutral   = brightnessSlider === 0 && contrastSlider === 0 && saturationSlider === 0;
-  const isCropNeutral     = cropAspect === "free" && cropZoomFactor === 1;
+  // Write back to the right slot based on scope.
+  const setCurrentAdj = useCallback(
+    (next: ModifyAdjustments) => {
+      if (editScope === "batch") {
+        setBatchAdj(next);
+      } else if (selectedAssetId) {
+        setPerImageAdj((prev) => {
+          const m = new Map(prev);
+          m.set(selectedAssetId, next);
+          return m;
+        });
+      }
+    },
+    [editScope, selectedAssetId],
+  );
+
+  // Per-asset effective adjustments — used for each thumb's CSS
+  // preview. In batch mode every thumb sees the same batchAdj.
+  // In per-image mode each thumb sees its own perImageAdj entry
+  // (or batchAdj as fallback). This is what the operator's actual
+  // Apply call will render.
+  const effectiveAdjFor = useCallback(
+    (assetId: string): ModifyAdjustments => {
+      if (editScope === "batch") return batchAdj;
+      return perImageAdj.get(assetId) ?? batchAdj;
+    },
+    [editScope, batchAdj, perImageAdj],
+  );
+
+  // Slider display values derive from currentAdj.
+  const brightnessSlider = Math.round((currentAdj.brightness - 1.0) * 200);
+  const contrastSlider   = Math.round((currentAdj.contrast   - 1.0) * 200);
+  const saturationSlider = Math.round((currentAdj.saturation - 1.0) * 100);
+  const cropZoomSlider   = Math.round(currentAdj.cropZoom * 100);
+  const rotationSliderTenths = Math.round(currentAdj.rotationDeg * 10);
+
+  // Field setters that update the slot driven by scope.
+  const setBrightness = (v: number) => setCurrentAdj({ ...currentAdj, brightness: sliderToBC(v) });
+  const setContrast   = (v: number) => setCurrentAdj({ ...currentAdj, contrast:   sliderToBC(v) });
+  const setSaturation = (v: number) => setCurrentAdj({ ...currentAdj, saturation: sliderToSat(v) });
+  const setRotation   = (tenths: number) => setCurrentAdj({ ...currentAdj, rotationDeg: tenths / 10 });
+  const setCropAspect = (a: CropAspect) => setCurrentAdj({ ...currentAdj, cropAspect: a });
+  const setCropZoom   = (pct: number)  => setCurrentAdj({ ...currentAdj, cropZoom: pct / 100 });
+
+  // Neutrality flags for the controls + the Apply button gate.
+  const isAdjustNeutral     = brightnessSlider === 0 && contrastSlider === 0 && saturationSlider === 0;
+  const isCropNeutral       = currentAdj.cropAspect === "free" && currentAdj.cropZoom === 1.0;
   const isStraightenNeutral = rotationSliderTenths === 0;
-  const isAllNeutral = isAdjustNeutral && isCropNeutral && isStraightenNeutral;
+  // "All neutral" considers the FULL set of pending adjustments
+  // across batch + per-image. Apply is disabled only if neither the
+  // batch defaults nor any per-image override would change anything.
+  const anyPerImageNonNeutral = useMemo(
+    () => Array.from(perImageAdj.values()).some((a) => !isNeutralAdj(a)),
+    [perImageAdj],
+  );
+  const isAllNeutral = isNeutralAdj(batchAdj) && !anyPerImageNonNeutral;
 
-  // ── CSS preview transforms ────────────────────────────────────────────
-  const cssFilter = useMemo(
-    () =>
-      `brightness(${brightnessFactor.toFixed(3)}) ` +
-      `contrast(${contrastFactor.toFixed(3)}) ` +
-      `saturate(${saturationFactor.toFixed(3)})`,
-    [brightnessFactor, contrastFactor, saturationFactor],
-  );
-  const cssRotate = useMemo(
-    () => (rotationDeg === 0 ? "none" : `rotate(${rotationDeg.toFixed(1)}deg)`),
-    [rotationDeg],
-  );
+  // Helpers — slider display values for a SPECIFIC assetId (used for
+  // the per-thumb CSS filter / transform).
+  const cssFilterFor = (assetId: string): string => {
+    const a = effectiveAdjFor(assetId);
+    return (
+      `brightness(${a.brightness.toFixed(3)}) ` +
+      `contrast(${a.contrast.toFixed(3)}) ` +
+      `saturate(${a.saturation.toFixed(3)})`
+    );
+  };
+  const cssRotateFor = (assetId: string): string => {
+    const deg = effectiveAdjFor(assetId).rotationDeg;
+    return deg === 0 ? "none" : `rotate(${deg.toFixed(1)}deg)`;
+  };
 
   // ── Handlers ──────────────────────────────────────────────────────────
   const handleResetAll = () => {
-    setBrightnessSlider(0);
-    setContrastSlider(0);
-    setSaturationSlider(0);
-    setCropAspect("free");
-    setCropZoomSlider(100);
-    setRotationSliderTenths(0);
+    setBatchAdj(NEUTRAL_ADJ);
+    setPerImageAdj(new Map());
     setError(null);
+  };
+
+  // Reset only the currently-selected per-image override (in per-image
+  // mode) — useful for "undo my tweak to this image" without nuking
+  // the whole batch.
+  const handleResetCurrent = () => {
+    if (editScope === "batch") {
+      setBatchAdj(NEUTRAL_ADJ);
+    } else if (selectedAssetId) {
+      setPerImageAdj((prev) => {
+        const m = new Map(prev);
+        m.delete(selectedAssetId);
+        return m;
+      });
+    }
+  };
+
+  // Copy the currently-selected image's adjustments to every other
+  // image in per-image mode. Handy for "I tuned this one perfectly,
+  // now apply the same settings to the rest."
+  const handleCopyCurrentToAll = () => {
+    if (editScope !== "per-image" || !selectedAssetId) return;
+    const source = perImageAdj.get(selectedAssetId) ?? batchAdj;
+    if (isNeutralAdj(source)) return;
+    setPerImageAdj(() => {
+      const m = new Map<string, ModifyAdjustments>();
+      for (const a of allAssets) m.set(a.assetId, source);
+      return m;
+    });
   };
 
   const handleApply = async () => {
@@ -256,18 +361,20 @@ export function ModifyPanel({
     setError(null);
     setIsApplying(true);
     try {
-      const adjustments: ModifyAdjustments = {
-        brightness:   brightnessFactor,
-        contrast:     contrastFactor,
-        saturation:   saturationFactor,
-        rotationDeg:  rotationDeg,
-        cropAspect:   cropAspect,
-        cropZoom:     cropZoomFactor,
-      };
+      // In per-image mode, serialise the Map → Record for the API.
+      // In batch mode, perAsset stays empty and the default
+      // `adjustments` applies to every asset_id.
+      const perAssetRecord: Record<string, ModifyAdjustments> = {};
+      if (editScope === "per-image") {
+        for (const [k, v] of perImageAdj.entries()) {
+          if (!isNeutralAdj(v)) perAssetRecord[k] = v;
+        }
+      }
       const { items } = await applyModifyBatch({
         sessionId,
-        assetIds: allAssets.map((a) => a.assetId),
-        adjustments,
+        assetIds:    allAssets.map((a) => a.assetId),
+        adjustments: batchAdj,
+        perAsset:    perAssetRecord,
       });
       const next: PipelineAsset[] = items.map((it, i) => {
         const original = allAssets[i];
@@ -286,6 +393,7 @@ export function ModifyPanel({
         return [];
       });
       handleResetAll();
+      setSelectedAssetId(null);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Modify failed");
     } finally {
@@ -293,41 +401,29 @@ export function ModifyPanel({
     }
   };
 
-  // Helper for the dashed-overlay rect's CSS — given the source's
-  // visible aspect (which the operator sees in the preview thumbnail)
-  // compute the largest aspect-locked rect that fits, scaled by zoom.
-  // Returns CSS percentages so it works regardless of actual pixel
-  // dims (the preview thumb is responsive).
-  const cropOverlay = useMemo(() => {
-    if (cropAspect === "free") {
-      // Whole image at zoom factor.
-      const inset = (1 - cropZoomFactor) * 50; // percent on each side
-      return {
-        top:    `${inset}%`,
-        left:   `${inset}%`,
-        right:  `${inset}%`,
-        bottom: `${inset}%`,
-      };
+  // Helper — compute the dashed-overlay CSS percentages for a given
+  // asset's adjustments. Used by each thumb so per-image mode shows
+  // each thumb's own crop bounds.
+  function cropOverlayFor(adj: ModifyAdjustments): React.CSSProperties | null {
+    if (adj.cropAspect === "free" && adj.cropZoom === 1.0) return null;
+    if (adj.cropAspect === "free") {
+      const inset = (1 - adj.cropZoom) * 50;
+      return { top: `${inset}%`, left: `${inset}%`, right: `${inset}%`, bottom: `${inset}%` };
     }
-    const [aw, ah] = ASPECT_RATIOS[cropAspect];
-    // Without knowing the thumb's true aspect we assume the displayed
-    // image fills a 4:3 figure (the preview cell aspect-4/3). The
-    // overlay is computed relative to that container.
+    const [aw, ah] = ASPECT_RATIOS[adj.cropAspect];
     const containerAR = 4 / 3;
     const targetAR    = aw / ah;
     let widthPct: number;
     let heightPct: number;
     if (targetAR >= containerAR) {
-      // Target is wider — width-limited at the container.
       widthPct  = 100;
       heightPct = (containerAR / targetAR) * 100;
     } else {
-      // Target is narrower — height-limited.
       heightPct = 100;
       widthPct  = (targetAR / containerAR) * 100;
     }
-    widthPct  *= cropZoomFactor;
-    heightPct *= cropZoomFactor;
+    widthPct  *= adj.cropZoom;
+    heightPct *= adj.cropZoom;
     const horizontalInset = (100 - widthPct)  / 2;
     const verticalInset   = (100 - heightPct) / 2;
     return {
@@ -336,7 +432,7 @@ export function ModifyPanel({
       right:  `${horizontalInset}%`,
       bottom: `${verticalInset}%`,
     };
-  }, [cropAspect, cropZoomFactor]);
+  }
 
   // ── Render ────────────────────────────────────────────────────────────
   return (
@@ -491,42 +587,109 @@ export function ModifyPanel({
       {/* Preview grid + control panel — only when we have assets */}
       {allAssets.length > 0 && (
         <>
+          {/* Edit scope toggle — batch vs per-image */}
+          <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-3 flex-wrap">
+              <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-100">Edit scope</span>
+              <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
+                <button
+                  type="button"
+                  onClick={() => { setEditScope("batch"); setSelectedAssetId(null); }}
+                  aria-pressed={editScope === "batch"}
+                  className={`text-sm font-bold uppercase tracking-[0.14em] px-4 py-2 transition-colors ${
+                    editScope === "batch" ? "bg-emerald-600 text-white" : "bg-zinc-900 text-zinc-200 hover:text-white"
+                  }`}
+                >
+                  Batch (all images)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setEditScope("per-image");
+                    if (!selectedAssetId && allAssets[0]) setSelectedAssetId(allAssets[0].assetId);
+                  }}
+                  aria-pressed={editScope === "per-image"}
+                  className={`text-sm font-bold uppercase tracking-[0.14em] px-4 py-2 border-l border-zinc-700 transition-colors ${
+                    editScope === "per-image" ? "bg-emerald-600 text-white" : "bg-zinc-900 text-zinc-200 hover:text-white"
+                  }`}
+                >
+                  Per-image
+                </button>
+              </div>
+            </div>
+            <p className="text-sm text-zinc-300 max-w-xl">
+              {editScope === "batch"
+                ? "One set of adjustments applies to every queued image. Switch to Per-image to tune photos individually."
+                : "Click a thumbnail below to select it, then adjust. Each image keeps its own settings; untouched images use the batch defaults."}
+            </p>
+          </section>
+
           <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
             <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/40 border-b border-zinc-900">
               <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
                 Live preview · {allAssets.length} image{allAssets.length !== 1 ? "s" : ""}
               </span>
               <span className="text-sm text-zinc-400 italic">
-                {isAllNeutral ? "All controls neutral — no changes applied" : "Adjust below to preview"}
+                {isAllNeutral
+                  ? "All controls neutral — no changes applied"
+                  : editScope === "per-image"
+                    ? "Click any thumbnail to select + tune"
+                    : "Adjust below to preview"}
               </span>
             </header>
             <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 p-5">
-              {allAssets.map((a) => (
-                <figure
-                  key={a.assetId}
-                  className="relative aspect-4/3 rounded-lg overflow-hidden border border-zinc-800 bg-black"
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={a.thumbnailUrl}
-                    alt={a.filename}
-                    className="absolute inset-0 w-full h-full object-contain transition-[filter,transform] duration-100"
-                    style={{ filter: cssFilter, transform: cssRotate }}
-                  />
-                  {/* Crop overlay — dashed rect indicates the area kept on Apply */}
-                  {!isCropNeutral && (
-                    <div
-                      className="absolute border-2 border-dashed border-yellow-400 pointer-events-none"
-                      style={cropOverlay}
+              {allAssets.map((a) => {
+                const adj = effectiveAdjFor(a.assetId);
+                const overlay = cropOverlayFor(adj);
+                const isSelected = editScope === "per-image" && selectedAssetId === a.assetId;
+                const hasOverride = perImageAdj.has(a.assetId) && !isNeutralAdj(perImageAdj.get(a.assetId)!);
+                const clickable = editScope === "per-image";
+                return (
+                  <figure
+                    key={a.assetId}
+                    onClick={clickable ? () => setSelectedAssetId(a.assetId) : undefined}
+                    className={`relative aspect-4/3 rounded-lg overflow-hidden border bg-black transition-all ${
+                      isSelected
+                        ? "border-emerald-400 ring-2 ring-emerald-400/40"
+                        : clickable
+                          ? "border-zinc-700 hover:border-zinc-400 cursor-pointer"
+                          : "border-zinc-800"
+                    }`}
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={a.thumbnailUrl}
+                      alt={a.filename}
+                      className="absolute inset-0 w-full h-full object-contain transition-[filter,transform] duration-100"
+                      style={{
+                        filter:    cssFilterFor(a.assetId),
+                        transform: cssRotateFor(a.assetId),
+                      }}
                     />
-                  )}
-                  <div className="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-linear-to-t from-black/85 to-transparent">
-                    <span className="text-xs font-mono text-zinc-200 truncate block" title={a.filename}>
-                      {a.filename}
-                    </span>
-                  </div>
-                </figure>
-              ))}
+                    {overlay && (
+                      <div
+                        className="absolute border-2 border-dashed border-yellow-400 pointer-events-none"
+                        style={overlay}
+                      />
+                    )}
+                    {hasOverride && (
+                      <span className="absolute top-2 right-2 text-[10px] uppercase tracking-[0.12em] font-bold text-emerald-100 bg-emerald-900/80 border border-emerald-500 px-1.5 py-0.5 rounded pointer-events-none">
+                        Tuned
+                      </span>
+                    )}
+                    {isSelected && (
+                      <span className="absolute top-2 left-2 text-[10px] uppercase tracking-[0.12em] font-bold text-white bg-emerald-600 px-1.5 py-0.5 rounded pointer-events-none">
+                        Editing
+                      </span>
+                    )}
+                    <div className="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-linear-to-t from-black/85 to-transparent">
+                      <span className="text-xs font-mono text-zinc-200 truncate block" title={a.filename}>
+                        {a.filename}
+                      </span>
+                    </div>
+                  </figure>
+                );
+              })}
             </div>
           </section>
 
@@ -549,11 +712,47 @@ export function ModifyPanel({
             </div>
 
             <div className="p-5 space-y-5">
+              {/* Per-image scope banner — shows which image the controls are editing. */}
+              {editScope === "per-image" && (
+                <div className="rounded-md border border-emerald-700/60 bg-emerald-950/30 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                  <div className="min-w-0">
+                    <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-200">
+                      Editing
+                    </p>
+                    <p className="text-base text-emerald-50 font-mono truncate" title={selectedAssetId ? allAssets.find((a) => a.assetId === selectedAssetId)?.filename : undefined}>
+                      {selectedAssetId
+                        ? (allAssets.find((a) => a.assetId === selectedAssetId)?.filename ?? "—")
+                        : "Click a thumbnail above to start editing"}
+                    </p>
+                  </div>
+                  {selectedAssetId && (
+                    <div className="flex gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={handleCopyCurrentToAll}
+                        disabled={isApplying || isNeutralAdj(currentAdj)}
+                        className="text-sm uppercase tracking-[0.14em] font-bold text-emerald-200 hover:text-white border border-emerald-700 hover:border-emerald-400 rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Copy to all
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResetCurrent}
+                        disabled={isApplying || isNeutralAdj(currentAdj)}
+                        className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                      >
+                        Reset this image
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {mode === "adjust" && (
                 <>
-                  <SliderRow label="Brightness" value={brightnessSlider} onChange={setBrightnessSlider} factor={brightnessFactor} accent="amber"   disabled={isApplying} />
-                  <SliderRow label="Contrast"   value={contrastSlider}   onChange={setContrastSlider}   factor={contrastFactor}   accent="sky"     disabled={isApplying} />
-                  <SliderRow label="Saturation" value={saturationSlider} onChange={setSaturationSlider} factor={saturationFactor} accent="emerald" disabled={isApplying} />
+                  <SliderRow label="Brightness" value={brightnessSlider} onChange={setBrightness} factor={currentAdj.brightness} accent="amber"   disabled={isApplying} />
+                  <SliderRow label="Contrast"   value={contrastSlider}   onChange={setContrast}   factor={currentAdj.contrast}   accent="sky"     disabled={isApplying} />
+                  <SliderRow label="Saturation" value={saturationSlider} onChange={setSaturation} factor={currentAdj.saturation} accent="emerald" disabled={isApplying} />
                 </>
               )}
 
@@ -563,7 +762,7 @@ export function ModifyPanel({
                     <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">Aspect ratio</span>
                     <div className="flex flex-wrap gap-2">
                       {(["free", "1:1", "4:3", "7:5", "16:9"] as const).map((opt) => {
-                        const selected = cropAspect === opt;
+                        const selected = currentAdj.cropAspect === opt;
                         return (
                           <button
                             key={opt}
@@ -591,7 +790,7 @@ export function ModifyPanel({
                     <div className="flex items-baseline justify-between">
                       <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">Zoom</span>
                       <span className="text-sm font-mono tabular-nums text-zinc-300">
-                        {cropZoomSlider}% <span className="text-zinc-500">· keep {Math.round(cropZoomFactor * 100)}% of frame</span>
+                        {cropZoomSlider}% <span className="text-zinc-500">· keep {cropZoomSlider}% of frame</span>
                       </span>
                     </div>
                     <input
@@ -601,7 +800,7 @@ export function ModifyPanel({
                       step={1}
                       value={cropZoomSlider}
                       disabled={isApplying}
-                      onChange={(e) => setCropZoomSlider(Number(e.target.value))}
+                      onChange={(e) => setCropZoom(Number(e.target.value))}
                       className="w-full accent-yellow-400 disabled:opacity-40"
                     />
                     <p className="text-sm text-zinc-400">100% = no crop. Lower values crop in from the centre.</p>
@@ -614,7 +813,7 @@ export function ModifyPanel({
                   <div className="flex items-baseline justify-between">
                     <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">Rotation</span>
                     <span className="text-sm font-mono tabular-nums text-zinc-300">
-                      {rotationDeg > 0 ? `+${rotationDeg.toFixed(1)}` : rotationDeg.toFixed(1)}°
+                      {currentAdj.rotationDeg > 0 ? `+${currentAdj.rotationDeg.toFixed(1)}` : currentAdj.rotationDeg.toFixed(1)}°
                     </span>
                   </div>
                   <input
@@ -624,7 +823,7 @@ export function ModifyPanel({
                     step={1}
                     value={rotationSliderTenths}
                     disabled={isApplying}
-                    onChange={(e) => setRotationSliderTenths(Number(e.target.value))}
+                    onChange={(e) => setRotation(Number(e.target.value))}
                     className="w-full accent-rose-400 disabled:opacity-40"
                   />
                   <p className="text-sm text-zinc-400 leading-relaxed">
