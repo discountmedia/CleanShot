@@ -56,8 +56,9 @@ export interface EnhanceProviderMeta {
   speedClass:   string;
   /** One-sentence "what this is" line shown under the provider name. */
   description:  string;
-  /** True if the provider got a "New" tag in the prior verbose layout. */
-  isNew:        boolean;
+  /** Per-provider title colour class — keeps each model visually distinct
+   *  on the provider chip card (the operator explicitly asked for this). */
+  titleClass:   string;
 }
 
 export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta> = {
@@ -65,24 +66,24 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     speedLabel:  "Fast",
     speedClass:  "text-emerald-300 bg-emerald-950/60 border-emerald-800",
     description: "Fastest and cheapest. Routes through gemini-3.1-flash-image-preview.",
-    isNew:       false,
+    titleClass:  "text-sky-300",
   },
   openai: {
     speedLabel:  "Slow",
     speedClass:  "text-red-300 bg-red-950/60 border-red-800",
     description: "Slower but can be more literal. gpt-5 reasons + dispatches the image_generation tool.",
-    isNew:       false,
+    titleClass:  "text-emerald-300",
   },
   grok: {
     speedLabel:  "Fastest",
     speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
     description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
-    isNew:       true,
+    titleClass:  "text-orange-300",
   },
   kontext: {
     speedLabel:  "Moderate",
     speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
     description: "BFL Flux Kontext Max (via RunComfy) — purpose-built for identity-preserving edits. Strong on subject continuity.",
-    isNew:       true,
+    titleClass:  "text-fuchsia-300",
   },
 };

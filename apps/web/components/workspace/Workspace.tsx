@@ -311,7 +311,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       {/* App-wide attribution footer — intentionally low-contrast.
           Visible on every tab below the active panel content. */}
       <footer className="px-6 py-6 text-center">
-        <p className="text-[10px] text-zinc-800 select-none">
+        <p className="text-[10px] text-zinc-950 select-none">
           Developed by Stephen Cunningham © AI App Integrations LLC 2026
         </p>
       </footer>

@@ -76,8 +76,9 @@ export function ProviderRow({ selected, onToggle }: ProviderRowProps) {
                       </svg>
                     )}
                   </span>
-                  {/* Provider name — bright yellow for accessibility / scan-ability. */}
-                  <span className="text-base font-semibold uppercase tracking-[0.16em] text-yellow-300">
+                  {/* Provider name — per-provider colour so each model
+                      is visually distinct from the others at a glance. */}
+                  <span className={`text-base font-semibold uppercase tracking-[0.16em] ${meta.titleClass}`}>
                     {ENHANCE_PROVIDER_LABELS[p]}
                   </span>
                   <span
@@ -85,11 +86,6 @@ export function ProviderRow({ selected, onToggle }: ProviderRowProps) {
                   >
                     {meta.speedLabel}
                   </span>
-                  {meta.isNew && (
-                    <span className="text-[11px] uppercase tracking-[0.18em] font-bold text-sky-100 bg-sky-600 border border-sky-500 rounded px-1.5 py-0.5">
-                      New
-                    </span>
-                  )}
                   <span className="text-xs font-mono ml-auto text-yellow-300">
                     ~{ENHANCE_PROVIDER_DURATION_S[p]}s
                   </span>

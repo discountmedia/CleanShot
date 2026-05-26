@@ -1153,12 +1153,12 @@ export function EnhancePanel({
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
           </svg>
-          <p className="text-sm text-zinc-400">
+          <p className="text-lg font-semibold text-zinc-100">
             {files.length >= MAX_UPLOADS
               ? `Maximum ${MAX_UPLOADS} images reached`
               : `Drop images here or click to browse`}
           </p>
-          <p className="text-xs text-zinc-600">
+          <p className="text-sm text-zinc-300 mt-1">
             Up to {MAX_UPLOADS} images · Files over 4.5 MB auto-compressed
             · {files.length}/{MAX_UPLOADS} loaded
           </p>

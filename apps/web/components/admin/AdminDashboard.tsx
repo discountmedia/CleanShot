@@ -181,7 +181,7 @@ function UsersTab({ onSelectUser }: { onSelectUser: (email: string) => void }) {
   return (
     <div className="overflow-x-auto rounded-xl border border-zinc-800">
       <table className="w-full text-sm">
-        <thead className="bg-zinc-900/60 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+        <thead className="bg-zinc-900/60 text-xs uppercase tracking-[0.16em] text-zinc-200">
           <tr>
             <th className="px-3 py-2 text-left font-semibold">User</th>
             <th className="px-3 py-2 text-right font-semibold">Sessions</th>
@@ -301,7 +301,7 @@ function ProjectsTab({
       ) : (
         <div className="overflow-x-auto rounded-xl border border-zinc-800">
           <table className="w-full text-sm">
-            <thead className="bg-zinc-900/60 text-[10px] uppercase tracking-[0.18em] text-zinc-400">
+            <thead className="bg-zinc-900/60 text-xs uppercase tracking-[0.16em] text-zinc-200">
               <tr>
                 <th className="px-3 py-2 text-left font-semibold w-6" />
                 <th className="px-3 py-2 text-left font-semibold">Saved</th>
@@ -533,14 +533,14 @@ function UsageTab() {
       ) : !data ? null : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-            <h3 className="px-4 py-2 border-b border-zinc-800 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+            <h3 className="px-5 py-3 border-b border-zinc-800 text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
               By provider / model
             </h3>
             {data.byProviderModel.length === 0 ? (
               <p className="px-4 py-6 text-xs text-zinc-500">No events in this window.</p>
             ) : (
               <table className="w-full text-xs">
-                <thead className="bg-zinc-900/40 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                <thead className="bg-zinc-900/40 text-xs uppercase tracking-[0.16em] text-zinc-300">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Provider · Model</th>
                     <th className="px-3 py-2 text-left font-semibold">Op</th>
@@ -567,14 +567,14 @@ function UsageTab() {
           </section>
 
           <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-            <h3 className="px-4 py-2 border-b border-zinc-800 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+            <h3 className="px-5 py-3 border-b border-zinc-800 text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
               By user
             </h3>
             {data.byUser.length === 0 ? (
               <p className="px-4 py-6 text-xs text-zinc-500">No events in this window.</p>
             ) : (
               <table className="w-full text-xs">
-                <thead className="bg-zinc-900/40 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                <thead className="bg-zinc-900/40 text-xs uppercase tracking-[0.16em] text-zinc-300">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">User</th>
                     <th className="px-3 py-2 text-right font-semibold">Calls</th>
@@ -595,14 +595,14 @@ function UsageTab() {
           </section>
 
           <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden lg:col-span-2">
-            <h3 className="px-4 py-2 border-b border-zinc-800 text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+            <h3 className="px-5 py-3 border-b border-zinc-800 text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
               Daily volume
             </h3>
             {data.daily.length === 0 ? (
               <p className="px-4 py-6 text-xs text-zinc-500">No events in this window.</p>
             ) : (
               <table className="w-full text-xs">
-                <thead className="bg-zinc-900/40 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+                <thead className="bg-zinc-900/40 text-xs uppercase tracking-[0.16em] text-zinc-300">
                   <tr>
                     <th className="px-3 py-2 text-left font-semibold">Day</th>
                     <th className="px-3 py-2 text-right font-semibold">Total</th>
@@ -693,12 +693,12 @@ function SupportTab() {
   return (
     <div className="space-y-3">
       <header className="flex items-center justify-between gap-3 flex-wrap">
-        <label className="flex items-center gap-2 text-xs text-zinc-400">
+        <label className="flex items-center gap-2 text-base text-zinc-200 font-medium">
           Status:
           <select
             value={filter}
             onChange={(e) => setFilter(e.target.value as typeof filter)}
-            className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white"
+            className="bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-base text-white"
           >
             <option value="all">All</option>
             <option value="open">Open</option>
@@ -708,18 +708,18 @@ function SupportTab() {
         </label>
         <button
           onClick={refresh}
-          className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-2 py-1 rounded transition-colors"
+          className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-1.5 rounded transition-colors"
         >
           Refresh
         </button>
       </header>
 
       {loading ? (
-        <p className="text-sm text-zinc-500">Loading tickets…</p>
+        <p className="text-base text-zinc-200">Loading tickets…</p>
       ) : error ? (
-        <p className="text-sm text-red-400">{error}</p>
+        <p className="text-base text-red-400">{error}</p>
       ) : !tickets || tickets.length === 0 ? (
-        <p className="text-sm text-zinc-500">No tickets in this view.</p>
+        <p className="text-base text-zinc-200">No tickets in this view.</p>
       ) : (
         <div className="space-y-3">
           {tickets.map((t) => (
@@ -727,40 +727,40 @@ function SupportTab() {
               key={t.id}
               className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden"
             >
-              <header className="flex items-center justify-between gap-3 px-4 py-3 border-b border-zinc-900">
+              <header className="flex items-center justify-between gap-3 px-5 py-4 border-b border-zinc-900">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className={`text-[10px] uppercase tracking-[0.18em] font-bold px-2 py-0.5 rounded border ${
+                  <span className={`text-xs uppercase tracking-[0.16em] font-bold px-2.5 py-1 rounded border ${
                     t.type === "feature"
-                      ? "text-violet-300 bg-violet-950/60 border-violet-800"
-                      : "text-amber-300 bg-amber-950/60 border-amber-800"
+                      ? "text-violet-200 bg-violet-950/60 border-violet-700"
+                      : "text-amber-200 bg-amber-950/60 border-amber-700"
                   }`}>
                     {t.type === "feature" ? "Feature" : "Support"}
                   </span>
-                  <p className="text-sm font-semibold text-zinc-200 truncate" title={t.subject}>
+                  <p className="text-lg font-bold text-zinc-100 truncate" title={t.subject}>
                     {t.subject}
                   </p>
                 </div>
-                <span className="text-[10px] text-zinc-500 font-mono shrink-0">
+                <span className="text-sm text-zinc-200 font-mono shrink-0">
                   {new Date(t.createdAt).toLocaleString([], { dateStyle: "short", timeStyle: "short" })}
                 </span>
               </header>
-              <div className="px-4 py-3 space-y-2">
-                <p className="text-[11px] text-zinc-500 font-mono">{t.userEmail}</p>
-                <p className="text-sm text-zinc-300 whitespace-pre-wrap leading-relaxed">{t.body}</p>
+              <div className="px-5 py-4 space-y-2">
+                <p className="text-sm text-zinc-300 font-mono">{t.userEmail}</p>
+                <p className="text-base text-zinc-100 whitespace-pre-wrap leading-relaxed">{t.body}</p>
                 {t.adminNotes && (
-                  <p className="text-xs text-zinc-500 border-l-2 border-zinc-700 pl-3 mt-2 whitespace-pre-wrap">
-                    <span className="font-semibold text-zinc-400">Admin notes:</span> {t.adminNotes}
+                  <p className="text-sm text-zinc-200 border-l-2 border-zinc-600 pl-3 mt-2 whitespace-pre-wrap">
+                    <span className="font-bold text-zinc-100">Admin notes:</span> {t.adminNotes}
                   </p>
                 )}
               </div>
-              <footer className="flex items-center justify-between gap-3 px-4 py-3 bg-zinc-900/40 border-t border-zinc-800">
-                <label className="flex items-center gap-2 text-xs text-zinc-400">
+              <footer className="flex items-center justify-between gap-3 px-5 py-3 bg-zinc-900/40 border-t border-zinc-800">
+                <label className="flex items-center gap-2 text-base text-zinc-200 font-medium">
                   Status:
                   <select
                     value={t.status}
                     onChange={(e) => updateTicket(t.id, { status: e.target.value as SupportTicket["status"] })}
                     disabled={savingId === t.id}
-                    className="bg-zinc-900 border border-zinc-700 rounded px-2 py-1 text-xs text-white disabled:opacity-50"
+                    className="bg-zinc-900 border border-zinc-700 rounded px-3 py-1.5 text-base text-white disabled:opacity-50"
                   >
                     <option value="open">Open</option>
                     <option value="in_progress">In progress</option>
@@ -773,7 +773,7 @@ function SupportTab() {
                     if (note !== null) updateTicket(t.id, { adminNotes: note });
                   }}
                   disabled={savingId === t.id}
-                  className="text-[10px] uppercase tracking-[0.18em] font-semibold text-blue-400 hover:text-blue-300 transition-colors disabled:opacity-50"
+                  className="text-sm uppercase tracking-[0.16em] font-bold text-blue-300 hover:text-white transition-colors disabled:opacity-50"
                 >
                   {t.adminNotes ? "Edit notes" : "Add notes"}
                 </button>
@@ -804,31 +804,31 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
   return (
     <div className="min-h-screen bg-black text-white">
       <header className="border-b border-zinc-800 bg-zinc-950">
-        <div className="max-w-screen-2xl mx-auto px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <h1 className="text-base font-bold tracking-tight">CleanShot Admin</h1>
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-red-400 bg-red-950/40 border border-red-900 rounded px-2 py-0.5">
+        <div className="max-w-screen-2xl mx-auto px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-4">
+            <h1 className="text-2xl font-bold tracking-tight text-white">CleanShot Admin</h1>
+            <span className="text-sm uppercase tracking-[0.16em] font-bold text-red-200 bg-red-900/60 border border-red-600 rounded px-2.5 py-1">
               ADMIN
             </span>
           </div>
-          <div className="flex items-center gap-4 text-xs text-zinc-500">
-            <span className="font-mono">{userEmail}</span>
-            <Link href="/" className="text-blue-400 hover:text-blue-300 font-semibold">
+          <div className="flex items-center gap-5 text-base">
+            <span className="font-mono text-zinc-200">{userEmail}</span>
+            <Link href="/" className="text-blue-300 hover:text-white font-semibold">
               ← Back to workspace
             </Link>
           </div>
         </div>
-        <nav className="max-w-screen-2xl mx-auto px-6 flex gap-1">
+        <nav className="max-w-screen-2xl mx-auto px-6 flex gap-2">
           {tabs.map((t) => {
             const active = t.id === tab;
             return (
               <button
                 key={t.id}
                 onClick={() => setTab(t.id)}
-                className={`px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] border-b-2 transition-colors ${
+                className={`px-5 py-3 text-base font-bold uppercase tracking-[0.14em] border-b-2 transition-colors ${
                   active
                     ? "border-red-500 text-white"
-                    : "border-transparent text-zinc-500 hover:text-zinc-300"
+                    : "border-transparent text-zinc-300 hover:text-white"
                 }`}
               >
                 {t.label}
@@ -860,7 +860,7 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
       </main>
 
       <footer className="px-6 py-6 text-center">
-        <p className="text-[10px] text-zinc-800 select-none">
+        <p className="text-[10px] text-zinc-950 select-none">
           Developed by Stephen Cunningham © AI App Integrations LLC 2026
         </p>
       </footer>

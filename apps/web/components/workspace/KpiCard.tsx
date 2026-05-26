@@ -57,22 +57,22 @@ export function KpiCard({
       `}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-zinc-500">
+        <span className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-200">
           {label}
         </span>
         {href && (
-          <span className="text-zinc-600 group-hover:text-zinc-400 transition-colors" aria-hidden="true">
+          <span className="text-zinc-300 group-hover:text-white transition-colors" aria-hidden="true">
             →
           </span>
         )}
       </div>
 
-      <div className={`mt-2 text-4xl font-bold tracking-tight tabular-nums ${VALUE_COLORS[placeholder ? "muted" : color]}`}>
+      <div className={`mt-2 text-5xl font-bold tracking-tight tabular-nums ${VALUE_COLORS[placeholder ? "muted" : color]}`}>
         {placeholder ? "—" : value}
       </div>
 
       {secondary && (
-        <div className="mt-1 text-xs text-zinc-500">
+        <div className="mt-2 text-sm text-zinc-300">
           {secondary}
         </div>
       )}
