@@ -48,7 +48,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
       <header className="px-5 py-4 border-b border-zinc-900 bg-zinc-900/30">
         <div className="flex items-start gap-3">
           <svg
-            className="w-5 h-5 mt-0.5 text-blue-400 shrink-0"
+            className="w-6 h-6 mt-0.5 text-blue-300 shrink-0"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -57,40 +57,55 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <div className="space-y-2 min-w-0">
-            <h3 className="text-base font-semibold text-zinc-100 uppercase tracking-[0.12em]">
+          <div className="space-y-3 min-w-0">
+            <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">
               Equipment details — accuracy matters
             </h3>
-            <p className="text-sm text-zinc-300 leading-relaxed">
-              These fields drive three things downstream, so fill them in
-              accurately before you hit Enhance:
+
+            {/* Headline rule — bright red callout so nobody misses it. */}
+            <div className="rounded-lg border-2 border-red-600 bg-red-950/40 px-4 py-3">
+              <p className="text-base text-red-100 leading-relaxed font-bold">
+                Fill in as many of these fields as you can — but ONLY with
+                information you actually know is correct.
+              </p>
+              <p className="text-base text-red-50 leading-relaxed mt-2">
+                <strong className="text-white">If you know it, enter it.</strong>{" "}
+                Wrong info is worse than no info — the AI will use whatever you
+                type to decide brand colours, decals, and anatomy. A typo in
+                &ldquo;Make&rdquo; can mean a Toyota photo gets painted in Hyster
+                yellow.
+              </p>
+              <p className="text-base text-red-50 leading-relaxed mt-2">
+                <strong className="text-white">If you don&apos;t know, leave it blank.</strong>{" "}
+                That&apos;s fine — Make is the only required field. Don&apos;t
+                guess.
+              </p>
+            </div>
+
+            <p className="text-base text-zinc-200 leading-relaxed">
+              When you do fill these in correctly, here&apos;s what they drive:
             </p>
-            <ul className="space-y-1.5 text-sm text-zinc-300 leading-relaxed list-disc pl-5">
+            <ul className="space-y-2 text-base text-zinc-100 leading-relaxed list-disc pl-5">
               <li>
-                <span className="text-zinc-100 font-semibold">Filenames.</span>{" "}
+                <span className="text-white font-bold">Filenames.</span>{" "}
                 Each uploaded photo is renamed to{" "}
-                <span className="font-mono text-yellow-300">
+                <span className="font-mono text-yellow-300 font-bold">
                   Make_Model_Year_NN.jpg
                 </span>{" "}
                 so downstream tools can sort them.
               </li>
               <li>
-                <span className="text-zinc-100 font-semibold">Prompt tuning.</span>{" "}
+                <span className="text-white font-bold">Prompt tuning.</span>{" "}
                 The AI models use the equipment type and make to apply the
                 right brand colour, anatomy preservation, and OEM-decal
                 rules to each photo.
               </li>
               <li>
-                <span className="text-zinc-100 font-semibold">Resize Save Project.</span>{" "}
+                <span className="text-white font-bold">Resize Save Project.</span>{" "}
                 The same values pre-fill the Resize tab&apos;s Save Project
                 form — no double entry, no typos between tabs.
               </li>
             </ul>
-            <p className="text-sm text-amber-200 leading-relaxed pt-1">
-              ⚠ Wrong Make = wrong brand decals in the output. Wrong
-              equipment type = wrong anatomy rules. Take the extra 10
-              seconds.
-            </p>
           </div>
         </div>
       </header>
