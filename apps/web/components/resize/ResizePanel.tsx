@@ -162,7 +162,7 @@ function TextField({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
+      <span className="text-sm uppercase tracking-[0.16em] text-zinc-100 font-bold">
         {label}
       </span>
       <input
@@ -173,7 +173,7 @@ function TextField({
         disabled={disabled}
         className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition disabled:opacity-50"
       />
-      {hint && <span className="text-xs text-zinc-400 leading-snug">{hint}</span>}
+      {hint && <span className="text-sm text-zinc-200 font-medium leading-snug">{hint}</span>}
     </label>
   );
 }
@@ -608,31 +608,31 @@ export function ResizePanel({
       </TipBanner>
 
       {/* ── Spec card ── */}
-      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">
-        <div className="space-y-2">
-          <h3 className="text-sm font-semibold text-zinc-200">PRO Export Spec</h3>
-          <p className="text-xs text-blue-300 leading-snug">
-            <strong className="text-blue-200">Use for:</strong> standard listing photos of a single forklift.
+      <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-5">
+        <div className="space-y-2.5">
+          <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">PRO Export Spec</h3>
+          <p className="text-base text-blue-100 leading-relaxed">
+            <strong className="text-blue-200 font-bold">Use for:</strong> standard listing photos of a single forklift.
             Every image gets a uniform 7:5 crop with the machine framed and centred — what most marketplaces expect.
           </p>
-          <ul className="text-xs text-zinc-400 space-y-1" role="list">
-            <li>• <strong className="text-zinc-300">1024 × 731 px</strong> — 7:5 aspect ratio</li>
-            <li>• <strong className="text-zinc-300">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
-            <li>• <strong className="text-zinc-300">≤ 99 KB JPEG</strong> — quality iterated until target</li>
+          <ul className="text-base text-zinc-100 space-y-1.5 leading-relaxed" role="list">
+            <li>• <strong className="text-white font-bold">1024 × 731 px</strong> — 7:5 aspect ratio</li>
+            <li>• <strong className="text-white font-bold">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
+            <li>• <strong className="text-white font-bold">≤ 99 KB JPEG</strong> — quality iterated until target</li>
             <li>• Batch returns as a single ZIP; single asset returns as JPEG</li>
           </ul>
         </div>
-        <div className="space-y-2 pt-3 border-t border-zinc-800">
-          <h3 className="text-sm font-semibold text-zinc-200">Collage Export Spec</h3>
-          <p className="text-xs text-purple-300 leading-snug">
-            <strong className="text-purple-200">Use for:</strong> pre-composed multi-image collages where you've
+        <div className="space-y-2.5 pt-4 border-t border-zinc-800">
+          <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">Collage Export Spec</h3>
+          <p className="text-base text-purple-100 leading-relaxed">
+            <strong className="text-purple-200 font-bold">Use for:</strong> pre-composed multi-image collages where you&apos;ve
             already arranged the photos and just need the finished layout downsized — no cropping, original
             aspect ratio preserved.
           </p>
-          <ul className="text-xs text-zinc-400 space-y-1" role="list">
-            <li>• <strong className="text-zinc-300">1024 px long edge</strong> — original aspect ratio preserved</li>
-            <li>• <strong className="text-zinc-300">No crop</strong> — fits to long edge; output is whatever the input's shape calls for</li>
-            <li>• <strong className="text-zinc-300">≤ 99 KB JPEG</strong> — same quality-iteration loop as PRO</li>
+          <ul className="text-base text-zinc-100 space-y-1.5 leading-relaxed" role="list">
+            <li>• <strong className="text-white font-bold">1024 px long edge</strong> — original aspect ratio preserved</li>
+            <li>• <strong className="text-white font-bold">No crop</strong> — fits to long edge; output is whatever the input&apos;s shape calls for</li>
+            <li>• <strong className="text-white font-bold">≤ 99 KB JPEG</strong> — same quality-iteration loop as PRO</li>
           </ul>
         </div>
       </div>

@@ -100,7 +100,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
             can swap categories. Compact chip row to match the Enhance
             tab's ProviderRow vocabulary. */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-300">
+          <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
             Equipment
           </span>
           <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
@@ -128,9 +128,9 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
         <div className="flex-1 min-w-50">
           <label
             htmlFor="meta-make"
-            className="flex items-center gap-1 text-xs uppercase tracking-[0.18em] font-semibold text-zinc-300 mb-1.5"
+            className="flex items-center gap-1 text-sm uppercase tracking-[0.16em] font-bold text-zinc-100 mb-1.5"
           >
-            Make <span className="text-red-500" aria-label="required">*</span>
+            Make <span className="text-red-400" aria-label="required">*</span>
           </label>
           <input
             id="meta-make"
@@ -165,10 +165,10 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
       </div>
 
       {expanded && (
-        <div className="border-t border-zinc-900 px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
+        <div className="border-t border-zinc-900 px-5 py-5 grid grid-cols-2 md:grid-cols-5 gap-4">
           {EXTRA_FIELDS.map(({ key, label, placeholder, hint }) => (
             <label key={key} className="flex flex-col gap-1.5">
-              <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-300">
+              <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
                 {label}
               </span>
               <input
@@ -178,14 +178,14 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
                 placeholder={placeholder}
                 className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
               />
-              <span className="text-xs text-zinc-400 leading-snug">
+              <span className="text-sm text-zinc-200 font-medium leading-snug">
                 {hint}
               </span>
             </label>
           ))}
-          <p className="col-span-full text-sm text-zinc-300 leading-relaxed">
+          <p className="col-span-full text-base text-zinc-100 leading-relaxed">
             These same values pre-fill the Resize tab&apos;s{" "}
-            <span className="font-mono text-yellow-300">Save Project</span> form
+            <span className="font-mono text-yellow-300 font-bold">Save Project</span> form
             when you&apos;re ready to export — no need to re-type them there.
           </p>
         </div>
