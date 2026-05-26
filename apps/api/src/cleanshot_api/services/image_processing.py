@@ -310,16 +310,19 @@ def compose_branded_collage(
         interpretation="srgb",
     )
 
-    # Hero on the left — cover-crop (zoom-to-fill, no letterboxing).
-    hero = _cover_crop(hero_bytes, _COLLAGE_HERO_W, _COLLAGE_HERO_H)
+    # Hero on the left — FIT-with-letterbox. Every source's full
+    # frame is preserved (banner + unit + floor all visible); black
+    # bars fill any leftover space when the source aspect doesn't
+    # match the 720×540 hero cell. Cover-crop was tried earlier
+    # (both attention and centre modes) but kept losing the studio
+    # banner on portrait sources. Letterbox is the only mode that
+    # guarantees no information is lost from any source aspect.
+    hero = _fit_with_letterbox(hero_bytes, _COLLAGE_HERO_W, _COLLAGE_HERO_H)
     canvas = canvas.insert(hero, 0, 0)
 
-    # Thumbnail strip on the right — top to bottom. FIT-with-letterbox
-    # per operator's MANDATORY spec: every thumb must show the FULL
-    # source frame (no crop), sized as large as fits inside the cell,
-    # with black bars filling the leftover space. NOT cover-crop —
-    # cover-crop would side-clip the source, which the operator
-    # explicitly does not want for the thumb strip.
+    # Thumbnail strip on the right — top to bottom. Same letterbox
+    # treatment as the hero so every thumb also shows the FULL source
+    # frame with black bars filling the leftover space.
     for i, raw in enumerate(thumb_bytes):
         thumb = _fit_with_letterbox(raw, _COLLAGE_THUMB_W, _COLLAGE_THUMB_H)
         canvas = canvas.insert(thumb, _COLLAGE_HERO_W, i * _COLLAGE_THUMB_H)
