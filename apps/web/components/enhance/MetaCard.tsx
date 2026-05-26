@@ -1,11 +1,11 @@
 // apps/web/components/enhance/MetaCard.tsx
-// Forklift metadata input — Phase 3 redesign.
+// Equipment metadata input.
 //
-// Only `Make` is shown up front (required, drives filename + Resize Save
-// Project form). Model / Year / Tire Type / Capacity / Fuel Type live
-// behind a "+ More details" disclosure. Same `meta` shape as before,
-// owned by `Workspace` (lifted source of truth that also pre-fills the
-// Resize tab's Save Project form).
+// Header sets context for the operator: WHY these fields matter and what
+// they drive downstream. Make is required; Model / Year / Tire Type /
+// Capacity / Fuel Type live in the always-expanded "+ More details"
+// disclosure. The meta object is owned by Workspace and also pre-fills
+// the Resize tab's Save Project form.
 
 import {
   EQUIPMENT_TYPES,
@@ -25,12 +25,13 @@ const EXTRA_FIELDS: Array<{
   key: keyof ForkliftMeta;
   label: string;
   placeholder: string;
+  hint: string;
 }> = [
-  { key: "model",    label: "Model",     placeholder: "e.g. 8FGU25" },
-  { key: "year",     label: "Year",      placeholder: "e.g. 2019" },
-  { key: "tireType", label: "Tire Type", placeholder: "e.g. Pneumatic" },
-  { key: "capacity", label: "Capacity",  placeholder: "e.g. 5000 lbs" },
-  { key: "fuelType", label: "Fuel Type", placeholder: "e.g. LPG" },
+  { key: "model",    label: "Model",     placeholder: "e.g. 8FGU25",    hint: "Model number from the data plate." },
+  { key: "year",     label: "Year",      placeholder: "e.g. 2019",      hint: "Model year. Helps buyers shortlist." },
+  { key: "tireType", label: "Tire Type", placeholder: "e.g. Pneumatic", hint: "Pneumatic, cushion, or solid." },
+  { key: "capacity", label: "Capacity",  placeholder: "e.g. 5000 lbs",  hint: "Rated load capacity in lbs." },
+  { key: "fuelType", label: "Fuel Type", placeholder: "e.g. LPG",       hint: "LPG, diesel, electric, gasoline." },
 ];
 
 export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) {
@@ -43,12 +44,63 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
 
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+      {/* Explanatory header — sets context for what these fields do. */}
+      <header className="px-5 py-4 border-b border-zinc-900 bg-zinc-900/30">
+        <div className="flex items-start gap-3">
+          <svg
+            className="w-5 h-5 mt-0.5 text-blue-400 shrink-0"
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+            aria-hidden="true"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <div className="space-y-2 min-w-0">
+            <h3 className="text-base font-semibold text-zinc-100 uppercase tracking-[0.12em]">
+              Equipment details — accuracy matters
+            </h3>
+            <p className="text-sm text-zinc-300 leading-relaxed">
+              These fields drive three things downstream, so fill them in
+              accurately before you hit Enhance:
+            </p>
+            <ul className="space-y-1.5 text-sm text-zinc-300 leading-relaxed list-disc pl-5">
+              <li>
+                <span className="text-zinc-100 font-semibold">Filenames.</span>{" "}
+                Each uploaded photo is renamed to{" "}
+                <span className="font-mono text-yellow-300">
+                  Make_Model_Year_NN.jpg
+                </span>{" "}
+                so downstream tools can sort them.
+              </li>
+              <li>
+                <span className="text-zinc-100 font-semibold">Prompt tuning.</span>{" "}
+                The AI models use the equipment type and make to apply the
+                right brand colour, anatomy preservation, and OEM-decal
+                rules to each photo.
+              </li>
+              <li>
+                <span className="text-zinc-100 font-semibold">Resize Save Project.</span>{" "}
+                The same values pre-fill the Resize tab&apos;s Save Project
+                form — no double entry, no typos between tabs.
+              </li>
+            </ul>
+            <p className="text-sm text-amber-200 leading-relaxed pt-1">
+              ⚠ Wrong Make = wrong brand decals in the output. Wrong
+              equipment type = wrong anatomy rules. Take the extra 10
+              seconds.
+            </p>
+          </div>
+        </div>
+      </header>
+
       <div className="px-5 py-4 flex items-end gap-4 flex-wrap">
         {/* Equipment type — sits before Make so the operator sees they
             can swap categories. Compact chip row to match the Enhance
             tab's ProviderRow vocabulary. */}
         <div className="flex flex-col gap-1.5">
-          <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+          <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-300">
             Equipment
           </span>
           <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
@@ -60,10 +112,10 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
                   type="button"
                   onClick={() => update("equipmentType", t)}
                   aria-pressed={selected}
-                  className={`text-[11px] uppercase tracking-[0.16em] font-semibold px-3 py-2 transition-colors ${
+                  className={`text-sm uppercase tracking-[0.14em] font-semibold px-4 py-2.5 transition-colors ${
                     selected
                       ? "bg-red-950/40 text-red-300"
-                      : "bg-zinc-900 text-zinc-500 hover:text-zinc-300"
+                      : "bg-zinc-900 text-zinc-300 hover:text-white"
                   } ${i > 0 ? "border-l border-zinc-700" : ""}`}
                 >
                   {EQUIPMENT_TYPE_LABELS[t]}
@@ -76,7 +128,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
         <div className="flex-1 min-w-50">
           <label
             htmlFor="meta-make"
-            className="flex items-center gap-1 text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 mb-1.5"
+            className="flex items-center gap-1 text-xs uppercase tracking-[0.18em] font-semibold text-zinc-300 mb-1.5"
           >
             Make <span className="text-red-500" aria-label="required">*</span>
           </label>
@@ -88,7 +140,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
             placeholder="e.g. Toyota"
             aria-required
             aria-invalid={!makeValid || undefined}
-            className={`w-full bg-zinc-900 border rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:border-transparent transition ${
+            className={`w-full bg-zinc-900 border rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:border-transparent transition ${
               makeValid
                 ? "border-zinc-700 focus:ring-red-500"
                 : "border-red-900 focus:ring-red-500"
@@ -100,21 +152,23 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
           type="button"
           onClick={() => onExpand(!expanded)}
           aria-expanded={expanded}
-          className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white transition-colors px-3 py-2 border border-zinc-800 hover:border-zinc-600 rounded mb-px"
+          className="text-xs uppercase tracking-[0.16em] font-semibold text-zinc-200 hover:text-white transition-colors px-3 py-2.5 border border-zinc-700 hover:border-zinc-500 rounded mb-px"
         >
           {expanded ? "− Hide details" : "+ More details"}
         </button>
 
-        <span className="text-xs text-zinc-500 ml-auto mb-2">
-          {makeValid ? "✓ ready to enhance" : "Enter the Make to continue"}
+        <span
+          className={`text-sm ml-auto mb-2 ${makeValid ? "text-green-400" : "text-amber-300"}`}
+        >
+          {makeValid ? "✓ Ready to enhance" : "Enter the Make to continue"}
         </span>
       </div>
 
       {expanded && (
         <div className="border-t border-zinc-900 px-5 py-4 grid grid-cols-2 md:grid-cols-5 gap-3">
-          {EXTRA_FIELDS.map(({ key, label, placeholder }) => (
+          {EXTRA_FIELDS.map(({ key, label, placeholder, hint }) => (
             <label key={key} className="flex flex-col gap-1.5">
-              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+              <span className="text-xs uppercase tracking-[0.18em] font-semibold text-zinc-300">
                 {label}
               </span>
               <input
@@ -122,13 +176,17 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
                 value={meta[key] ?? ""}
                 onChange={(e) => update(key, e.target.value)}
                 placeholder={placeholder}
-                className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+                className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
               />
+              <span className="text-xs text-zinc-400 leading-snug">
+                {hint}
+              </span>
             </label>
           ))}
-          <p className="col-span-full text-[11px] text-zinc-600 leading-snug">
-            These also feed the Resize tab&apos;s{" "}
-            <span className="font-mono">Save Project</span> form — no need to re-enter.
+          <p className="col-span-full text-sm text-zinc-300 leading-relaxed">
+            These same values pre-fill the Resize tab&apos;s{" "}
+            <span className="font-mono text-yellow-300">Save Project</span> form
+            when you&apos;re ready to export — no need to re-type them there.
           </p>
         </div>
       )}

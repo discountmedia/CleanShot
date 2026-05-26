@@ -59,6 +59,7 @@ import {
 } from "./SourceCompareCard";
 import { EraseDialog, type EraseDialogResult } from "./EraseDialog";
 import { TweakDialog, type TweakDialogResult } from "./TweakDialog";
+import { TipBanner } from "../workspace/TipBanner";
 
 const MAX_UPLOADS = 10;
 
@@ -1068,6 +1069,25 @@ export function EnhancePanel({
 
   return (
     <div className="space-y-4">
+
+      {/* ── Plain-language explanation of what this tab is for ── */}
+      <TipBanner
+        title="Enhance tab — what this does"
+        steps={[
+          <>Drop the photos of one forklift in the upload zone below (up to 10 at once).</>,
+          <>Fill in the equipment details (Make is required) so the AI uses the right brand colours and rules.</>,
+          <>Pick one or more AI models to compare results side-by-side. Each model produces its own version of every photo.</>,
+          <>Click <span className="font-semibold text-white">Enhance</span> and wait for the variants to come back.</>,
+          <>For each photo, pick the winner variant. Use ↻ to retry, ✎ to tweak with words, or ⌫ to erase part of an image.</>,
+          <>When you&apos;re happy with every photo, click <span className="font-semibold text-white">Send to Scan →</span> to move them forward.</>,
+        ]}
+      >
+        <p>
+          This is where raw used-forklift photos become clean,
+          listing-ready images. Each AI model does its own version of
+          your photos so you can pick the best one.
+        </p>
+      </TipBanner>
 
       {/* ── Per-variant Erase dialog (singleton) ── */}
       <EraseDialog

@@ -36,6 +36,7 @@ import {
 } from "../../lib/api";
 import { convertToJpeg } from "../../lib/compress";
 import type { ForkliftMeta, ResizeResult } from "../../lib/types";
+import { TipBanner } from "../workspace/TipBanner";
 
 const MAX_UPLOADS = 10;
 
@@ -584,6 +585,25 @@ export function ResizePanel({
 
   return (
     <div className="space-y-6">
+
+      {/* ── Plain-language explanation of what this tab is for ── */}
+      <TipBanner
+        title="Resize tab — what this does"
+        steps={[
+          <>Confirm the project details below (Make / Model / Year, etc.) — they pre-fill from the Enhance tab.</>,
+          <>Click <span className="font-semibold text-white">Save Project</span> to lock those details in. This is required before any export.</>,
+          <>Pick an export preset (PRO for standard listings, Collage for marketing posts).</>,
+          <>Click the download button. Each image is auto-cropped to the listing-site size and packed into a ZIP.</>,
+          <>Approved sets are saved to your account&apos;s History for 60 days.</>,
+        ]}
+      >
+        <p>
+          This is the final step. Your approved photos get cropped to
+          marketplace dimensions, compressed to fit listing-site upload
+          caps, and saved to your History so you can re-download them
+          later if needed.
+        </p>
+      </TipBanner>
 
       {/* ── Spec card ── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-4 space-y-4">

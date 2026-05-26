@@ -55,6 +55,7 @@ import type { EnhanceProvider } from "../../lib/types-enhance";
 import { ScanCard } from "./ScanCard";
 import { ScanFilterChips, type ScanFilter } from "./ScanFilterChips";
 import { ScanCommandBar } from "./ScanCommandBar";
+import { TipBanner } from "../workspace/TipBanner";
 
 const MAX_UPLOADS = 10;
 
@@ -547,6 +548,24 @@ export function ScanPanel({
 
   return (
     <div className="space-y-4">
+
+      {/* ── Plain-language explanation of what this tab is for ── */}
+      <TipBanner
+        title="Scan tab — what this does"
+        steps={[
+          <>Three AI quality checkers (Gemini, OpenAI, Claude) each look at every image and vote pass or fail.</>,
+          <>Each card shows the consensus verdict at the top — <span className="text-green-300 font-semibold">PASS</span> means all agree, <span className="text-yellow-300 font-semibold">MIXED</span> means they disagree, <span className="text-red-300 font-semibold">FAIL</span> means all flagged a problem.</>,
+          <>Click any card to expand it and read the specific issues each AI found.</>,
+          <>Use <span className="font-semibold text-white">↻ Regenerate</span> on a failing image to get a fresh AI version that targets the flagged issues.</>,
+          <>When done, click <span className="font-semibold text-white">Approve N → Resize</span> at the bottom to send all undecided cards to the Resize tab.</>,
+        ]}
+      >
+        <p>
+          Three AI quality checkers vote on every photo so you don&apos;t
+          have to inspect each one by hand. Anything they disagree on
+          shows up so you can make the call.
+        </p>
+      </TipBanner>
 
       {/* ── Standalone upload zone ── */}
       {scanStates.length === 0 && (

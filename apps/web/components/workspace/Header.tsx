@@ -62,7 +62,7 @@ export function Header({
           <img
             src="/discount-forklift-logo.png"
             alt="Discount Forklift"
-            className="h-9 w-auto block"
+            className="h-16 w-auto block"
           />
         </Link>
 
