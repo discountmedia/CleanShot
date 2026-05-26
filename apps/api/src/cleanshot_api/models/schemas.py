@@ -365,6 +365,10 @@ class ExportProRequest(BaseModel):
     # so duplicate variants of the same source image stay distinguishable
     # in the ZIP (e.g. "..._01_Gemini.jpg" vs "..._01_Openai.jpg").
     providers: list[str | None] | None = None
+    # When true, the export pipeline burns the AI-disclaimer watermark
+    # string into the bottom-right corner of every exported JPEG. Off
+    # by default — operator opts in via the Resize-tab checkbox.
+    ai_disclaimer: bool = False
 
 
 class ExportCollageRequest(BaseModel):
@@ -379,6 +383,9 @@ class ExportCollageRequest(BaseModel):
     # produced asset_ids[i]. Same semantics as ExportProRequest.providers
     # (filename suffix for distinguishing duplicate variants in ZIPs).
     providers: list[str | None] | None = None
+    # When true, the export pipeline burns the AI-disclaimer watermark
+    # string into the bottom-right corner of every exported JPEG.
+    ai_disclaimer: bool = False
 
 
 class ExportCustomRequest(BaseModel):

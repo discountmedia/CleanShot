@@ -30,6 +30,8 @@ interface ClientRequest {
   assetIds: string[];
   /** Optional parallel list — entry [i] is the AI provider for assetIds[i]. */
   providers?: (string | null)[];
+  /** Burn the AI-disclaimer watermark into the bottom-right of every JPEG. */
+  aiDisclaimer?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -42,9 +44,10 @@ export async function POST(request: NextRequest) {
     method: "POST",
     headers: jsonHeaders(env.key),
     body: JSON.stringify({
-      session_id: body.sessionId,
-      asset_ids:  body.assetIds,
-      providers:  body.providers,
+      session_id:    body.sessionId,
+      asset_ids:     body.assetIds,
+      providers:     body.providers,
+      ai_disclaimer: body.aiDisclaimer ?? false,
     }),
     signal: request.signal,
     cache: "no-store",

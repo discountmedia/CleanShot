@@ -165,7 +165,7 @@ async def export_pro_preset(
         bucket_name, _, obj = without_scheme.partition("/")
         input_bytes = client.bucket(bucket_name).blob(obj).download_as_bytes()
 
-        result = export_pro(input_bytes)
+        result = export_pro(input_bytes, ai_disclaimer=body.ai_disclaimer)
         filename = f"{asset_id}_pro.jpg"
         results.append((filename, result.data, result.size_warning))
 
@@ -236,7 +236,7 @@ async def export_collage_preset(
         bucket_name, _, obj = without_scheme.partition("/")
         input_bytes = client.bucket(bucket_name).blob(obj).download_as_bytes()
 
-        result = export_collage(input_bytes)
+        result = export_collage(input_bytes, ai_disclaimer=body.ai_disclaimer)
         filename = f"{asset_id}_collage.jpg"
         results.append((filename, result.data, result.size_warning))
 
@@ -352,7 +352,11 @@ async def export_pro_preview(
                     # Run pyvips in a worker thread so the event loop stays
                     # responsive (the yielded progress events should keep
                     # flowing even on slow images).
-                    result = await asyncio.to_thread(export_pro, input_bytes)
+                    result = await asyncio.to_thread(
+                        export_pro,
+                        input_bytes,
+                        ai_disclaimer=body.ai_disclaimer,
+                    )
                     if result.size_warning:
                         any_warning = True
 

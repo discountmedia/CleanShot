@@ -30,10 +30,66 @@ class ExportResult:
         self.size_warning = size_warning
 
 
-def export_pro(input_bytes: bytes) -> ExportResult:
+# Watermark text burnt into the bottom-right of every exported JPEG when
+# the operator ticks "Add AI disclaimer" in the Resize tab. Mirrors the
+# AI_DISCLAIMER_WATERMARK constant in the web app — keep in sync.
+AI_DISCLAIMER_WATERMARK = (
+    "AI-enhanced image — depicts the unit as it will be delivered"
+)
+
+
+def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
+    """
+    Burn AI_DISCLAIMER_WATERMARK into the bottom-right corner of `img`.
+
+    Renders a tiny semi-transparent white string with a one-pixel dark
+    shadow offset for legibility on both light and dark backgrounds. The
+    output bytes carry the watermark permanently — the customer-facing
+    listing photo cannot have it stripped.
+
+    Sized for 1024-px-wide exports; on smaller images the relative
+    proportion shifts but the watermark stays legible.
+    """
+    # Single-band alpha mask: U8 with values 0..255 where text was drawn.
+    mask = pyvips.Image.text(
+        AI_DISCLAIMER_WATERMARK,
+        font="sans bold 11",
+        dpi=72,
+    )
+
+    margin = 12
+    x = img.width  - mask.width  - margin
+    y = img.height - mask.height - margin
+    # Bail if the export is too small to host the watermark at all
+    # (e.g. a custom-export <100×100 thumbnail). The caller is expected
+    # to only enable this for PRO/Collage which are always ≥1024px on
+    # the long edge, but a defensive check keeps pyvips from crashing.
+    if x < 0 or y < 0:
+        return img
+
+    # Shadow: black RGBA with the same text mask, dimmed to ~55% alpha.
+    shadow = mask.new_from_image([0, 0, 0]).bandjoin(
+        (mask * 0.55).cast("uchar"),
+    )
+    # Foreground: white RGBA, dimmed to ~70% alpha so the disclaimer is
+    # readable but unmistakably a watermark, not a primary element.
+    fg = mask.new_from_image([255, 255, 255]).bandjoin(
+        (mask * 0.70).cast("uchar"),
+    )
+
+    img = img.composite(shadow, "over", x=x + 1, y=y + 1)
+    img = img.composite(fg,     "over", x=x,     y=y)
+    return img
+
+
+def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = False) -> ExportResult:
     """
     PRO preset: 1024×731 (7:5), zoom-to-fill, JPEG ≤100 kb.
     Crop-not-letterbox: always fills the frame.
+
+    When `ai_disclaimer=True`, burns the AI_DISCLAIMER_WATERMARK string
+    into the bottom-right corner BEFORE the quality-iteration loop so
+    the watermark is encoded into the final JPEG bytes.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
@@ -54,6 +110,12 @@ def export_pro(input_bytes: bytes) -> ExportResult:
     # Step 2: Smart crop to 1024×731 (7:5 ratio)
     img = img.smartcrop(target_w, target_h, interesting="attention")
 
+    # Step 2b: Optional disclaimer watermark — applied AFTER the crop so
+    # it lands at a fixed pixel offset from the final corner regardless
+    # of the source aspect ratio.
+    if ai_disclaimer:
+        img = _apply_disclaimer_watermark(img)
+
     # Step 3: JPEG compression loop targeting ≤100 kb
     quality = 85
     max_size = 100 * 1024  # 100 kb
@@ -72,7 +134,7 @@ def export_pro(input_bytes: bytes) -> ExportResult:
     return ExportResult(data=data, content_type="image/jpeg", size_warning=size_warning)
 
 
-def export_collage(input_bytes: bytes) -> ExportResult:
+def export_collage(input_bytes: bytes, *, ai_disclaimer: bool = False) -> ExportResult:
     """
     COLLAGE preset: 1024px LONG EDGE (fit, NOT crop), JPEG ≤99 kb.
 
@@ -85,6 +147,9 @@ def export_collage(input_bytes: bytes) -> ExportResult:
     miss, stop at Q<20 with size_warning=True. Same ≤100 kb-class
     behaviour, just one kilobyte tighter at 99 kb so collages reliably
     fit under listing-site upload caps that quote "100 kb max".
+
+    When `ai_disclaimer=True`, burns the AI_DISCLAIMER_WATERMARK string
+    into the bottom-right corner before the quality loop.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
@@ -93,6 +158,9 @@ def export_collage(input_bytes: bytes) -> ExportResult:
         scale = 1024 / long_edge
         img = img.resize(scale, kernel="lanczos3")
     # else: input is already at-or-below target, no upscale — keep as-is.
+
+    if ai_disclaimer:
+        img = _apply_disclaimer_watermark(img)
 
     quality = 85
     max_size = 99 * 1024  # 99 kb (cushion below the 100 kb listing cap)

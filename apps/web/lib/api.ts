@@ -267,6 +267,12 @@ export async function exportCollageAsBlob(params: {
   sessionId: string;
   assetIds: string[];
   providers?: (string | null)[];
+  /**
+   * When true, backend burns the AI-disclaimer watermark string into the
+   * bottom-right corner of every exported JPEG. Defaults to false on the
+   * server — the operator has to explicitly tick the checkbox.
+   */
+  aiDisclaimer?: boolean;
 }): Promise<ExportCollageResult> {
   const res = await fetch("/api/export/collage", {
     method: "POST",
@@ -345,6 +351,11 @@ export async function exportProPreviewStream(
      * source image (Gemini vs OpenAI vs Flux vs Grok).
      */
     providers?: (string | null)[];
+    /**
+     * When true, backend burns the AI-disclaimer watermark string into
+     * the bottom-right corner of every exported JPEG. Off by default.
+     */
+    aiDisclaimer?: boolean;
   },
   callbacks: ExportProPreviewCallbacks,
   signal?: AbortSignal,

@@ -40,6 +40,14 @@ import { TipBanner } from "../workspace/TipBanner";
 
 const MAX_UPLOADS = 10;
 
+// Watermark string burnt into the bottom-right corner of every exported
+// JPEG when the operator ticks "Add AI disclaimer". Wording reads as an
+// honest disclosure that doesn't oversell the AI's role — the unit IS
+// real, the photo has just been cleaned up to show it as it will arrive.
+// Backend pyvips uses the same string; keep in sync if you change one.
+export const AI_DISCLAIMER_WATERMARK =
+  "AI-enhanced image — depicts the unit as it will be delivered";
+
 /**
  * Local state for a file the operator dropped directly onto the Resize
  * tab (standalone mode — bypasses the Enhance / Scan pipeline). Each
@@ -230,6 +238,12 @@ export function ResizePanel({
   const [isExporting,        setIsExporting]        = useState(false);
   const [isExportingCollage, setIsExportingCollage] = useState(false);
   const [error,              setError]              = useState<string | null>(null);
+  // Operator toggle — when on, the export pipeline burns a very small,
+  // semi-transparent disclaimer into the bottom-right corner of every
+  // exported JPEG. The exact text is the AI_DISCLAIMER_WATERMARK
+  // constant below; backend pyvips draws it server-side so the bytes
+  // the customer receives carry the disclaimer permanently.
+  const [addAiDisclaimer,    setAddAiDisclaimer]    = useState(false);
 
   // Standalone-upload state. Each entry is a file the operator dropped
   // directly on the Resize tab (vs. routed through Enhance/Scan first).
@@ -482,6 +496,7 @@ export function ResizePanel({
           // Standalone uploads have provider=undefined; backend
           // collapses those to no suffix.
           providers: allAssets.map((a) => a.provider ?? null),
+          aiDisclaimer: addAiDisclaimer,
         },
         {
           onStarted: (total) => {
@@ -525,6 +540,7 @@ export function ResizePanel({
         sessionId,
         assetIds:  allAssets.map((a) => a.assetId),
         providers: allAssets.map((a) => a.provider ?? null),
+        aiDisclaimer: addAiDisclaimer,
       });
       if (warning) setAnyWarning(true);
       // Trigger browser download. Object URL is revoked once the click
@@ -976,6 +992,44 @@ export function ResizePanel({
               ? "Fill all fields to save"
               : "Save Project"}
       </button>
+
+      {/* ── AI-disclaimer toggle ── */}
+      {/* When ticked, the backend pyvips export burns the
+          AI_DISCLAIMER_WATERMARK string into the bottom-right corner of
+          every exported JPEG (small, semi-transparent). Off by default
+          so the operator opts in deliberately — the watermark IS visible
+          on the final asset and we don't want it on internal/preview
+          downloads by accident. */}
+      <label
+        className={`flex items-start gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition-colors select-none ${
+          addAiDisclaimer
+            ? "border-yellow-500 bg-yellow-950/30 hover:bg-yellow-900/30"
+            : "border-zinc-700 bg-zinc-950/40 hover:border-zinc-500"
+        }`}
+      >
+        <input
+          type="checkbox"
+          checked={addAiDisclaimer}
+          onChange={(e) => setAddAiDisclaimer(e.target.checked)}
+          className="mt-1 w-5 h-5 accent-yellow-500 shrink-0"
+        />
+        <div className="min-w-0">
+          <p className="text-base font-bold text-zinc-100 leading-snug">
+            Add AI disclaimer watermark
+          </p>
+          <p className="text-sm text-zinc-300 mt-1 leading-relaxed">
+            Burns a tiny, semi-transparent line of text into the bottom-right
+            corner of every exported JPEG:
+          </p>
+          <p className="text-sm text-yellow-200 italic font-mono mt-1.5 leading-snug">
+            &ldquo;{AI_DISCLAIMER_WATERMARK}&rdquo;
+          </p>
+          <p className="text-sm text-zinc-300 mt-1.5 leading-relaxed">
+            Use this when the photo is going to a customer-facing listing —
+            it&apos;s your honest disclosure that the image was cleaned up by AI.
+          </p>
+        </div>
+      </label>
 
       {/* ── Export actions (PRO + Collage) ── */}
       {/* Collage path uses a different resize semantic (1024 long-edge
