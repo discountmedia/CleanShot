@@ -670,8 +670,8 @@ export function ResizePanel({
     } catch (err: unknown) {
       setError(
         err instanceof Error
-          ? `Save to History failed: ${err.message}`
-          : "Save to History failed",
+          ? `Save to Your Photo Library failed: ${err.message}`
+          : "Save to Your Photo Library failed",
       );
     } finally {
       setCollageSavingToHistory(false);
@@ -749,14 +749,14 @@ export function ResizePanel({
           <>Click <span className="font-semibold text-white">Save Project</span> to lock those details in. This is required before any export.</>,
           <>Pick an export preset (PRO for standard listings, Collage for marketing posts).</>,
           <>Click the download button. Each image is auto-cropped to the listing-site size and packed into a ZIP.</>,
-          <>Approved sets are saved to your account&apos;s History for 60 days.</>,
+          <>Approved sets are saved to Your Photo Library for 60 days.</>,
         ]}
       >
         <p>
           This is the final step. Your approved photos get cropped to
           marketplace dimensions, compressed to fit listing-site upload
-          caps, and saved to your History so you can re-download them
-          later if needed.
+          caps, and saved to Your Photo Library so you can re-download
+          them later if needed.
         </p>
       </TipBanner>
 
@@ -1022,7 +1022,7 @@ export function ResizePanel({
             <span className="text-sm text-zinc-300 leading-relaxed">
               Clicking <span className="font-semibold text-white">Save Project</span> does two things:
               it locks in this metadata so the export endpoints will work, AND
-              it copies the queued images into your History tab so you can
+              it copies the queued images into Your Photo Library so you can
               re-download them within 60 days. Only{" "}
               <span className="font-semibold text-yellow-300">Make</span> and{" "}
               <span className="font-semibold text-yellow-300">Model</span> are
@@ -1326,10 +1326,10 @@ export function ResizePanel({
               }`}
             >
               {collageSavedToHistory
-                ? "✓ Saved to History"
+                ? "✓ Saved to Your Photo Library"
                 : collageSavingToHistory
-                  ? "Saving to History…"
-                  : "💾 Save to History"}
+                  ? "Saving to Your Photo Library…"
+                  : "💾 Save to Your Photo Library"}
             </button>
           </div>
 

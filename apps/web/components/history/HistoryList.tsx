@@ -421,7 +421,7 @@ export function HistoryList({
   if (!data || data.sets.length === 0) {
     return (
       <div className="space-y-4">
-        <TipBanner title="History tab — what this does">
+        <TipBanner title="Your Photo Library — what this does">
           <p>
             Every time you approve a set of photos on the Resize tab,
             they get copied here and held for 60 days. You can come back
@@ -446,7 +446,7 @@ export function HistoryList({
       {/* ── Page heading ── */}
       <header className="space-y-1">
         <h1 className="text-3xl font-extrabold text-white tracking-tight">
-          Your photo vault
+          Your Photo Library
         </h1>
         <p className="text-base text-zinc-300">
           Every approved set you&apos;ve shipped — kept for 60 days, then auto-deleted.
@@ -455,7 +455,7 @@ export function HistoryList({
 
       {/* ── Plain-language explanation of what this tab is for ── */}
       <TipBanner
-        title="History tab — what this does"
+        title="Your Photo Library — what this does"
         steps={[
           <>Every approved set from the Resize tab lands here automatically.</>,
           <>Sets are kept for <span className="font-semibold text-yellow-300">60 days</span> from the approval date, then auto-deleted.</>,

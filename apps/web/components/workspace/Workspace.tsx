@@ -125,7 +125,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     { id: "enhance" as const, label: "Enhance" },
     { id: "scan"    as const, label: "Scan",    count: enhancedAssets.length || undefined },
     { id: "resize"  as const, label: "Resize",  count: resizeAssets.length || undefined },
-    { id: "history" as const, label: "History" },
+    { id: "history" as const, label: "Your Photo Library" },
   ];
 
   // Explicit user action: "Send to Scan" (per-row) or "Send all to Scan tab"

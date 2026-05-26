@@ -302,10 +302,10 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
         {/* ── Usage stats (personal) ── */}
         <PersonalUsageCard />
 
-        {/* ── History link ── */}
+        {/* ── Your Photo Library link ── */}
         <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-5 flex items-center justify-between gap-4">
           <div>
-            <p className="text-lg font-bold text-white">Project history</p>
+            <p className="text-lg font-bold text-white">Your Photo Library</p>
             <p className="text-base text-zinc-200 mt-1">
               View every image set you&apos;ve approved + saved over the last 60 days.
             </p>
@@ -314,7 +314,7 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
             href="/"
             className="text-sm uppercase tracking-[0.16em] font-bold text-blue-300 hover:text-white transition-colors whitespace-nowrap"
           >
-            Open History tab →
+            Open Your Photo Library →
           </Link>
         </section>
 
