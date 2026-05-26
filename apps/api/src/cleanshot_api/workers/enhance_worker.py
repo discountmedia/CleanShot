@@ -960,6 +960,20 @@ async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
     image_bytes, ct = await _load_image_bytes(gcs_uri)
     filename = "input.png" if "png" in ct else "input.jpg"
 
+    # Recraft's imageToImage caps the prompt at 1000 chars. Our generic
+    # enhance prompt is ~200 lines of declarative scene prose tuned for
+    # Gemini Nano Banana edit semantics — way over Recraft's ceiling.
+    # Truncate at 990 to leave headroom for Recraft's own validator.
+    # The real fix is a _build_recraft_prompt that authors short
+    # imperative product-photo prose (Open Work Item #1 in CLAUDE.md);
+    # this cap is the stopgap until that lands.
+    if len(prompt) > 990:
+        logger.info(
+            "Recraft prompt truncated from %d to 990 chars (vendor cap=1000)",
+            len(prompt),
+        )
+        prompt = prompt[:990]
+
     # Body fields kept tight to what docs.recraft.ai shows for
     # /images/imageToImage: prompt, strength, style. Model is implicit
     # (V3 is the only model that supports imageToImage today; V4.1 is
