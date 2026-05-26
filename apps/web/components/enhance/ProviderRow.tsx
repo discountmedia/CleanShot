@@ -52,21 +52,21 @@ export function ProviderRow({ selected, onToggle }: ProviderRowProps) {
                 type="button"
                 onClick={() => onToggle(p)}
                 aria-pressed={isOn}
-                className={`flex flex-col gap-1.5 px-3 py-2.5 rounded-md border text-left transition-colors ${
+                className={`flex flex-col gap-1.5 px-3 py-3 rounded-md border text-left transition-colors ${
                   isOn
                     ? ENHANCE_PROVIDER_CHIP_ON[p]
-                    : "bg-zinc-900 border-zinc-800 text-zinc-500 hover:border-zinc-700"
+                    : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
                 }`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
-                    className={`w-3.5 h-3.5 rounded border flex items-center justify-center shrink-0 ${
-                      isOn ? "bg-current border-current" : "border-zinc-700"
+                    className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
+                      isOn ? "bg-current border-current" : "border-zinc-600"
                     }`}
                   >
                     {isOn && (
                       <svg
-                        className="w-2.5 h-2.5 text-black"
+                        className="w-3 h-3 text-black"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -76,28 +76,25 @@ export function ProviderRow({ selected, onToggle }: ProviderRowProps) {
                       </svg>
                     )}
                   </span>
-                  <span className="text-xs font-semibold uppercase tracking-[0.16em]">
+                  {/* Provider name — bright yellow for accessibility / scan-ability. */}
+                  <span className="text-base font-semibold uppercase tracking-[0.16em] text-yellow-300">
                     {ENHANCE_PROVIDER_LABELS[p]}
                   </span>
                   <span
-                    className={`text-[9px] uppercase tracking-[0.18em] font-bold border rounded px-1.5 py-0.5 ${meta.speedClass}`}
+                    className={`text-[11px] uppercase tracking-[0.18em] font-bold border rounded px-1.5 py-0.5 ${meta.speedClass}`}
                   >
                     {meta.speedLabel}
                   </span>
                   {meta.isNew && (
-                    <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-sky-100 bg-sky-600 border border-sky-500 rounded px-1.5 py-0.5">
+                    <span className="text-[11px] uppercase tracking-[0.18em] font-bold text-sky-100 bg-sky-600 border border-sky-500 rounded px-1.5 py-0.5">
                       New
                     </span>
                   )}
-                  <span className="text-[10px] opacity-60 font-mono ml-auto">
+                  <span className="text-xs font-mono ml-auto text-yellow-300">
                     ~{ENHANCE_PROVIDER_DURATION_S[p]}s
                   </span>
                 </div>
-                <p
-                  className={`text-[11px] leading-snug ${
-                    isOn ? "opacity-80" : "text-zinc-500"
-                  }`}
-                >
+                <p className="text-sm leading-snug text-yellow-300">
                   {meta.description}
                 </p>
               </button>
