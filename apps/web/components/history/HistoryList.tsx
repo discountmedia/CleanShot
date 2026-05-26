@@ -446,7 +446,7 @@ export function HistoryList({
       {/* ── Page heading ── */}
       <header className="space-y-1">
         <h1 className="text-3xl font-extrabold text-white tracking-tight">
-          Your photo vault
+          Your image library
         </h1>
         <p className="text-base text-zinc-300">
           Every approved set you&apos;ve shipped — kept for 60 days, then auto-deleted.
