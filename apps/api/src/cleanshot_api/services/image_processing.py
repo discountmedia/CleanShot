@@ -227,8 +227,7 @@ def _cover_crop(input_bytes: bytes, target_w: int, target_h: int) -> "pyvips.Ima
     """
     Decode `input_bytes`, scale to cover the target box in both dims,
     then smart-crop to the exact target size. Used as the per-cell
-    resize for the branded collage hero AND thumb cells — zoom-to-fill,
-    no letterboxing. Matches the company's blue-Genie-GS-1930 reference.
+    resize for the branded collage HERO cell — zoom-to-fill.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
     scale = max(target_w / img.width, target_h / img.height)
@@ -238,6 +237,39 @@ def _cover_crop(input_bytes: bytes, target_w: int, target_h: int) -> "pyvips.Ima
     if img.bands == 4:
         img = img.extract_band(0, n=3)
     return img.copy(interpretation="srgb")
+
+
+def _fit_with_letterbox(
+    input_bytes: bytes,
+    cell_w: int,
+    cell_h: int,
+) -> "pyvips.Image":
+    """
+    Decode `input_bytes`, fit it (longest-edge, NO crop) inside the
+    cell as large as possible while preserving aspect, then embed
+    centered into a black cell-sized canvas. Black bars fill any
+    leftover space. Used as the per-cell resize for the branded
+    collage THUMB cells per operator's MANDATORY spec — every thumb
+    shows the FULL source frame, sized as large as fits, with black
+    pillarbox/letterbox bars to fill the rest of the cell.
+    """
+    img = pyvips.Image.new_from_buffer(input_bytes, "")
+    if img.bands == 4:
+        img = img.extract_band(0, n=3)
+    img = img.copy(interpretation="srgb")
+
+    # Fit: pick the SMALLER ratio so the image is contained in both
+    # dimensions (no crop). Cover-fit would use max(); we want min().
+    scale = min(cell_w / img.width, cell_h / img.height)
+    img = img.resize(scale, kernel="lanczos3")
+
+    canvas = pyvips.Image.black(cell_w, cell_h, bands=3).copy(
+        interpretation="srgb",
+    )
+    x_off = (cell_w - img.width) // 2
+    y_off = (cell_h - img.height) // 2
+    canvas = canvas.insert(img, x_off, y_off)
+    return canvas
 
 
 def compose_branded_collage(
@@ -271,14 +303,14 @@ def compose_branded_collage(
     hero = _cover_crop(hero_bytes, _COLLAGE_HERO_W, _COLLAGE_HERO_H)
     canvas = canvas.insert(hero, 0, 0)
 
-    # Thumbnail strip on the right — top to bottom. Cover-crop, NOT
-    # letterbox. Reverted from a brief 7:5-letterbox experiment after
-    # the operator confirmed the company's reference template uses
-    # zoom-to-fill (unit fills the frame, banner side-cropped, no
-    # black bars). The letterbox produced empty pillar/letterbox
-    # bars that didn't match the blue Genie GS-1930 reference.
+    # Thumbnail strip on the right — top to bottom. FIT-with-letterbox
+    # per operator's MANDATORY spec: every thumb must show the FULL
+    # source frame (no crop), sized as large as fits inside the cell,
+    # with black bars filling the leftover space. NOT cover-crop —
+    # cover-crop would side-clip the source, which the operator
+    # explicitly does not want for the thumb strip.
     for i, raw in enumerate(thumb_bytes):
-        thumb = _cover_crop(raw, _COLLAGE_THUMB_W, _COLLAGE_THUMB_H)
+        thumb = _fit_with_letterbox(raw, _COLLAGE_THUMB_W, _COLLAGE_THUMB_H)
         canvas = canvas.insert(thumb, _COLLAGE_HERO_W, i * _COLLAGE_THUMB_H)
 
     if ai_disclaimer:
