@@ -100,6 +100,14 @@ export interface ScanPanelProps {
    */
   onSendToResize:  (items: PipelineAsset[]) => void;
   /**
+   * Same as onSendToResize but the destination tab is Modify instead
+   * of Resize. Workspace appends to the same resizeAssets pool (since
+   * Modify and Resize share the queue) but flips to the Modify tab
+   * so the operator can darkroom-tweak before final export. Optional —
+   * older callers without the prop fall back to Resize-only flow.
+   */
+  onSendToModify?: (items: PipelineAsset[]) => void;
+  /**
    * Workspace-scoped auto-advance toggle. When ON, any newly-complete
    * scan with `verdict === "pass" && avgConfidence >= threshold` is
    * auto-approved + auto-forwarded to Resize. Mixed and fail verdicts
@@ -119,6 +127,7 @@ export function ScanPanel({
   enhancedAssets,
   onClearPipeline,
   onSendToResize,
+  onSendToModify,
   autoAdvance,
   equipmentType,
 }: ScanPanelProps) {
@@ -490,6 +499,20 @@ export function ScanPanel({
     });
   }, [eligibleForBulk, onSendToResize, buildResizeItem]);
 
+  // Same eligible set as the Resize bulk action, but lands the approved
+  // items in the Modify tab (still goes through Workspace.resizeAssets
+  // since Modify reads that pool). Operator picks this when they want
+  // to darkroom-tweak before final crop+export.
+  const handleApproveBulkModify = useCallback(() => {
+    if (eligibleForBulk.length === 0 || !onSendToModify) return;
+    onSendToModify(eligibleForBulk.map(buildResizeItem));
+    setApproved((prev) => {
+      const next = new Set(prev);
+      for (const s of eligibleForBulk) next.add(s.assetId);
+      return next;
+    });
+  }, [eligibleForBulk, onSendToModify, buildResizeItem]);
+
   const handleApplyRegen = useCallback(
     async (assetId: string, payload: { prompt: string; provider: EnhanceProvider }) => {
       try {
@@ -836,6 +859,7 @@ export function ScanPanel({
           rejectedCount={rejected.size}
           eligibleCount={eligibleForBulk.length}
           onApproveBulk={handleApproveBulk}
+          onApproveBulkModify={onSendToModify ? handleApproveBulkModify : undefined}
           autoAdvance={autoAdvance}
         />
       )}

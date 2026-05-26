@@ -17,11 +17,18 @@ interface ScanCommandBarProps {
   approvedCount: number;
   rejectedCount: number;
 
-  /** Number of cards that would be approved by the bulk CTA right now. */
+  /** Number of cards that would be approved by the bulk CTAs right now. */
   eligibleCount: number;
 
-  /** Bulk-approve handler. Receives no args — eligibleCount is the count we'd ship. */
+  /** Bulk-approve → Resize handler. Approves every eligible card and flips to Resize. */
   onApproveBulk: () => void;
+  /**
+   * Bulk-approve → Modify handler. Approves every eligible card AND flips
+   * to the Modify tab so the operator can darkroom-tweak before final
+   * export. Same eligible set as onApproveBulk — only the destination
+   * tab differs.
+   */
+  onApproveBulkModify?: () => void;
 
   autoAdvance:   boolean;
 }
@@ -35,6 +42,7 @@ export function ScanCommandBar({
   rejectedCount,
   eligibleCount,
   onApproveBulk,
+  onApproveBulkModify,
   autoAdvance,
 }: ScanCommandBarProps) {
   const canSend = eligibleCount > 0;
@@ -72,6 +80,26 @@ export function ScanCommandBar({
             <span className="text-[11px] text-zinc-500 italic">
               Auto-advance is on — passes auto-send to Resize
             </span>
+          )}
+
+          {/* Optional intermediate path — same eligible set, lands in
+              Modify instead of Resize. Rendered as a secondary (blue)
+              CTA so the operator visually reads it as a side branch
+              of the primary "→ Resize" flow. */}
+          {onApproveBulkModify && (
+            <button
+              type="button"
+              onClick={onApproveBulkModify}
+              disabled={!canSend}
+              title="Approve all eligible cards and send them to the Modify tab for darkroom adjustments before Resize"
+              className={`text-xs uppercase tracking-[0.18em] font-semibold px-4 py-2 rounded border transition-colors ${
+                canSend
+                  ? "border-blue-500 bg-blue-950/40 hover:bg-blue-900/60 text-blue-100"
+                  : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
+              }`}
+            >
+              Approve {eligibleCount} → Modify
+            </button>
           )}
 
           <button

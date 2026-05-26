@@ -186,6 +186,18 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     setActiveTab("resize");
   };
 
+  // Same target pool as handleSendToResize (Modify reads resizeAssets
+  // too), but flips the active tab to Modify instead. Operator picks
+  // this when they want to darkroom-tweak the approved scans before
+  // final crop+export. After they Apply in Modify the modified bytes
+  // replace these items in-place and they continue to Resize.
+  const handleSendToModify = (items: PipelineAsset[]) => {
+    setResizeAssets((prev) => {
+      return items.length > 0 ? [...prev, ...items] : prev;
+    });
+    setActiveTab("modify");
+  };
+
   // Modify-tab Apply callback. The Modify panel takes the same
   // resizeAssets pool as the Resize tab and replaces each item with
   // the server-rendered modified version. Phase 1 is batch-only —
@@ -270,6 +282,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 enhancedAssets={enhancedAssets}
                 onClearPipeline={handleClearPipeline}
                 onSendToResize={handleSendToResize}
+                onSendToModify={handleSendToModify}
                 autoAdvance={autoAdvance}
                 equipmentType={meta.equipmentType ?? "forklift"}
               />
