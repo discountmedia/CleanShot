@@ -141,6 +141,19 @@ GROK_PROMPT_MAX_CHARS = 4000
 # bumps can move independently per surface if needed.
 ENHANCE_MODEL_IDEOGRAM = "ideogram-3.0"
 
+# Recraft V3 — 6th primary enhance generator. Product-photography-tuned
+# image-to-image edit model. Sync HTTP API (no async polling), bearer
+# auth, multipart form-data. Reference: docs.recraft.ai
+RECRAFT_IMAGE_TO_IMAGE_URL = "https://external.api.recraft.ai/v1/images/imageToImage"
+ENHANCE_MODEL_RECRAFT = "recraftv3"
+# `strength` parameter on Recraft's imageToImage controls how much the
+# output diverges from the source (0 = identical to source, 1 = ignore
+# source entirely). For our cheap-respray use case we want significant
+# but NOT extreme change — paint refresh + cleanup without redesigning
+# the unit. 0.45 puts us in the same "noticeable but identity-preserving"
+# zone the other providers land in.
+RECRAFT_STRENGTH = 0.45
+
 
 # Display name + per-type anatomy guardrail for the equipment-aware prompt.
 # Keep these short — they slot into a sentence inside GUARDRAILS so the
@@ -893,6 +906,72 @@ async def _inpaint_with_ideogram(
         return fetched.content
 
 
+async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
+    """
+    Recraft V3 image-to-image enhance. Sync HTTP API — POST multipart
+    form, response JSON includes a CDN URL for the rendered image; GET
+    that URL for the bytes.
+
+    Style is hard-pinned to "realistic_image" (Recraft V3's
+    photorealistic preset) because we're cleaning up real forklift
+    photos for marketplace listings — illustration / vector / etc.
+    presets would be wrong for this use case.
+
+    `strength` controls how much the output diverges from the source.
+    See RECRAFT_STRENGTH constant for the calibration rationale.
+    """
+    settings = get_settings()
+    if not settings.recraft_api_key:
+        raise RuntimeError(
+            "Recraft enhance requested but RECRAFT_API_KEY is not set. "
+            "Mount cleanshot-recraft-key:latest via Cloud Run "
+            "--set-secrets and re-deploy."
+        )
+
+    image_bytes, ct = await _load_image_bytes(gcs_uri)
+    filename = "input.png" if "png" in ct else "input.jpg"
+
+    async with httpx.AsyncClient(timeout=180.0) as client:
+        resp = await client.post(
+            RECRAFT_IMAGE_TO_IMAGE_URL,
+            headers={"Authorization": f"Bearer {settings.recraft_api_key}"},
+            data={
+                "prompt":   prompt,
+                "model":    ENHANCE_MODEL_RECRAFT,
+                "style":    "realistic_image",
+                "strength": str(RECRAFT_STRENGTH),
+                "n":        "1",
+            },
+            files={"image": (filename, image_bytes, ct)},
+        )
+        if resp.status_code >= 400:
+            raise ValueError(
+                f"Recraft enhance failed ({resp.status_code}): "
+                f"{resp.text[:300]}"
+            )
+        data = resp.json()
+        # Recraft V3 responses come back in either shape depending on
+        # the endpoint version. Both have been observed in the wild;
+        # defensively unwrap either.
+        items = data.get("data") or []
+        if items and isinstance(items, list):
+            item = items[0]
+            url = item.get("url") or item.get("image_url")
+        else:
+            inner = data.get("image") or {}
+            url = inner.get("url") if isinstance(inner, dict) else None
+        if not url:
+            raise ValueError(f"Recraft response missing image URL: {data}")
+
+        fetched = await client.get(url)
+        if fetched.status_code >= 400:
+            raise ValueError(
+                f"Recraft result GET failed ({fetched.status_code}): "
+                f"{fetched.text[:200]}"
+            )
+        return fetched.content
+
+
 async def _erase_with_flux(
     gcs_uri: str,
     mask_png_base64: str,
@@ -1325,6 +1404,14 @@ async def _run_enhance(
             # the same `instruction` field. No published per-minute cap;
             # add a limiter if we observe 429s.
             output_bytes = await _tweak_with_ideogram(
+                payload.input_gcs_uri, prompt
+            )
+        elif payload.provider == "recraft":
+            provider_model = ENHANCE_MODEL_RECRAFT
+            # Recraft V3 image-to-image. Sync HTTP, no async poll. No
+            # published per-minute cap; add a limiter if we observe
+            # 429s.
+            output_bytes = await _enhance_with_recraft(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default

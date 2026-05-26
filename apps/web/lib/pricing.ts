@@ -20,4 +20,5 @@ export const ENHANCE_PROVIDER_DURATION_S: Record<EnhanceProvider, number> = {
   grok:     30,
   kontext:  40,
   ideogram: 25,
+  recraft:  35,
 };

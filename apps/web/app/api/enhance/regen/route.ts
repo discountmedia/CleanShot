@@ -23,7 +23,7 @@ interface ClientRequest {
   regenPrompt: string;
   idempotencyKey: string;
   /** Operator-selected provider for the regen pass. Backend defaults to gemini. */
-  provider?: "gemini" | "openai" | "grok" | "kontext" | "ideogram";
+  provider?: "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "recraft";
 }
 
 interface FastApiResponse {

@@ -105,6 +105,11 @@ class Settings(BaseSettings):
     # directly without async polling. Mounted from GCP Secret Manager
     # (cleanshot-ideogram-key) on Cloud Run.
     ideogram_api_key: str = Field("", alias="IDEOGRAM_API_KEY")
+    # Recraft (https://external.api.recraft.ai) — 6th primary enhance
+    # generator. Product-photography-tuned model (Recraft V3) with sync
+    # multipart imageToImage endpoint. Bearer auth. Mounted from GCP
+    # Secret Manager (cleanshot-recraft-key) on Cloud Run.
+    recraft_api_key: str = Field("", alias="RECRAFT_API_KEY")
 
     # -------------------------------------------------------------------------
     # Operational

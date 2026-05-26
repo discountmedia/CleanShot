@@ -41,7 +41,7 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 
 ## Image-gen providers — what's wired and which model
 
-The Enhance tab exposes a **5-checkbox** model selector. Provider literal: `"gemini" | "openai" | "grok" | "kontext" | "ideogram"`. All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`.
+The Enhance tab exposes a **6-checkbox** model selector. Provider literal: `"gemini" | "openai" | "grok" | "kontext" | "ideogram" | "recraft"`. All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`.
 
 | Provider | Model ID | SDK / endpoint | Key |
 |---|---|---|---|
@@ -50,13 +50,14 @@ The Enhance tab exposes a **5-checkbox** model selector. Provider literal: `"gem
 | `grok` | `grok-imagine-image-quality` at `https://api.x.ai/v1/images/edits` | OpenAI-compatible image-edit API, Bearer auth, prompt max 4000 chars | `cleanshot-xai-key` |
 | `kontext` | `flux-1-kontext/max/edit` at `https://model-api.runcomfy.net/v1/models/blackforestlabs/flux-1-kontext/max/edit` | **RunComfy async proxy**. POST returns `request_id`; poll `/v1/requests/{id}/status` until `"completed"`; GET `/v1/requests/{id}/result` for the rendered image URL. Body field is `image_url` (singular string — NOT `images` array; that's Seedream's shape). RunComfy fetches the image via HTTPS so we mint a short-lived signed GCS GET URL via `services.gcs.mint_read_url` and pass that. | `cleanshot-runcomfy-key` |
 | `ideogram` | `ideogram-3.0` at `https://api.ideogram.ai/v1/edit` | **Sync** multipart endpoint. POST returns JSON with `data[0].url` already populated; GET that URL (no auth header) for the bytes. Reuses the per-variant `_tweak_with_ideogram` helper — primary-enhance path just passes the full enhance prompt instead of a short tweak instruction. Surfaces twice in the UI: as the cyan provider card on Enhance (full generation) AND as the cyan ✎ + rose 🖌 per-variant tools (targeted edit + mask inpaint). Wired 2026-05-26 (`ad7b202`). | `cleanshot-ideogram-key` |
+| `recraft` | `recraftv3` at `https://external.api.recraft.ai/v1/images/imageToImage` | **Sync** multipart endpoint. Bearer auth. Form fields: `image`, `prompt`, `model=recraftv3`, `style=realistic_image`, `strength=0.45`. Response JSON: `data[0].url` or `image.url` depending on endpoint version — `_enhance_with_recraft` defensively unwraps either shape. Product-photography-tuned model; distinct "polished marketing-stock" voice vs. the more general-creative providers. Wired 2026-05-26 (this commit). | `cleanshot-recraft-key` |
 
 **Removed / repositioned providers (don't reintroduce as primary generators without reading why):**
 
-- `reve` — undocumented RPM ceiling, opaque credit pricing, fragile under bursts. Dropped 2026-05-20. `cleanshot-reve-key` secret can be deleted from Secret Manager.
+- `reve` — undocumented RPM ceiling, opaque credit pricing, fragile under bursts. Dropped 2026-05-20. `cleanshot-reve-key` secret can be deleted from Secret Manager. Operator also re-evaluated 2026-05-26 and confirmed reject.
+- `seedream` — operator tested 2026-05-26 and rejected on quality grounds. Not wired.
 - `flux` (as generator) — repositioned as the **Erase tool only**, not a generation provider. See "Per-variant edit tools" below.
-- `runway gen-4` — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the cost, slower API. Filed as "considered, declined" so future-Claude doesn't re-litigate.
-- `recraft v3` — evaluated 2026-05-26 as the most promising next-generator if we ever shop again (product-photography-tuned, transparent pricing). Not wired; on the open-work list.
+- `runway gen-4` — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the cost, slower API.
 
 **Cleanup worker** (anomaly-guided regen from Scan tab) uses the same Gemini AI Studio client as enhance.
 
@@ -242,6 +243,7 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 9. **Considered + declined (do not re-litigate without new evidence):**
    - **Runway Gen-4** — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the per-image cost, slower API. Note in CLAUDE.md to prevent re-evaluation.
 10. **Recently shipped, archived from this list:**
+    - Recraft V3 as 6th primary enhance generator (this commit). Product-photography-tuned, sync HTTP imageToImage, distinct "polished marketing-stock" voice vs. the more general-creative providers. Strength pinned to 0.45 (significant change without redesigning the unit) and style hard-pinned to "realistic_image".
     - Ideogram as 5th primary enhance generator + per-variant Edit/Inpaint tools (`1babd98`, `7d9ef6b`, `d0e93b1`, `ad7b202`). Initially declined as a primary generator on 2026-05-26 (creative-drift concern); reversed same day after operator request — wired end-to-end to the existing `_tweak_with_ideogram` helper. The two per-variant tools (cyan ✎ Edit + rose 🖌 Inpaint) ship alongside it for targeted decal/text repair on completed variants.
     - Showroom Floor toggle on Enhance advanced toggles (this commit). New `showroomFloor` field in `EnhanceToggles`; backend prompt block under `_build_enhance_prompt` adds a SHOWROOM / STUDIO FLOOR action when set. Off by default — applying it to non-studio photos would over-clean a real ground surface.
     - Branded collage composer (`/api/v1/export/branded-collage` + Create Image Collage UI + preview-with-save-to-history) (`0a0b48a`, `68cc6b0`).
@@ -269,5 +271,5 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 - API URL: `https://cleanshot-api-387208973244.us-central1.run.app`
 - Web URL: `https://cleanshot.vercel.app` (+ `https://cleanshot.discountmedia.com` once DNS lands)
 - API service account: `forklift-api@cleanshot-493512.iam.gserviceaccount.com`
-- Secrets in use: `cleanshot-database-url`, `cleanshot-api-key(+prev)`, `cleanshot-openai-key`, `cleanshot-anthropic-key`, `cleanshot-bfl-key` (erase-only — Flux is no longer a primary generator), `cleanshot-gemini-key`, `cleanshot-xai-key`, `cleanshot-runcomfy-key`, `cleanshot-ideogram-key` (per-variant edit + inpaint tools), `cleanshot-tasks-oidc-sa`, `cleanshot-worker-url`
+- Secrets in use: `cleanshot-database-url`, `cleanshot-api-key(+prev)`, `cleanshot-openai-key`, `cleanshot-anthropic-key`, `cleanshot-bfl-key` (erase-only — Flux is no longer a primary generator), `cleanshot-gemini-key`, `cleanshot-xai-key`, `cleanshot-runcomfy-key`, `cleanshot-ideogram-key` (5th primary generator + per-variant edit/inpaint tools), `cleanshot-recraft-key` (6th primary generator), `cleanshot-tasks-oidc-sa`, `cleanshot-worker-url`
 - Deprecated (safe to delete from Secret Manager): `cleanshot-reve-key`
