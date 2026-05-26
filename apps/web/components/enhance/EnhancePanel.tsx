@@ -1153,12 +1153,27 @@ export function EnhancePanel({
       }
       const chosen = chosenByFile.get(f.id);
       const chosenJobId = chosen ? fileJobs.get(chosen) : undefined;
+      const chosenJobStatus = chosenJobId ? jobStateMap.get(chosenJobId)?.status : undefined;
+      const chosenComplete = chosenJobStatus === "complete";
       const isSent = chosenJobId ? sentJobIds.has(chosenJobId) : false;
-      if (!allTerminal) {
-        working++;
-      } else if (chosen && anyComplete && !isSent) {
+
+      // Bucket priority (top to bottom):
+      //   1. ready    — operator has picked a winner AND that winner's
+      //                 variant is complete AND not yet sent. The OTHER
+      //                 providers for this source may still be in flight;
+      //                 the operator's pick is enough to ship now. This
+      //                 used to require `allTerminal` which forced
+      //                 operators to wait for the slowest provider; the
+      //                 new ordering lets them move early.
+      //   2. working  — at least one provider is still running and there's
+      //                 nothing shippable yet.
+      //   3. undecided — everything settled, at least one variant
+      //                 completed, but no winner picked.
+      if (chosen && chosenComplete && !isSent) {
         ready++;
-      } else if (!chosen && anyComplete) {
+      } else if (!allTerminal) {
+        working++;
+      } else if (anyComplete && !chosen) {
         undecided++;
       }
     }
