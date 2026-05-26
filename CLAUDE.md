@@ -159,8 +159,12 @@ Vercel env vars needed for auth (set via the Vercel dashboard, not in any workfl
   - `/api/v1/export/fullsize` — signed GET URL for the full-size PNG (1-hour expiry).
   - `/api/v1/export/pro` — 1024×731 crop, JPEG ≤100 KB iterated quality. Single JPEG or ZIP for batches. Sets `X-Warning: target-size-unachievable` when the size target can't be met.
   - `/api/v1/export/pro/preview` — per-image signed URLs + size metadata (complements the binary download).
+  - `/api/v1/export/collage` — 1024 px long-edge fit (no crop), ≤99 KB JPEG. Single asset or streamed ZIP for batches. Used when the operator already pre-composed a multi-image layout upstream.
+  - `/api/v1/export/branded-collage` — composes a 1024×540 marketing-layout collage from EXACTLY 5 source assets (index 0 = hero, 1–4 = thumb strip). Dimensions: hero 720×540 (4:3), thumbs 304×135 each (4 stacked edge-to-edge). Match the company's existing blue-reference template. Filename suffixed by equipment type (`cleanshot_forklift_collage.jpg`, etc.).
   - `/api/v1/export/custom` — arbitrary dimensions, JPEG/PNG/WebP/BMP.
   - `/api/v1/export/zip` — streaming ZIP for batch downloads.
+- **AI-disclaimer watermark.** Optional opt-in flag (`ai_disclaimer: bool`) on `ExportProRequest`, `ExportCollageRequest`, and `ExportBrandedCollageRequest`. When `True`, pyvips burns the string `"AI-enhanced image — depicts the unit as it will be delivered"` into the bottom-right corner of every output JPEG (black shadow at ~55% alpha + white foreground at ~70% alpha for legibility on both light and dark backgrounds, 11 pt sans-bold, 12 px margin). Constant lives in two places that must stay in sync: `AI_DISCLAIMER_WATERMARK` in `apps/web/components/resize/ResizePanel.tsx` (UI preview) and `apps/api/src/cleanshot_api/services/image_processing.py` (pyvips render). Helper: `_apply_disclaimer_watermark()`.
+- **Branded-collage preview + Save-to-History.** Frontend doesn't auto-download anymore — the composed JPEG lands in an emerald-bordered preview card directly below the Create button with inline image, file-size readout, and two action buttons: ⬇ Download (browser download from the blob), 💾 Save to History (uploads the blob to GCS via signed PUT + folds the resulting asset into the approval set). Blob URLs revoked on unmount + when a new collage replaces the current preview.
 - All BFF proxies in `apps/web/app/api/export/*` are wired (no more 501 stubs).
 
 ---
@@ -205,6 +209,16 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 
 15. **OpenAI `gpt-5 + image_generation` tool path eats `/v1/responses` quota.** Both enhance (gpt-5 with image_generation tool forced via `tool_choice`) and scan (gpt-5.4 text/vision via `responses.parse`) share the same endpoint quota. Heavy enhance batches will throttle scan calls into 429s. Mitigations: tier-bump the OpenAI org, or add a scan-side rate limiter on `/v1/responses`.
 
+16. **Ideogram inverts the mask convention vs Flux/BFL.** Our EraseDialog exports a PNG where **WHITE = erase**, BLACK = preserve (matches Flux). Ideogram's `/v1/ideogram-v3/inpaint` reads the opposite: **BLACK = edit**, WHITE = preserve. The worker pyvips-`invert()`s the mask server-side inside `_inpaint_with_ideogram` so the frontend dialog can stay vendor-agnostic. Don't push the inversion into the dialog — it would force per-tool branching in the canvas-export path and the operator-supplied stroke list has the WHITE-erase convention baked in everywhere.
+
+17. **Ideogram inpaint requires a prompt; Flux erase doesn't.** When the operator leaves the fill hint blank, `_inpaint_with_ideogram` falls back to the string `"fill with plausible background"`. Don't pass an empty string — Ideogram 422s with a confusing schema-validation error.
+
+18. **Ideogram is sync, not async-poll like Flux/Kontext.** POST returns the JSON response with `data[0].url` already populated; GET that URL (no auth header) for the bytes. The URL is short-lived presigned CDN — fetch immediately, don't try to round-trip it through a job queue.
+
+19. **Branded collage proportions must match the company's existing template.** Constants in `image_processing.py`: canvas 1024×540, hero 720×540 (4:3), thumbs 304×135 (4 stacked, ~2.25:1 each). Prior 640×580 hero + 384×145 thumbs side-cropped the studio banner out of both the hero AND the thumbs — confirmed against the blue Genie GS-1930 reference 2026-05-26. If you change these constants, eyeball-check against the reference before pushing.
+
+20. **AI-disclaimer watermark string lives in two files that must stay in sync.** `AI_DISCLAIMER_WATERMARK` in `apps/web/components/resize/ResizePanel.tsx` (UI preview next to the checkbox) and `apps/api/src/cleanshot_api/services/image_processing.py` (pyvips render). Frontend value is what the operator sees; backend value is what gets burnt into the JPEG. Diverging values mean the preview lies — change both or change neither.
+
 ---
 
 ## Conventions
@@ -224,8 +238,17 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 4. **Drop Gemini `thinking_level: High` → `Medium`** for enhance/cleanup. Saves measurable reasoning time with marginal quality cost on image edits.
 5. **Input image downsize before vendor call** — upload pipeline already caps long edge at 1024 px (`compress.ts` on the web side), but the worker doesn't re-verify. Consider a server-side guard for 2048 max in `_load_image_bytes` to defend against any backend regen path that bypasses the upload cap.
 6. **Valkey-backed rate limiters** if `max-instances > 1` and OpenAI batches grow.
-7. **Extract `_load_image_bytes`** to `services/gcs.download_image` — currently triplicated across scan / enhance / cleanup / erase workers (TODO marker in code).
-8. **Recently shipped, archived from this list:** Phase 3 toggles auto-reset + re-enhance with new toggles (`4291f17`), per-provider scan isolation (`0747d14`), Erase tool + canvas UI (`acd33ec`, `5f9bffa`, `370d542`), Kontext via RunComfy as 4th generator (`008cd51`, `85f16cc`), OpenAI gpt-5 + image_generation tool migration (`fe02b3c`), Reve removed (`a0cedac`).
+7. **Extract `_load_image_bytes`** to `services/gcs.download_image` — currently 4-way triplicated across scan / enhance / cleanup / erase / inpaint-ideogram / tweak-ideogram workers (TODO marker in code).
+8. **Ideogram rate limiter.** No limiter currently in place. Ideogram doesn't publish a per-minute cap; add a defensive `AsyncRateLimiter` if 429s start showing up in production logs.
+9. **Considered + declined (do not re-litigate without new evidence):**
+   - **Runway Gen-4** — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the per-image cost, slower API. Note in CLAUDE.md to prevent re-evaluation.
+   - **Ideogram as a 5th enhance generator** — evaluated 2026-05-26, declined as primary generator (creative-drift risk). Wired instead as the per-variant Edit + Inpaint tools, which is where its typography strength actually pays off.
+10. **Recently shipped, archived from this list:**
+    - Ideogram dual tools (Edit + Inpaint) as siblings to Gemini Tweak + Flux Erase (`1babd98`).
+    - Branded collage composer (`/api/v1/export/branded-collage` + Create Image Collage UI + preview-with-save-to-history) (`0a0b48a`, `68cc6b0`).
+    - Branded collage layout proportions matched to company's blue reference (`cc531e8`).
+    - AI-disclaimer watermark with operator opt-in checkbox (`8de9203`).
+    - Phase 3 toggles auto-reset + re-enhance with new toggles (`4291f17`), per-provider scan isolation (`0747d14`), Erase tool + canvas UI (`acd33ec`, `5f9bffa`, `370d542`), Kontext via RunComfy as 4th generator (`008cd51`, `85f16cc`), OpenAI gpt-5 + image_generation tool migration (`fe02b3c`), Reve removed (`a0cedac`).
 
 ---
 
@@ -246,5 +269,5 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 - API URL: `https://cleanshot-api-387208973244.us-central1.run.app`
 - Web URL: `https://cleanshot.vercel.app` (+ `https://cleanshot.discountmedia.com` once DNS lands)
 - API service account: `forklift-api@cleanshot-493512.iam.gserviceaccount.com`
-- Secrets in use: `cleanshot-database-url`, `cleanshot-api-key(+prev)`, `cleanshot-openai-key`, `cleanshot-anthropic-key`, `cleanshot-bfl-key` (now erase-only), `cleanshot-gemini-key`, `cleanshot-xai-key`, `cleanshot-runcomfy-key`, `cleanshot-tasks-oidc-sa`, `cleanshot-worker-url`
+- Secrets in use: `cleanshot-database-url`, `cleanshot-api-key(+prev)`, `cleanshot-openai-key`, `cleanshot-anthropic-key`, `cleanshot-bfl-key` (erase-only — Flux is no longer a primary generator), `cleanshot-gemini-key`, `cleanshot-xai-key`, `cleanshot-runcomfy-key`, `cleanshot-ideogram-key` (per-variant edit + inpaint tools), `cleanshot-tasks-oidc-sa`, `cleanshot-worker-url`
 - Deprecated (safe to delete from Secret Manager): `cleanshot-reve-key`

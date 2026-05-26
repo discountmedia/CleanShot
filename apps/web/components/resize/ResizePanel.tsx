@@ -1196,7 +1196,7 @@ export function ResizePanel({
 
       {/* ── Create branded collage ── */}
       {/* Composes the first 5 queued images into the marketing-layout
-          collage (1 hero + 4 thumb strip on the right, 1024×580, ≤99 KB
+          collage (1 hero + 4 thumb strip on the right, 1024×540, ≤99 KB
           JPEG). Equipment-type pick is required so the operator can't
           accidentally publish a collage labelled as the wrong category. */}
       <section className="rounded-xl border-2 border-emerald-700 bg-emerald-950/20 p-5 space-y-4">
