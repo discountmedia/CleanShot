@@ -14,22 +14,26 @@
  * (see lib/api.ts enqueueErase) rather than full-image generation.
  * The Kontext slot is BFL's identity-preserving flux-1-kontext/max
  * via the RunComfy proxy — same vendor as the erase tool but
- * different model family.
+ * different model family. Ideogram joined as a 5th option for its
+ * typography strength on OEM decals + model numbers; same underlying
+ * /v1/edit endpoint as the per-variant Ideogram Edit tool.
  */
-export type EnhanceProvider = "gemini" | "openai" | "grok" | "kontext";
+export type EnhanceProvider = "gemini" | "openai" | "grok" | "kontext" | "ideogram";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
   "grok",
   "kontext",
+  "ideogram",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
-  gemini:  "Gemini",
-  openai:  "OpenAI",
-  grok:    "Grok",
-  kontext: "Kontext",
+  gemini:   "Gemini",
+  openai:   "OpenAI",
+  grok:     "Grok",
+  kontext:  "Kontext",
+  ideogram: "Ideogram",
 };
 
 /**
@@ -38,10 +42,11 @@ export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
  * vocabulary the rest of the app uses.
  */
 export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
-  gemini:  "bg-blue-950/40 text-blue-300 border-blue-800",
-  openai:  "bg-green-950/40 text-green-300 border-green-800",
-  grok:    "bg-orange-950/40 text-orange-300 border-orange-800",
-  kontext: "bg-purple-950/40 text-purple-300 border-purple-800",
+  gemini:   "bg-blue-950/40 text-blue-300 border-blue-800",
+  openai:   "bg-green-950/40 text-green-300 border-green-800",
+  grok:     "bg-orange-950/40 text-orange-300 border-orange-800",
+  kontext:  "bg-purple-950/40 text-purple-300 border-purple-800",
+  ideogram: "bg-cyan-950/40 text-cyan-300 border-cyan-800",
 };
 
 /**
@@ -85,5 +90,11 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
     description: "BFL Flux Kontext Max (via RunComfy) — purpose-built for identity-preserving edits. Strong on subject continuity.",
     titleClass:  "text-fuchsia-300",
+  },
+  ideogram: {
+    speedLabel:  "Moderate",
+    speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
+    description: "Ideogram 3.0 /v1/edit — typography-strong, best when the unit has visible OEM decals, model numbers, or signage to preserve.",
+    titleClass:  "text-cyan-300",
   },
 };

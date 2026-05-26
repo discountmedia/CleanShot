@@ -15,8 +15,9 @@ import type { EnhanceProvider } from "./types-enhance";
  * estimate on the variant thumbnails.
  */
 export const ENHANCE_PROVIDER_DURATION_S: Record<EnhanceProvider, number> = {
-  gemini:  20,
-  openai:  75,
-  grok:    30,
-  kontext: 40,
+  gemini:   20,
+  openai:   75,
+  grok:     30,
+  kontext:  40,
+  ideogram: 25,
 };

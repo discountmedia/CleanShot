@@ -80,29 +80,29 @@ export function Header({
 
         {/* Utility actions */}
         <div className="ml-auto flex items-center gap-3">
-          {/* Auto-advance toggle — sits before the user chip so it's the
-              first thing the operator sees in the right cluster. Off by
-              default; flipping it on auto-flows picked Enhance winners
-              into the Scan tab without an explicit Send click. */}
+          {/* Auto-advance toggle — disabled during beta testing.
+              Visually present so operators know the feature exists, but
+              the click is no-op and the tooltip explains why. Once
+              auto-advance graduates from beta, drop the `disabled` prop
+              + the "Not available during beta testing" copy + restore
+              the onClick to onAutoAdvance!(!autoAdvance). */}
           {showAutoAdvance && (
             <button
               type="button"
-              onClick={() => onAutoAdvance!(!autoAdvance)}
-              aria-pressed={autoAdvance}
-              title={autoAdvance
-                ? "Picked winners auto-flow to Scan and approved scans auto-flow to Resize"
-                : "Click to let picked winners auto-flow into Scan as you make them"}
-              className={`group flex items-center gap-2.5 px-3 py-1.5 rounded-md border transition-colors ${
-                autoAdvance
-                  ? "border-red-900 bg-red-950/30 hover:border-red-700"
-                  : "border-zinc-800 bg-zinc-950 hover:border-zinc-700"
-              }`}
+              disabled
+              aria-pressed={false}
+              aria-disabled="true"
+              title="Auto-advance — not available during beta testing"
+              className="group flex items-center gap-2.5 px-3 py-1.5 rounded-md border border-zinc-800 bg-zinc-950/60 cursor-not-allowed opacity-50"
             >
-              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 group-hover:text-zinc-200">
+              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
                 Auto-advance
               </span>
-              <span className={`relative w-7 h-4 rounded-full transition-colors ${autoAdvance ? "bg-red-600" : "bg-zinc-700"}`}>
-                <span className={`absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-white transition-transform ${autoAdvance ? "translate-x-3" : ""}`} />
+              <span className="relative w-7 h-4 rounded-full bg-zinc-700">
+                <span className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-zinc-400" />
+              </span>
+              <span className="text-[9px] uppercase tracking-[0.16em] font-bold text-amber-400 ml-1">
+                Beta
               </span>
             </button>
           )}

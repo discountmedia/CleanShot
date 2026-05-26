@@ -763,7 +763,7 @@ export function ResizePanel({
       {/* ── Spec card ── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-5">
         <div className="space-y-2.5">
-          <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">PRO Export Spec</h3>
+          <h3 className="text-xl font-extrabold text-sky-400 uppercase tracking-[0.14em]">PRO Export Spec</h3>
           <p className="text-base text-blue-100 leading-relaxed">
             <strong className="text-blue-200 font-bold">Use for:</strong> standard listing photos of a single forklift.
             Every image gets a uniform 7:5 crop with the machine framed and centred — what most marketplaces expect.
@@ -776,7 +776,7 @@ export function ResizePanel({
           </ul>
         </div>
         <div className="space-y-2.5 pt-4 border-t border-zinc-800">
-          <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">Collage Export Spec</h3>
+          <h3 className="text-xl font-extrabold text-fuchsia-400 uppercase tracking-[0.14em]">Collage Export Spec</h3>
           <p className="text-base text-purple-100 leading-relaxed">
             <strong className="text-purple-200 font-bold">Use for:</strong> pre-composed multi-image collages where you&apos;ve
             already arranged the photos and just need the finished layout downsized — no cropping, original

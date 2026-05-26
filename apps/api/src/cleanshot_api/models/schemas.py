@@ -187,7 +187,7 @@ class EnhanceRequest(BaseModel):
     # default for image editing per BFL's own docs; async polling pattern;
     # ~$0.03–0.08 per image. Model IDs pinned in
     # apps/api/.../workers/enhance_worker.py.
-    provider: Literal["gemini", "openai", "grok", "kontext"] = "gemini"
+    provider: Literal["gemini", "openai", "grok", "kontext", "ideogram"] = "gemini"
     # What kind of equipment is in the photo — drives the per-type
     # anatomy guardrail block in _build_enhance_prompt + the equipment
     # display name in the master goal ("USED forklift" / "USED scissor
@@ -227,6 +227,14 @@ class EnhanceToggles(BaseModel):
     # visible toggle in the Advanced section so operators can opt out
     # if they know the unit doesn't have rental-fleet branding.
     remove_rental_branding: bool = Field(True, alias="removeRentalBranding")
+    # When the source photo was shot inside a showroom / studio with a
+    # solid-colour floor (white / black / grey seamless), tells the
+    # enhance prompt to clean the floor to a uniform studio finish —
+    # remove tape marks, scuff streaks, footprints, debris, and any
+    # background-floor seam. Off by default; operators should only flip
+    # it on for actual studio shots (it'll over-clean a real yard floor
+    # if mis-applied).
+    showroom_floor: bool = Field(False, alias="showroomFloor")
 
 
 class EnhanceResponse(BaseModel):
@@ -551,7 +559,7 @@ class EnhanceTaskPayload(BaseModel):
     # passes the operator's selected provider through here (the scan-derived
     # prompt was originally tuned for Gemini, but other providers are now
     # accepted at the operator's discretion).
-    provider: Literal["gemini", "openai", "grok", "kontext"] = "gemini"
+    provider: Literal["gemini", "openai", "grok", "kontext", "ideogram"] = "gemini"
     # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
     # Ignored when custom_prompt is set (the operator's verbatim text wins).
     equipment_type: Literal["forklift", "scissor_lift", "telehandler"] = "forklift"
