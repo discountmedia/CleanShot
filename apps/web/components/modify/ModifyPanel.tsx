@@ -94,6 +94,10 @@ export interface ModifyPanelProps {
   sessionId: string;
   resizeAssets: PipelineAsset[];
   onModifyApplied: (next: PipelineAsset[]) => void;
+  /** Wipe the cross-tab pipeline state (Workspace's resizeAssets). */
+  onClearPipeline?: () => void;
+  /** Jump straight to the Resize tab without applying any adjustments. */
+  onSkipToResize?: () => void;
 }
 
 // Slider → factor math. Same math both client (CSS preview) and server
@@ -105,6 +109,8 @@ export function ModifyPanel({
   sessionId,
   resizeAssets,
   onModifyApplied,
+  onClearPipeline,
+  onSkipToResize,
 }: ModifyPanelProps) {
   // ── Mode tab state ────────────────────────────────────────────────────
   const [mode, setMode] = useState<ModifyMode>("adjust");
@@ -327,6 +333,26 @@ export function ModifyPanel({
     setError(null);
   };
 
+  // Big red "Clear All" — wipes EVERY piece of Modify-tab state:
+  //   - Standalone uploads (with URL.revokeObjectURL on each preview)
+  //   - All adjustment state (batch + per-image)
+  //   - Selection + error
+  //   - Cross-tab pipeline via onClearPipeline (resizeAssets goes empty
+  //     so Scan/Resize/Modify all see a clean slate)
+  // Sliders go back to neutral, scope flips back to Batch.
+  const handleClearEverything = () => {
+    setUploads((prev) => {
+      prev.forEach((u) => URL.revokeObjectURL(u.previewUrl));
+      return [];
+    });
+    setBatchAdj(NEUTRAL_ADJ);
+    setPerImageAdj(new Map());
+    setSelectedAssetId(null);
+    setEditScope("batch");
+    setError(null);
+    onClearPipeline?.();
+  };
+
   // Reset only the currently-selected per-image override (in per-image
   // mode) — useful for "undo my tweak to this image" without nuking
   // the whole batch.
@@ -446,6 +472,45 @@ export function ModifyPanel({
           before the final Resize step.
         </p>
       </header>
+
+      {/* ── Optional / Skip / Clear callout ─────────────────────────────
+          Loud and at the top so the operator immediately sees they don't
+          HAVE to use this tab. Skip jumps straight to Resize; Clear All
+          wipes every piece of Modify-tab state (local + cross-tab). */}
+      <section className="rounded-xl border-2 border-yellow-600 bg-yellow-950/30 px-5 py-4 flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3 min-w-0 flex-1">
+          <span className="text-2xl shrink-0" aria-hidden="true">⏭️</span>
+          <div className="min-w-0">
+            <p className="text-base font-bold uppercase tracking-[0.14em] text-yellow-100">
+              Modify is optional — feel free to skip
+            </p>
+            <p className="text-sm text-yellow-50 mt-1 leading-relaxed">
+              If your photos already look good after Scan (or you uploaded
+              straight to Resize), you can go straight to the Resize tab.
+              This tab is here for when you want to tweak brightness,
+              contrast, crop, or straightening before exporting.
+            </p>
+          </div>
+        </div>
+        <div className="flex gap-2 shrink-0 flex-wrap">
+          {onSkipToResize && (
+            <button
+              type="button"
+              onClick={onSkipToResize}
+              className="text-base font-bold uppercase tracking-[0.12em] px-5 py-3 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 text-white transition-colors shadow-lg shadow-blue-900/40"
+            >
+              Skip to Resize →
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={handleClearEverything}
+            className="text-base font-bold uppercase tracking-[0.12em] px-5 py-3 rounded-lg border-2 border-red-500 bg-red-600 hover:bg-red-500 text-white transition-colors shadow-lg shadow-red-900/40"
+          >
+            Clear All
+          </button>
+        </div>
+      </section>
 
       <TipBanner
         title="How Modify works"

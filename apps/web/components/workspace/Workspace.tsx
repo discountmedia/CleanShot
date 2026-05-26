@@ -283,6 +283,8 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 sessionId={sessionId}
                 resizeAssets={resizeAssets}
                 onModifyApplied={handleModifyApplied}
+                onClearPipeline={handleClearPipeline}
+                onSkipToResize={() => setActiveTab("resize")}
               />
             )}
           </PanelSlot>
