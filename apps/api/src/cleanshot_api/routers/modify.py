@@ -96,6 +96,9 @@ async def modify_batch(
             brightness=adj.brightness,
             contrast=adj.contrast,
             saturation=adj.saturation,
+            rotation_deg=adj.rotation_deg,
+            crop_aspect=adj.crop_aspect,
+            crop_zoom=adj.crop_zoom,
         )
 
         # Probe the output dims so the frontend can render proper sized

@@ -349,38 +349,146 @@ def compose_branded_collage(
 # encoding happens later in the Resize/PRO export step).
 
 
+# Aspect-ratio map for the Modify-tab crop mode. Keys match the
+# frontend's CropAspect literal. "free" is handled separately (no
+# aspect lock — only the zoom factor applies).
+_MODIFY_CROP_ASPECTS: dict[str, tuple[int, int]] = {
+    "1:1":  (1, 1),
+    "4:3":  (4, 3),
+    "7:5":  (7, 5),
+    "16:9": (16, 9),
+}
+
+
+def _inscribed_rect_after_rotation(
+    width: int,
+    height: int,
+    angle_deg: float,
+) -> tuple[int, int]:
+    """
+    Largest axis-aligned rectangle (matching the input aspect ratio)
+    that fits inside `width x height` after rotation by `angle_deg`.
+    Used to crop the triangular wedges introduced by the rotate step
+    in apply_adjustments.
+
+    Implements the closed-form formula for the maximum inscribed
+    rectangle from a rotated bounding box. See e.g.
+    https://stackoverflow.com/a/16778797 — handles both the wide and
+    narrow source cases.
+    """
+    import math
+    if angle_deg == 0.0:
+        return (width, height)
+    angle = math.radians(abs(angle_deg)) % math.pi
+    if angle > math.pi / 2:
+        angle = math.pi - angle
+    # Limit guard: above 45° the formulas flip — we cap upstream at
+    # ±15° so this is just defensive.
+    if angle >= math.pi / 2:
+        return (width, height)
+    if width <= 0 or height <= 0:
+        return (width, height)
+    side_long  = max(width, height)
+    side_short = min(width, height)
+    sin_a = math.sin(angle)
+    cos_a = math.cos(angle)
+    if side_short <= 2 * sin_a * cos_a * side_long or abs(sin_a - cos_a) < 1e-10:
+        # Half-by-half region case.
+        x = 0.5 * side_short
+        if width >= height:
+            new_w = int(x / sin_a)
+            new_h = int(x / cos_a)
+        else:
+            new_w = int(x / cos_a)
+            new_h = int(x / sin_a)
+    else:
+        cos_2a = cos_a * cos_a - sin_a * sin_a
+        new_long  = (side_long  * cos_a - side_short * sin_a) / cos_2a
+        new_short = (side_short * cos_a - side_long  * sin_a) / cos_2a
+        if width >= height:
+            new_w, new_h = int(new_long),  int(new_short)
+        else:
+            new_w, new_h = int(new_short), int(new_long)
+    return (max(1, new_w), max(1, new_h))
+
+
 def apply_adjustments(
-    input_bytes: bytes,
+    input_bytes:  bytes,
     *,
-    brightness: float = 1.0,
-    contrast:   float = 1.0,
-    saturation: float = 1.0,
+    brightness:   float = 1.0,
+    contrast:     float = 1.0,
+    saturation:   float = 1.0,
+    rotation_deg: float = 0.0,
+    crop_aspect:  str   = "free",
+    crop_zoom:    float = 1.0,
 ) -> bytes:
     """
     Run the operator's Modify-tab adjustments through pyvips and
     return the modified bytes as a PNG.
 
-    Bands are forced to 3 (drop alpha) so the LCH conversion + final
-    encode stay consistent with the rest of the pipeline.
+    Pipeline order:
+      1. Rotate (if rotation_deg != 0): rotate the full source then
+         centre-crop to the largest inscribed rectangle so the wedges
+         introduced by rotation are gone.
+      2. Crop (if crop_aspect != "free" OR crop_zoom < 1.0): smart-
+         crop to the target aspect at the requested zoom level.
+      3. Brightness + contrast (combined linear op).
+      4. Saturation (LCH chroma scaling).
+
+    Bands are forced to 3 (drop alpha) up front so the LCH conversion
+    + final encode stay consistent with the rest of the pipeline.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
     if img.bands == 4:
         img = img.extract_band(0, n=3)
     img = img.copy(interpretation="srgb")
 
-    # Combined brightness + contrast in one linear op.
-    #   out = contrast * (brightness * in) + (1 - contrast) * 127.5
-    # That's `linear(scale, offset)` per band with:
-    #   scale  = contrast * brightness
-    #   offset = (1 - contrast) * 127.5
+    # ── Step 1: rotation + auto-wedge-crop ────────────────────────────
+    if rotation_deg != 0.0:
+        pre_w, pre_h = img.width, img.height
+        # pyvips rotate() expands the bounding box and fills the
+        # corners with black by default. We rotate then centre-crop
+        # to the maximum inscribed rectangle so the wedges disappear.
+        img = img.rotate(rotation_deg, background=[0, 0, 0])
+        inner_w, inner_h = _inscribed_rect_after_rotation(pre_w, pre_h, rotation_deg)
+        # Clamp inner dims to the rotated image's actual dims (rotation
+        # can grow the bounding box, but the inscribed rect is always
+        # inside the ORIGINAL source's pixel content).
+        inner_w = min(inner_w, img.width)
+        inner_h = min(inner_h, img.height)
+        x_off = max(0, (img.width  - inner_w) // 2)
+        y_off = max(0, (img.height - inner_h) // 2)
+        img = img.crop(x_off, y_off, inner_w, inner_h)
+
+    # ── Step 2: crop (aspect + zoom) ──────────────────────────────────
+    if crop_aspect != "free" or crop_zoom < 1.0:
+        if crop_aspect == "free":
+            # No aspect lock — keep source aspect, just zoom-in.
+            target_w = int(img.width  * crop_zoom)
+            target_h = int(img.height * crop_zoom)
+        else:
+            aw, ah = _MODIFY_CROP_ASPECTS[crop_aspect]
+            # Largest aspect-aw:ah rect that fits in the current image.
+            if img.width / aw < img.height / ah:
+                cell_w = img.width
+                cell_h = int(img.width * ah / aw)
+            else:
+                cell_h = img.height
+                cell_w = int(img.height * aw / ah)
+            target_w = int(cell_w * crop_zoom)
+            target_h = int(cell_h * crop_zoom)
+        target_w = max(1, target_w)
+        target_h = max(1, target_h)
+        if target_w < img.width or target_h < img.height:
+            img = img.smartcrop(target_w, target_h, interesting="attention")
+
+    # ── Step 3: brightness + contrast (combined linear op) ───────────
     if brightness != 1.0 or contrast != 1.0:
         scale  = contrast * brightness
         offset = (1.0 - contrast) * 127.5
         img = img.linear(scale, offset).cast("uchar")
 
-    # Saturation: convert to LCH (luminance / chroma / hue), scale the
-    # chroma band, convert back to sRGB. LCH is perceptually uniform
-    # so scaling chroma reads as a natural saturation shift.
+    # ── Step 4: saturation (LCH chroma scaling) ──────────────────────
     if saturation != 1.0:
         lch = img.colourspace("lch")
         l_band = lch.extract_band(0)

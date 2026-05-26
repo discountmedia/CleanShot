@@ -436,20 +436,32 @@ class ExportBrandedCollageRequest(BaseModel):
 
 class ModifyAdjustments(BaseModel):
     """
-    Brightness / Contrast / Saturation adjustments for the Modify tab.
+    All Modify-tab adjustments combined. Operator can mix any subset
+    of the three modes (Adjustments / Crop / Straighten) in a single
+    Apply — backend pyvips runs them in the order: rotate → crop →
+    brightness/contrast → saturation so the crop happens AFTER the
+    rotation wedges are gone but BEFORE colour tweaks (final crop bounds
+    map cleanly onto the colour-adjusted pixels).
 
     Slider ranges (frontend) → backend factors:
       brightness slider  -100..+100  → 0.5..1.5  (1.0 = neutral)
       contrast slider    -100..+100  → 0.5..1.5  (1.0 = neutral)
-      saturation slider  -100..+100  → 0.0..2.0  (1.0 = neutral, 0 = grayscale)
+      saturation slider  -100..+100  → 0.0..2.0  (1.0 = neutral)
+      rotation slider    -150..+150  → -15.0..+15.0 degrees (0 = neutral)
+      crop zoom slider     50..100   → 0.5..1.0 (1.0 = no crop)
+      crop_aspect: literal ("free" = keep source aspect; "1:1"/"4:3"/
+        "7:5"/"16:9" = smart-crop to that aspect)
 
-    The frontend does the slider-to-factor mapping client-side so the
-    CSS-filter preview matches what the backend renders. Backend just
-    receives the final factors.
+    Frontend does the slider-to-factor mapping client-side so the
+    CSS-filter / CSS-transform preview matches what the backend
+    renders. Backend just receives the final factors.
     """
-    brightness: float = Field(default=1.0, ge=0.0, le=3.0)
-    contrast:   float = Field(default=1.0, ge=0.0, le=3.0)
-    saturation: float = Field(default=1.0, ge=0.0, le=3.0)
+    brightness:   float = Field(default=1.0, ge=0.0, le=3.0)
+    contrast:     float = Field(default=1.0, ge=0.0, le=3.0)
+    saturation:   float = Field(default=1.0, ge=0.0, le=3.0)
+    rotation_deg: float = Field(default=0.0, ge=-15.0, le=15.0)
+    crop_aspect:  Literal["free", "1:1", "4:3", "7:5", "16:9"] = "free"
+    crop_zoom:    float = Field(default=1.0, ge=0.25, le=1.0)
 
 
 class ModifyBatchRequest(BaseModel):

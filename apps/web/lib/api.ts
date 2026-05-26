@@ -130,6 +130,12 @@ export interface ModifyAdjustments {
   brightness: number;
   contrast:   number;
   saturation: number;
+  /** Rotation in degrees, -15..+15. 0 = no rotation. Wedges are auto-cropped server-side. */
+  rotationDeg: number;
+  /** "free" = no crop; otherwise smart-crop to this aspect ratio. */
+  cropAspect: "free" | "1:1" | "4:3" | "7:5" | "16:9";
+  /** 0.5..1.0 — fraction of source area kept on crop. 1.0 = full source area. */
+  cropZoom: number;
 }
 
 export interface ModifyBatchItem {

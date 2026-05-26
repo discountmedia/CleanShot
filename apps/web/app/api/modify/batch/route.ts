@@ -14,9 +14,12 @@ export const maxDuration = 60;
 export const dynamic = "force-dynamic";
 
 interface ClientAdjustments {
-  brightness: number;
-  contrast:   number;
-  saturation: number;
+  brightness:  number;
+  contrast:    number;
+  saturation:  number;
+  rotationDeg: number;
+  cropAspect:  "free" | "1:1" | "4:3" | "7:5" | "16:9";
+  cropZoom:    number;
 }
 
 interface ClientRequest {
@@ -49,7 +52,14 @@ export async function POST(request: NextRequest) {
     body: JSON.stringify({
       session_id:  body.sessionId,
       asset_ids:   body.assetIds,
-      adjustments: body.adjustments,
+      adjustments: {
+        brightness:   body.adjustments.brightness,
+        contrast:     body.adjustments.contrast,
+        saturation:   body.adjustments.saturation,
+        rotation_deg: body.adjustments.rotationDeg,
+        crop_aspect:  body.adjustments.cropAspect,
+        crop_zoom:    body.adjustments.cropZoom,
+      },
     }),
     signal: request.signal,
     cache: "no-store",
