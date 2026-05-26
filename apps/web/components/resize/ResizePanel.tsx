@@ -241,6 +241,18 @@ export function ResizePanel({
   const [isCreatingCollage,  setIsCreatingCollage]  = useState(false);
   const [collageEquipmentType, setCollageEquipmentType] =
     useState<"forklift" | "scissor_lift" | "telehandler" | null>(null);
+
+  // Branded-collage result state. When set, the preview card renders
+  // with the composed JPEG + Download + Save-to-History buttons so the
+  // operator can review before deciding what to do with it. The blob
+  // URL is revoked when the operator dismisses or creates another.
+  const [collageBlob,        setCollageBlob]        = useState<Blob | null>(null);
+  const [collagePreviewUrl,  setCollagePreviewUrl]  = useState<string | null>(null);
+  const [collageFilename,    setCollageFilename]    = useState<string | null>(null);
+  const [collageSizeBytes,   setCollageSizeBytes]   = useState<number>(0);
+  const [collageSizeWarning, setCollageSizeWarning] = useState<boolean>(false);
+  const [collageSavingToHistory, setCollageSavingToHistory] = useState(false);
+  const [collageSavedToHistory,  setCollageSavedToHistory]  = useState(false);
   const [error,              setError]              = useState<string | null>(null);
   // Operator toggle — when on, the export pipeline burns a very small,
   // semi-transparent disclaimer into the bottom-right corner of every
@@ -572,10 +584,23 @@ export function ResizePanel({
   // hero; the next four become the thumb strip. Backend pyvips does the
   // composition (no client-side canvas work), so the output bytes match
   // exactly what gets returned to other channels.
+  //
+  // No auto-download — the result lands in the preview card below the
+  // button so the operator can review BEFORE deciding to download
+  // and/or save to history.
   const handleCreateBrandedCollage = async () => {
     if (!collageEquipmentType || allAssets.length < 5 || !isSaved) return;
     setError(null);
     setIsCreatingCollage(true);
+    // Revoke any prior blob URL before we replace it so the browser
+    // doesn't pin two collage blobs in memory.
+    if (collagePreviewUrl) URL.revokeObjectURL(collagePreviewUrl);
+    setCollageBlob(null);
+    setCollagePreviewUrl(null);
+    setCollageFilename(null);
+    setCollageSizeBytes(0);
+    setCollageSizeWarning(false);
+    setCollageSavedToHistory(false);
     try {
       const { blob, filename, warning } = await createBrandedCollage({
         sessionId,
@@ -583,21 +608,94 @@ export function ResizePanel({
         assetIds:      allAssets.slice(0, 5).map((a) => a.assetId),
         aiDisclaimer:  addAiDisclaimer,
       });
-      if (warning) setAnyWarning(true);
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(objectUrl);
+      setCollageBlob(blob);
+      setCollagePreviewUrl(URL.createObjectURL(blob));
+      setCollageFilename(filename);
+      setCollageSizeBytes(blob.size);
+      setCollageSizeWarning(Boolean(warning));
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Collage creation failed");
+      setError(
+        err instanceof Error
+          ? `Collage creation failed: ${err.message}`
+          : "Collage creation failed",
+      );
     } finally {
       setIsCreatingCollage(false);
     }
   };
+
+  // Local download — triggers a browser <a download> click using the
+  // already-fetched blob, no second backend roundtrip.
+  const handleDownloadCollage = () => {
+    if (!collageBlob || !collageFilename) return;
+    const objectUrl = URL.createObjectURL(collageBlob);
+    const a = document.createElement("a");
+    a.href = objectUrl;
+    a.download = collageFilename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(objectUrl);
+  };
+
+  // Save-to-History — uploads the composed JPEG to GCS as a new asset
+  // (via the same signed-PUT flow the standalone Resize upload uses),
+  // then folds the asset into this session's approval set. Once saved
+  // it shows up under `approved/{email}/.../` on the backend and in
+  // History on the frontend, alongside the other approved assets.
+  const handleSaveCollageToHistory = async () => {
+    if (!collageBlob || !collageFilename || collageSavingToHistory) return;
+    setError(null);
+    setCollageSavingToHistory(true);
+    try {
+      const blobAsFile = new File([collageBlob], collageFilename, {
+        type: "image/jpeg",
+      });
+      const signed = await getSignedUploadUrl({
+        sessionId,
+        filename:    collageFilename,
+        contentType: "image/jpeg",
+      });
+      await uploadToGcs(signed.uploadUrl, blobAsFile);
+      await approveSet({
+        sessionId,
+        assetIds: [signed.assetId],
+        projectMeta: {
+          make:  form.make.trim()  || "unknown",
+          model: form.model.trim() || "unknown",
+          year:  form.year.trim(),
+        },
+      });
+      setCollageSavedToHistory(true);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? `Save to History failed: ${err.message}`
+          : "Save to History failed",
+      );
+    } finally {
+      setCollageSavingToHistory(false);
+    }
+  };
+
+  // Discard the current collage preview — revokes the blob URL and
+  // resets the related state so the next click on Create starts fresh.
+  const handleDiscardCollagePreview = () => {
+    if (collagePreviewUrl) URL.revokeObjectURL(collagePreviewUrl);
+    setCollageBlob(null);
+    setCollagePreviewUrl(null);
+    setCollageFilename(null);
+    setCollageSizeBytes(0);
+    setCollageSizeWarning(false);
+    setCollageSavedToHistory(false);
+  };
+
+  // Revoke the collage blob URL on unmount so it doesn't leak.
+  useEffect(() => {
+    return () => {
+      if (collagePreviewUrl) URL.revokeObjectURL(collagePreviewUrl);
+    };
+  }, [collagePreviewUrl]);
 
   // ─── Clear all ──────────────────────────────────────────────────────────────
   //
@@ -1070,53 +1168,31 @@ export function ResizePanel({
         </div>
       </label>
 
-      {/* ── Export actions (PRO + Collage) ── */}
-      {/* Collage path uses a different resize semantic (1024 long-edge
-          fit, no crop) than PRO (1024×731 7:5 cover-crop). Same upstream
-          assets, different output preset — wired as a sibling button so
-          the operator picks at export time which target they need. */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        <button
-          onClick={handleExport}
-          disabled={!canExport}
-          className={`
-            py-3 px-6 rounded-xl font-semibold text-sm transition-all
-            ${canExport
-              ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-              : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
-          `}
-        >
-          {isExporting
-            ? "Resizing & generating previews…"
-            : !isSaved
-              ? "Save project first"
-              : !hasAssets
-                ? "No assets queued"
-                : previewItems.length > 0
-                  ? `Re-resize ${allAssets.length} image${allAssets.length !== 1 ? "s" : ""} (PRO)`
-                  : `PRO export — 1024×731 (${allAssets.length})`}
-        </button>
-
-        <button
-          onClick={handleExportCollage}
-          disabled={!canExportCollage}
-          className={`
-            py-3 px-6 rounded-xl font-semibold text-sm transition-all
-            ${canExportCollage
-              ? "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/40"
-              : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
-          `}
-          title="Collage preset: 1024px long edge, no crop, ≤99 KB JPEG. Use for pre-composed multi-image listing collages."
-        >
-          {isExportingCollage
-            ? "Resizing collage(s)…"
-            : !isSaved
-              ? "Save project first"
-              : !hasAssets
-                ? "No assets queued"
-                : `Collage export — 1024 long edge (${allAssets.length})`}
-        </button>
-      </div>
+      {/* ── Single PRO export button ── */}
+      {/* Collage export (the purple "Collage export — 1024 long edge"
+          button) used to sit beside this one in a 2-col grid. Moved
+          below the Create-Branded-Collage card so the marketing-layout
+          collage is the visual focal point. */}
+      <button
+        onClick={handleExport}
+        disabled={!canExport}
+        className={`
+          w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+          ${canExport
+            ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
+            : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+        `}
+      >
+        {isExporting
+          ? "Resizing & generating previews…"
+          : !isSaved
+            ? "Save project first"
+            : !hasAssets
+              ? "No assets queued"
+              : previewItems.length > 0
+                ? `Re-resize ${allAssets.length} image${allAssets.length !== 1 ? "s" : ""} (PRO)`
+                : `PRO export — 1024×731 (${allAssets.length})`}
+      </button>
 
       {/* ── Create branded collage ── */}
       {/* Composes the first 5 queued images into the marketing-layout
@@ -1194,9 +1270,102 @@ export function ResizePanel({
                 ? "Pick equipment type to continue"
                 : allAssets.length < 5
                   ? `Need 5 images (have ${allAssets.length})`
-                  : "Create image collage"}
+                  : collagePreviewUrl
+                    ? "Re-compose collage"
+                    : "Create image collage"}
         </button>
       </section>
+
+      {/* ── Branded-collage preview + actions ── */}
+      {/* Shown after a successful compose. Displays the composed JPEG
+          inline so the operator can review BEFORE deciding to download
+          and/or save to history. */}
+      {collagePreviewUrl && collageBlob && collageFilename && (
+        <section className="rounded-xl border-2 border-emerald-600 bg-emerald-950/30 p-5 space-y-4">
+          <div className="flex items-baseline justify-between gap-3 flex-wrap">
+            <h3 className="text-lg font-bold text-emerald-100 uppercase tracking-[0.12em]">
+              Collage preview
+            </h3>
+            <span className="text-sm font-mono text-emerald-200 tabular-nums">
+              {(collageSizeBytes / 1024).toFixed(1)} KB · {collageFilename}
+            </span>
+          </div>
+
+          {collageSizeWarning && (
+            <p className="text-sm text-amber-300 bg-amber-950/40 border border-amber-800 rounded-lg px-3 py-2">
+              ⚠ The encoder couldn&apos;t hit ≤99 KB at acceptable quality.
+              This file is the closest it could get — inspect it before publishing.
+            </p>
+          )}
+
+          <div className="rounded-lg overflow-hidden border border-emerald-800 bg-black">
+            {/* eslint-disable-next-line @next/next/no-img-element -- blob URL, no Next/Image needed */}
+            <img
+              src={collagePreviewUrl}
+              alt="Composed marketing collage preview"
+              className="block w-full h-auto"
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              onClick={handleDownloadCollage}
+              className="w-full py-3 px-5 rounded-xl font-bold text-base text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-lg shadow-blue-900/40"
+            >
+              ⬇ Download collage
+            </button>
+            <button
+              onClick={handleSaveCollageToHistory}
+              disabled={collageSavingToHistory || collageSavedToHistory}
+              className={`w-full py-3 px-5 rounded-xl font-bold text-base transition-colors ${
+                collageSavedToHistory
+                  ? "bg-green-700 text-white cursor-default"
+                  : collageSavingToHistory
+                    ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40"
+              }`}
+            >
+              {collageSavedToHistory
+                ? "✓ Saved to History"
+                : collageSavingToHistory
+                  ? "Saving to History…"
+                  : "💾 Save to History"}
+            </button>
+          </div>
+
+          <button
+            onClick={handleDiscardCollagePreview}
+            className="text-sm font-bold uppercase tracking-[0.14em] text-zinc-300 hover:text-white transition-colors border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
+          >
+            Discard preview
+          </button>
+        </section>
+      )}
+
+      {/* ── Collage export (1024 long edge, no crop, ≤99 KB) ── */}
+      {/* Single-image rescale path. Different from the branded-collage
+          composer above — this one takes each upstream asset as-is,
+          just downsizes to fit the long edge. Sits below the branded
+          collage so the marketing-layout option is the focal point. */}
+      <button
+        onClick={handleExportCollage}
+        disabled={!canExportCollage}
+        className={`
+          w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+          ${canExportCollage
+            ? "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/40"
+            : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+        `}
+        title="Collage preset: 1024px long edge, no crop, ≤99 KB JPEG. Use for pre-composed multi-image listing collages."
+      >
+        {isExportingCollage
+          ? "Resizing collage(s)…"
+          : !isSaved
+            ? "Save project first"
+            : !hasAssets
+              ? "No assets queued"
+              : `Collage export — 1024 long edge (${allAssets.length})`}
+      </button>
 
       {/* ── Streaming progress ── */}
       {isExporting && (
