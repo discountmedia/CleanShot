@@ -97,19 +97,19 @@ export function SourceCompareCard({
   return (
     <article className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 py-3 border-b border-zinc-900 gap-3">
+      <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 gap-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <span
-            className="font-mono text-sm text-zinc-200 truncate"
+            className="font-mono text-base font-bold text-zinc-100 truncate"
             title={filename}
           >
             {filename}
           </span>
           {totalCount > 0 && (
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 tabular-nums whitespace-nowrap">
+            <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 tabular-nums whitespace-nowrap">
               {completedCount}/{totalCount} complete
               {failedCount > 0 && (
-                <span className="text-red-400 ml-1">· {failedCount} failed</span>
+                <span className="text-red-300 ml-1">· {failedCount} failed</span>
               )}
             </span>
           )}
@@ -117,22 +117,22 @@ export function SourceCompareCard({
 
         <div className="flex items-center gap-2 shrink-0">
           {sent && (
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500 bg-zinc-900 border border-zinc-800 px-2 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-zinc-100 bg-zinc-900 border border-zinc-700 px-2.5 py-1 rounded">
               ✓ Sent
             </span>
           )}
           {willAutoSend && (
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-green-400 bg-green-950/40 border border-green-800 px-2 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-green-200 bg-green-950/40 border border-green-700 px-2.5 py-1 rounded">
               → sending to Scan
             </span>
           )}
           {showWorking && (
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-blue-400 bg-blue-950/40 border border-blue-800 px-2 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-blue-200 bg-blue-950/40 border border-blue-700 px-2.5 py-1 rounded">
               working
             </span>
           )}
           {showPickPrompt && (
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-red-400 bg-red-950/40 border border-red-800 px-2 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-red-200 bg-red-950/40 border border-red-700 px-2.5 py-1 rounded">
               pick a winner
             </span>
           )}
@@ -146,18 +146,18 @@ export function SourceCompareCard({
                 : "Hold this image (don't auto-send to Scan)"
             }
             aria-pressed={held}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded border text-[10px] font-semibold uppercase tracking-[0.18em] transition-colors ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded border-2 text-sm font-bold uppercase tracking-[0.14em] transition-colors ${
               held
-                ? "border-amber-700 bg-amber-950/40 text-amber-300 hover:bg-amber-900/40"
-                : "border-zinc-800 bg-transparent text-zinc-500 hover:border-zinc-600 hover:text-zinc-300"
+                ? "border-amber-500 bg-amber-950/40 text-amber-200 hover:bg-amber-900/40"
+                : "border-zinc-600 bg-transparent text-zinc-100 hover:border-zinc-400 hover:text-white"
             }`}
           >
             <svg
-              className="w-3 h-3"
+              className="w-4 h-4"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
-              strokeWidth={2}
+              strokeWidth={2.5}
             >
               {held ? (
                 <path
@@ -183,7 +183,7 @@ export function SourceCompareCard({
             the card doesn't dominate ultra-wide screens; centered when
             narrower than the cap. */}
         <figure className="flex flex-col gap-2">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+          <span className="text-base uppercase tracking-[0.14em] text-zinc-100 font-bold">
             Original — source photo
           </span>
           {/* Original capped narrower than the variant column so each
@@ -198,8 +198,8 @@ export function SourceCompareCard({
               alt={`${filename} (original)`}
               className="w-full h-full object-contain"
             />
-            <div className="absolute inset-x-0 bottom-0 px-2 py-1 bg-linear-to-t from-black/80 to-transparent">
-              <span className="text-[9px] font-mono text-zinc-300">source</span>
+            <div className="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-linear-to-t from-black/80 to-transparent">
+              <span className="text-sm font-mono font-bold text-zinc-100">source</span>
             </div>
           </div>
         </figure>
@@ -207,14 +207,14 @@ export function SourceCompareCard({
         {/* Variants — 5-column landscape row */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+            <span className="text-base uppercase tracking-[0.14em] text-zinc-100 font-bold">
               Enhanced — click a variant to pick the winner
             </span>
             {chosen && (
               <button
                 type="button"
                 onClick={() => onChoose(null)}
-                className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hover:text-zinc-300"
+                className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
               >
                 Clear pick
               </button>
@@ -251,18 +251,18 @@ export function SourceCompareCard({
               so the operator can address them in one place rather than
               hunting for the red thumb. */}
           {failedVariants.length > 0 && (
-            <div className="mt-1 flex flex-col gap-1.5 rounded border border-red-900 bg-red-950/20 px-3 py-2">
+            <div className="mt-1 flex flex-col gap-2 rounded border border-red-800 bg-red-950/20 px-4 py-3">
               {failedVariants.map(({ provider, variant }) => (
                 <div
                   key={provider}
                   className="flex items-center justify-between gap-3"
                 >
-                  <div className="text-[11px] text-red-300 min-w-0">
-                    <span className="font-semibold uppercase tracking-[0.16em] text-red-400">
+                  <div className="text-sm text-red-200 min-w-0">
+                    <span className="font-bold uppercase tracking-[0.14em] text-red-200">
                       {ENHANCE_PROVIDER_LABELS[provider]} failed
                     </span>
                     {variant.error && (
-                      <span className="text-zinc-500 ml-2 font-mono truncate inline-block max-w-[40ch] align-bottom">
+                      <span className="text-zinc-300 ml-2 font-mono truncate inline-block max-w-[40ch] align-bottom">
                         {variant.error}
                       </span>
                     )}
@@ -270,7 +270,7 @@ export function SourceCompareCard({
                   <button
                     type="button"
                     onClick={() => onRetry(provider)}
-                    className="shrink-0 text-[10px] uppercase tracking-[0.18em] font-semibold text-amber-300 hover:text-white bg-amber-950/40 hover:bg-amber-700 border border-amber-800 hover:border-amber-600 px-2.5 py-1 rounded transition-colors"
+                    className="shrink-0 text-sm uppercase tracking-[0.14em] font-bold text-amber-200 hover:text-white bg-amber-950/40 hover:bg-amber-700 border-2 border-amber-700 hover:border-amber-400 px-3 py-1.5 rounded transition-colors"
                   >
                     ↻ Retry {ENHANCE_PROVIDER_LABELS[provider]}
                   </button>
@@ -285,7 +285,7 @@ export function SourceCompareCard({
             images are AI-generated representations, not raw photos. The
             backend prompt's HONESTY CONSTRAINT keeps the output close
             to the source, but the disclaimer is the belt to its braces. */}
-        <p className="text-[10px] text-zinc-600 italic leading-snug text-center max-w-3xl mx-auto">
+        <p className="text-base text-zinc-200 italic leading-relaxed text-center max-w-3xl mx-auto px-4">
           AI-enhanced for clarity — visible defects, dents, and significant
           wear are preserved. Listings should disclose that images may have
           been altered to better represent the unit&apos;s actual appearance.

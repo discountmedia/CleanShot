@@ -27,16 +27,16 @@ interface ProviderRowProps {
 export function ProviderRow({ selected, onToggle }: ProviderRowProps) {
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-      <header className="flex items-center justify-between px-5 py-3 bg-zinc-900/30 border-b border-zinc-900">
-        <div className="flex items-center gap-3">
-          <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+      <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/30 border-b border-zinc-900">
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
             AI Providers
           </span>
-          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
+          <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-300">
             multi-select
           </span>
         </div>
-        <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500">
+        <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 tabular-nums">
           {selected.size} selected
         </span>
       </header>

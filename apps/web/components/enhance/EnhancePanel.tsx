@@ -998,6 +998,18 @@ export function EnhancePanel({
     });
   }, [readyToSend, onSendToScan]);
 
+  // "Skip Scan → Send N to Resize" CTA handler, rendered inline with
+  // handleSendAll inside CommandBar so both buttons match in size.
+  const handleSkipScan = useCallback(() => {
+    if (readyToSend.length === 0) return;
+    onSendToResize(readyToSend);
+    setSentJobIds((prev) => {
+      const next = new Set(prev);
+      for (const it of readyToSend) next.add(it.jobId);
+      return next;
+    });
+  }, [readyToSend, onSendToResize]);
+
   // ─── CommandBar tallies ────────────────────────────────────────────────
 
   const commandCounts = useMemo(() => {
@@ -1169,15 +1181,15 @@ export function EnhancePanel({
       {files.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-sm font-medium text-zinc-300">
+            <h3 className="text-lg font-bold text-zinc-100">
               {files.length} image{files.length !== 1 ? "s" : ""} loaded
               {doneCount > 0 && (
-                <span className="ml-2 text-green-400">· {doneCount} uploaded</span>
+                <span className="ml-2 text-green-300">· {doneCount} uploaded</span>
               )}
             </h3>
             <button
               onClick={handleClearAll}
-              className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+              className="text-sm font-bold text-zinc-200 hover:text-red-300 transition-colors border border-zinc-700 hover:border-red-600 rounded px-3 py-1.5"
             >
               Clear all
             </button>
@@ -1443,11 +1455,11 @@ export function EnhancePanel({
       {/* ── SourceCompareCards ── */}
       {(enhanceJobs.size > 0 || isRunning) && (
         <div ref={jobsSectionRef} className="space-y-3 scroll-mt-4">
-          <header className="flex items-baseline justify-between pt-1">
-            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-[0.18em]">
+          <header className="flex items-baseline justify-between pt-1 flex-wrap gap-2">
+            <h2 className="text-xl font-bold text-white uppercase tracking-[0.14em]">
               Results — {variantsByFile.size} image{variantsByFile.size !== 1 ? "s" : ""}
             </h2>
-            <span className="text-[11px] text-zinc-600 italic">
+            <span className="text-sm text-zinc-200 italic">
               One card per source · all providers compared side-by-side
             </span>
           </header>
@@ -1496,29 +1508,6 @@ export function EnhancePanel({
         </div>
       )}
 
-      {/* ── Skip-Scan shortcut ── */}
-      {/* Same readyToSend set as CommandBar, but routes straight to Resize.
-          Preserved as a separate button so operators who already trust the
-          enhance output can bypass Scan entirely. */}
-      {readyToSend.length > 0 && (
-        <button
-          type="button"
-          onClick={() => {
-            const items = readyToSend;
-            onSendToResize(items);
-            setSentJobIds((prev) => {
-              const next = new Set(prev);
-              for (const it of items) next.add(it.jobId);
-              return next;
-            });
-          }}
-          className="w-full py-3 px-6 rounded-xl font-semibold text-sm uppercase tracking-[0.18em] border border-blue-700 bg-blue-950/40 hover:bg-blue-900/40 text-blue-200 transition-colors"
-          title="Skip the Scan step and send picked winners straight to the Resize tab"
-        >
-          Skip Scan → Send {readyToSend.length} to Resize tab
-        </button>
-      )}
-
       {/* ── Model attribution ── */}
       {enhanceJobs.size > 0 && (
         <p className="text-[11px] text-zinc-700 text-center">
@@ -1532,7 +1521,8 @@ export function EnhancePanel({
         </p>
       )}
 
-      {/* ── Sticky command bar ── */}
+      {/* ── Sticky command bar — Send to Scan + Skip Scan render inline
+            so they're the same size and read as a pair. ── */}
       {enhanceJobs.size > 0 && (
         <CommandBar
           readyCount={commandCounts.ready}
@@ -1541,6 +1531,7 @@ export function EnhancePanel({
           heldCount={commandCounts.held}
           autoAdvance={autoAdvance}
           onSendAll={handleSendAll}
+          onSkipScan={handleSkipScan}
         />
       )}
     </div>

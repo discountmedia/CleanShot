@@ -744,7 +744,7 @@ export function ScanPanel({
       {scanStates.length > 0 && (
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
-            <h2 className="text-sm font-semibold text-zinc-300 uppercase tracking-[0.18em]">
+            <h2 className="text-xl font-bold text-white uppercase tracking-[0.14em]">
               Scan results — {scanStates.length} image{scanStates.length !== 1 ? "s" : ""}
             </h2>
             <ScanFilterChips counts={filterCounts} active={filter} onChange={setFilter} />
@@ -752,7 +752,7 @@ export function ScanPanel({
           <button
             type="button"
             onClick={handleResetScan}
-            className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+            className="text-sm font-bold text-zinc-200 hover:text-white transition-colors border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
           >
             Reset scan
           </button>
