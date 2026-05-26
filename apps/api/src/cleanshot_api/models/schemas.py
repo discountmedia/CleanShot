@@ -38,6 +38,9 @@ class OperationEnum(StrEnum):
     # Gemini. Used when the Flux erase tool's mask flow is overkill /
     # under-powered for the kind of edit needed.
     tweak = "tweak"
+    # Deterministic pixel-level adjustments via pyvips (Modify tab):
+    # brightness, contrast, saturation. Non-AI darkroom pass.
+    modify = "modify"
 
 
 class JobStatusEnum(StrEnum):
@@ -429,6 +432,50 @@ class ExportBrandedCollageRequest(BaseModel):
     equipment_type: Literal["forklift", "scissor_lift", "telehandler"]
     asset_ids: list[uuid.UUID] = Field(min_length=5, max_length=5)
     ai_disclaimer: bool = False
+
+
+class ModifyAdjustments(BaseModel):
+    """
+    Brightness / Contrast / Saturation adjustments for the Modify tab.
+
+    Slider ranges (frontend) → backend factors:
+      brightness slider  -100..+100  → 0.5..1.5  (1.0 = neutral)
+      contrast slider    -100..+100  → 0.5..1.5  (1.0 = neutral)
+      saturation slider  -100..+100  → 0.0..2.0  (1.0 = neutral, 0 = grayscale)
+
+    The frontend does the slider-to-factor mapping client-side so the
+    CSS-filter preview matches what the backend renders. Backend just
+    receives the final factors.
+    """
+    brightness: float = Field(default=1.0, ge=0.0, le=3.0)
+    contrast:   float = Field(default=1.0, ge=0.0, le=3.0)
+    saturation: float = Field(default=1.0, ge=0.0, le=3.0)
+
+
+class ModifyBatchRequest(BaseModel):
+    """
+    Modify-tab batch request. Operator sends a set of asset_ids and one
+    set of adjustments — backend applies the same adjustments to every
+    asset (batch mode). Phase 1 is batch-only; per-image variation
+    arrives in a follow-up.
+    """
+    session_id: uuid.UUID
+    asset_ids:  list[uuid.UUID] = Field(min_length=1, max_length=50)
+    adjustments: ModifyAdjustments
+
+
+class ModifyBatchItem(BaseModel):
+    """One asset's worth of output in the Modify response."""
+    asset_id: uuid.UUID
+    filename: str
+    url:      str  # signed GET URL, ~1 hour expiry
+    width:    int
+    height:   int
+
+
+class ModifyBatchResponse(BaseModel):
+    """Modify-tab batch response. Items in same order as request.asset_ids."""
+    items: list[ModifyBatchItem]
 
 
 class ExportCustomRequest(BaseModel):

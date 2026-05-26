@@ -123,6 +123,41 @@ export async function getAssetUrl(assetId: string): Promise<{ url: string; expir
   return get(`/api/assets/${assetId}/url`);
 }
 
+// ─── Modify (darkroom: brightness / contrast / saturation, batch) ────────────
+
+export interface ModifyAdjustments {
+  /** 0..3.0 — 1.0 = neutral. Frontend slider -100..+100 maps to 0.5..1.5. */
+  brightness: number;
+  contrast:   number;
+  saturation: number;
+}
+
+export interface ModifyBatchItem {
+  assetId:  string;
+  filename: string;
+  url:      string;
+  width:    number;
+  height:   number;
+}
+
+export interface ModifyBatchResponse {
+  items: ModifyBatchItem[];
+}
+
+/**
+ * POST /api/modify/batch — apply the same brightness / contrast /
+ * saturation adjustments to every assetId. Backend pyvips renders each
+ * one, uploads as a new asset row (operation=modify), and returns a
+ * preview-URL list in the same order as the input.
+ */
+export async function applyModifyBatch(params: {
+  sessionId:   string;
+  assetIds:    string[];
+  adjustments: ModifyAdjustments;
+}): Promise<ModifyBatchResponse> {
+  return post("/api/modify/batch", params);
+}
+
 // ─── Erase (mask-based object removal — Flux or Ideogram backend) ────────────
 
 export async function enqueueErase(params: {

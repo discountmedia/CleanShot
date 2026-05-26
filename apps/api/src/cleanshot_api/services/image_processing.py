@@ -333,6 +333,65 @@ def compose_branded_collage(
     return ExportResult(data=data, content_type="image/jpeg", size_warning=size_warning)
 
 
+# ─── Modify (darkroom) adjustments ────────────────────────────────────────────
+#
+# Brightness / Contrast / Saturation applied via pyvips. Used by the Modify
+# tab's batch endpoint — operator drags sliders, clicks Apply, every queued
+# asset gets run through this helper and re-uploaded as a new asset.
+#
+# Slider math (matches the CSS-filter preview the frontend renders so the
+# operator's live preview is faithful to the final bytes):
+#   brightness: 0.5..1.5  (1.0 = no change; multiplicative on pixel values)
+#   contrast:   0.5..1.5  (1.0 = no change; scales around midpoint 127.5)
+#   saturation: 0.0..2.0  (1.0 = no change; scales LCH chroma band)
+#
+# Output is PNG (matches every other in-pipeline asset write — final JPEG
+# encoding happens later in the Resize/PRO export step).
+
+
+def apply_adjustments(
+    input_bytes: bytes,
+    *,
+    brightness: float = 1.0,
+    contrast:   float = 1.0,
+    saturation: float = 1.0,
+) -> bytes:
+    """
+    Run the operator's Modify-tab adjustments through pyvips and
+    return the modified bytes as a PNG.
+
+    Bands are forced to 3 (drop alpha) so the LCH conversion + final
+    encode stay consistent with the rest of the pipeline.
+    """
+    img = pyvips.Image.new_from_buffer(input_bytes, "")
+    if img.bands == 4:
+        img = img.extract_band(0, n=3)
+    img = img.copy(interpretation="srgb")
+
+    # Combined brightness + contrast in one linear op.
+    #   out = contrast * (brightness * in) + (1 - contrast) * 127.5
+    # That's `linear(scale, offset)` per band with:
+    #   scale  = contrast * brightness
+    #   offset = (1 - contrast) * 127.5
+    if brightness != 1.0 or contrast != 1.0:
+        scale  = contrast * brightness
+        offset = (1.0 - contrast) * 127.5
+        img = img.linear(scale, offset).cast("uchar")
+
+    # Saturation: convert to LCH (luminance / chroma / hue), scale the
+    # chroma band, convert back to sRGB. LCH is perceptually uniform
+    # so scaling chroma reads as a natural saturation shift.
+    if saturation != 1.0:
+        lch = img.colourspace("lch")
+        l_band = lch.extract_band(0)
+        c_band = lch.extract_band(1) * saturation
+        h_band = lch.extract_band(2)
+        lch = l_band.bandjoin([c_band, h_band]).copy(interpretation="lch")
+        img = lch.colourspace("srgb").cast("uchar")
+
+    return img.write_to_buffer(".png")
+
+
 def export_custom(
     input_bytes: bytes,
     *,

@@ -18,6 +18,7 @@ import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 import { ScanPanel } from "@/components/scan/ScanPanel";
 import { ResizePanel } from "@/components/resize/ResizePanel";
 import { HistoryList } from "@/components/history/HistoryList";
+import { ModifyPanel } from "@/components/modify/ModifyPanel";
 
 import { createSession } from "@/lib/api";
 import type { ForkliftMeta, ResizeResult } from "@/lib/types";
@@ -124,6 +125,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   const tabs = [
     { id: "enhance" as const, label: "Enhance" },
     { id: "scan"    as const, label: "Scan",    count: enhancedAssets.length || undefined },
+    { id: "modify"  as const, label: "Modify",  count: resizeAssets.length || undefined },
     { id: "resize"  as const, label: "Resize",  count: resizeAssets.length || undefined },
     { id: "history" as const, label: "Your Photo Library" },
   ];
@@ -182,6 +184,16 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       return items.length > 0 ? [...prev, ...items] : prev;
     });
     setActiveTab("resize");
+  };
+
+  // Modify-tab Apply callback. The Modify panel takes the same
+  // resizeAssets pool as the Resize tab and replaces each item with
+  // the server-rendered modified version. Phase 1 is batch-only —
+  // every asset gets the same brightness/contrast/saturation. We
+  // overwrite resizeAssets wholesale (same length, same order) so
+  // the Resize tab picks up the modified versions automatically.
+  const handleModifyApplied = (next: PipelineAsset[]) => {
+    setResizeAssets(next);
   };
 
   // Shortcut path: send straight from Enhance to Resize, skipping the
@@ -260,6 +272,17 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onSendToResize={handleSendToResize}
                 autoAdvance={autoAdvance}
                 equipmentType={meta.equipmentType ?? "forklift"}
+              />
+            )}
+          </PanelSlot>
+
+          <PanelSlot active={activeTab === "modify"}>
+            {sessionId && (
+              <ModifyPanel
+                key={pipelineGeneration}
+                sessionId={sessionId}
+                resizeAssets={resizeAssets}
+                onModifyApplied={handleModifyApplied}
               />
             )}
           </PanelSlot>
