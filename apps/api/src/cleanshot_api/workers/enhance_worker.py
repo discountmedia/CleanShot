@@ -18,7 +18,6 @@ import asyncio
 import base64
 import logging
 import mimetypes
-import re
 import uuid
 from typing import Any
 
@@ -142,18 +141,22 @@ GROK_PROMPT_MAX_CHARS = 4000
 # bumps can move independently per surface if needed.
 ENHANCE_MODEL_IDEOGRAM = "ideogram-3.0"
 
-# Recraft V3 — 6th primary enhance generator. Product-photography-tuned
-# image-to-image edit model. Sync HTTP API (no async polling), bearer
-# auth, multipart form-data. Reference: docs.recraft.ai
-RECRAFT_IMAGE_TO_IMAGE_URL = "https://external.api.recraft.ai/v1/images/imageToImage"
-ENHANCE_MODEL_RECRAFT = "recraftv3"
-# `strength` parameter on Recraft's imageToImage controls how much the
-# output diverges from the source (0 = identical to source, 1 = ignore
-# source entirely). For our cheap-respray use case we want significant
-# but NOT extreme change — paint refresh + cleanup without redesigning
-# the unit. 0.45 puts us in the same "noticeable but identity-preserving"
-# zone the other providers land in.
-RECRAFT_STRENGTH = 0.45
+# Reve — 6th primary enhance generator (reinstated 2026-05-26 after a
+# brief absence). Synchronous JSON request, returns base64-encoded PNG +
+# credit accounting in the same response. Auth via Bearer token in
+# Authorization header. We pin to `latest-fast` (resolves to
+# reve-edit-fast@20251030) instead of `latest` for RPM headroom; the
+# full-quality model trips Reve's undocumented per-minute cap on small
+# bursts. Pin to a dated slug like "reve-edit-fast@20251030" if you
+# need frozen behaviour across versions.
+REVE_GENERATE_URL = "https://api.reve.com/v1/image/edit"
+ENHANCE_MODEL_REVE = "reve-edit-fast-latest"
+# Reve's edit_instruction field caps at 2560 chars — our stock prompt
+# can exceed that with all toggles on, so we truncate. The Reve docs
+# explicitly say "this instruction will be automatically enhanced by
+# the model", so a clean truncation loses less than it would on the
+# more literal providers.
+REVE_PROMPT_MAX_CHARS = 2560
 
 
 # Display name + per-type anatomy guardrail for the equipment-aware prompt.
@@ -907,124 +910,92 @@ async def _inpaint_with_ideogram(
         return fetched.content
 
 
-async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
+async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
     """
-    Recraft V3 image-to-image enhance. Sync HTTP API — POST multipart
-    form, response JSON includes a CDN URL for the rendered image; GET
-    that URL for the bytes.
+    Call Reve's /v1/image/edit endpoint synchronously and return raw PNG
+    bytes.
 
-    Style is hard-pinned to "realistic_image" (Recraft V3's
-    photorealistic preset) because we're cleaning up real forklift
-    photos for marketplace listings — illustration / vector / etc.
-    presets would be wrong for this use case.
+    Request shape (per https://docs.reve.com):
+      Authorization: Bearer <REVE_API_KEY>
+      Accept: application/json
+      body: {
+        edit_instruction: <prompt — capped to REVE_PROMPT_MAX_CHARS>,
+        reference_image:  <base64 source bytes>,
+        version:          "latest-fast",
+      }
 
-    `strength` controls how much the output diverges from the source.
-    See RECRAFT_STRENGTH constant for the calibration rationale.
+    Reve exposes its speed/quality knob via the `version` string itself,
+    not a separate `mode` field (a `mode` parameter 400s with
+    "One or more of your parameters is not recognized."). Valid versions
+    are `latest`, `latest-fast`, `reve-edit@20250915`, and
+    `reve-edit-fast@20251030`. We pin to `latest-fast` because the
+    full-quality model reliably trips Reve's undocumented per-minute
+    cap (~7 successful edits then a wall of 429s even with our
+    3-per-30s limiter in front). The fast variant is materially cheaper
+    in credits + has noticeably more RPM headroom.
+
+    Response shape (when accept=json):
+      {
+        image:              <base64 PNG>,
+        version:            "reve-edit@...",
+        content_violation:  bool,
+        request_id:         "rsid-...",
+        credits_used:       int,
+        credits_remaining:  int,
+      }
+
+    Aspect ratio is intentionally NOT sent — Reve defaults to the
+    reference image's aspect, which is what we want (we already cap
+    uploads at 1024 long-edge in compress.ts).
     """
     settings = get_settings()
-    # Recraft's gateway enforces `^Bearer [^\s]+$` on the Authorization
-    # header. A single embedded whitespace / newline / CR anywhere in
-    # the key value produces the otherwise-baffling 400:
-    #     "Authorization header format must be Bearer {token}"
-    # even though the format string on our side is correct — the bad
-    # byte is just invisible.
-    #
-    # Common ways this happens to a freshly-rotated secret:
-    #   - `echo "$KEY" | gcloud secrets versions add ...`   → trailing \n
-    #   - Pasting into Cloud Shell from a wrapped terminal  → embedded \r
-    #   - Copying through a tool that ANSI-escapes the value
-    #
-    # We previously only `.strip()`-ed (leading/trailing only). That
-    # didn't cover the middle. Real Recraft tokens are URL-safe
-    # alphanumeric/hex with no embedded whitespace, so nuke ALL
-    # whitespace defensively.
-    raw_key = settings.recraft_api_key or ""
-    recraft_key = re.sub(r"\s+", "", raw_key)
-    if not recraft_key:
+    if not settings.reve_api_key:
         raise RuntimeError(
-            "Recraft enhance requested but RECRAFT_API_KEY is not set. "
-            "Mount cleanshot-recraft-key:latest via Cloud Run "
-            "--set-secrets and re-deploy."
+            "Reve provider requested but REVE_API_KEY is not set. "
+            "Mount cleanshot-reve-key:latest via Cloud Run --set-secrets "
+            "and re-deploy."
         )
-    # Diagnostic breadcrumb on failure paths — length + first/last 4
-    # chars is enough to spot "the secret got truncated" or "the wrong
-    # value got stored" without leaking the key. Logged only on the
-    # failure branches below.
-    key_fingerprint = (
-        f"len={len(recraft_key)} "
-        f"prefix={recraft_key[:4]!r} "
-        f"suffix={recraft_key[-4:]!r} "
-        f"raw_len={len(raw_key)}"
-    )
 
-    image_bytes, ct = await _load_image_bytes(gcs_uri)
-    filename = "input.png" if "png" in ct else "input.jpg"
+    image_bytes, _ct = await _load_image_bytes(gcs_uri)
+    image_b64 = base64.b64encode(image_bytes).decode()
 
-    # Recraft's imageToImage caps the prompt at "length 1000". Our
-    # generic enhance prompt is ~200 lines of declarative scene prose
-    # tuned for Gemini — well over the ceiling. Recraft's validator
-    # likely counts UTF-8 BYTES (not chars), and our prompt contains
-    # em-dashes (— = 3 bytes), curly quotes, etc., so a 990-char string
-    # can easily encode to >1000 bytes. Cap by byte length to avoid the
-    # mismatch, decode with errors='ignore' to drop any half-multibyte
-    # char at the cut boundary.
-    #
-    # The real fix is a _build_recraft_prompt that authors short
-    # imperative product-photo prose suited to Recraft's preset
-    # (Open Work Item #1 in CLAUDE.md). This cap is the stopgap.
-    encoded = prompt.encode("utf-8")
-    if len(encoded) > 990:
-        logger.info(
-            "Recraft prompt truncated from %d bytes (%d chars) to 990 bytes",
-            len(encoded), len(prompt),
+    body = {
+        "edit_instruction": prompt[:REVE_PROMPT_MAX_CHARS],
+        "reference_image":  image_b64,
+        "version":          "latest-fast",
+    }
+    headers = {
+        "Authorization": f"Bearer {settings.reve_api_key}",
+        "Accept":        "application/json",
+        "Content-Type":  "application/json",
+    }
+
+    # Reve is synchronous — a single POST returns the rendered image.
+    # Timeout matches the OpenAI client (300s); Reve typically returns
+    # in 10-30s but we'd rather wait than fail.
+    async with httpx.AsyncClient(timeout=300.0) as client:
+        resp = await client.post(REVE_GENERATE_URL, headers=headers, json=body)
+
+    if resp.status_code >= 400:
+        # Surface the structured error fields if present.
+        try:
+            err = resp.json()
+            detail = err.get("message") or err.get("error_code") or resp.text[:300]
+        except Exception:
+            detail = resp.text[:300]
+        raise ValueError(f"Reve edit failed ({resp.status_code}): {detail}")
+
+    data = resp.json()
+    if data.get("content_violation"):
+        raise ValueError(
+            "Reve flagged the response as a content-policy violation; no image returned."
         )
-        prompt = encoded[:990].decode("utf-8", errors="ignore")
+    image_b64_out = data.get("image")
+    if not image_b64_out:
+        raise ValueError(f"Reve returned no image bytes: {data}")
 
-    # Body fields kept tight to what docs.recraft.ai shows for
-    # /images/imageToImage: prompt, strength, style. Model is implicit
-    # (V3 is the only model that supports imageToImage today; V4.1 is
-    # generations-only). `n` is omitted — not in the documented payload.
-    async with httpx.AsyncClient(timeout=180.0) as client:
-        resp = await client.post(
-            RECRAFT_IMAGE_TO_IMAGE_URL,
-            headers={"Authorization": f"Bearer {recraft_key}"},
-            data={
-                "prompt":   prompt,
-                "style":    "realistic_image",
-                "strength": str(RECRAFT_STRENGTH),
-            },
-            files={"image": (filename, image_bytes, ct)},
-        )
-        if resp.status_code >= 400:
-            logger.warning(
-                "Recraft enhance failed status=%d body=%r key_fp=%s",
-                resp.status_code, resp.text[:300], key_fingerprint,
-            )
-            raise ValueError(
-                f"Recraft enhance failed ({resp.status_code}): "
-                f"{resp.text[:300]}"
-            )
-        data = resp.json()
-        # Recraft V3 responses come back in either shape depending on
-        # the endpoint version. Both have been observed in the wild;
-        # defensively unwrap either.
-        items = data.get("data") or []
-        if items and isinstance(items, list):
-            item = items[0]
-            url = item.get("url") or item.get("image_url")
-        else:
-            inner = data.get("image") or {}
-            url = inner.get("url") if isinstance(inner, dict) else None
-        if not url:
-            raise ValueError(f"Recraft response missing image URL: {data}")
-
-        fetched = await client.get(url)
-        if fetched.status_code >= 400:
-            raise ValueError(
-                f"Recraft result GET failed ({fetched.status_code}): "
-                f"{fetched.text[:200]}"
-            )
-        return fetched.content
+    # Reve returns a base64-encoded PNG payload — decode once to raw bytes.
+    return base64.b64decode(image_b64_out)
 
 
 async def _erase_with_flux(
@@ -1461,12 +1432,14 @@ async def _run_enhance(
             output_bytes = await _tweak_with_ideogram(
                 payload.input_gcs_uri, prompt
             )
-        elif payload.provider == "recraft":
-            provider_model = ENHANCE_MODEL_RECRAFT
-            # Recraft V3 image-to-image. Sync HTTP, no async poll. No
-            # published per-minute cap; add a limiter if we observe
-            # 429s.
-            output_bytes = await _enhance_with_recraft(
+        elif payload.provider == "reve":
+            provider_model = ENHANCE_MODEL_REVE
+            # Reve's docs claim no per-minute cap but the API returns
+            # 429 RPM on bursts. Sliding-window throttle at 3 per 30s
+            # (≈ 6/min) — see main.py reve_image_rate_limiter setup
+            # comment for the calibration rationale.
+            await request.app.state.reve_image_rate_limiter.acquire()
+            output_bytes = await _enhance_with_reve(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default

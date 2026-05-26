@@ -63,6 +63,16 @@ PER_IMAGE_USD: dict[str, float] = {
     # Kontext Max sits at the higher-quality / higher-cost tier so a
     # ~$0.08 placeholder is reasonable until the first real invoice.
     "flux-1-kontext-max-edit":        0.080,
+
+    # Reve (https://api.reve.com). Reve bills credits — example response
+    # in their docs showed `credits_used: 30` against an initial 1000
+    # budget. Without a published USD-per-credit conversion we use a
+    # conservative $0.03/edit placeholder. After a few real runs,
+    # inspect the actual credits_used + Reve's pricing page and
+    # update this entry. The -fast variant we pin to is cheaper in
+    # credits than the full-quality model; refine once we have real
+    # invoices to calibrate against.
+    "reve-edit-fast-latest":          0.030,
 }
 
 

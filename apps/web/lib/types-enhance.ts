@@ -16,11 +16,11 @@
  * via the RunComfy proxy — same vendor as the erase tool but
  * different model family. Ideogram joined as a 5th option for its
  * typography strength on OEM decals + model numbers; same underlying
- * /v1/edit endpoint as the per-variant Ideogram Edit tool. Recraft V3
- * joined as a 6th option for its product-photography-tuned training
- * data — distinct "polished marketing stock" voice vs. the others.
+ * /v1/edit endpoint as the per-variant Ideogram Edit tool. Reve is
+ * the 6th option — synchronous /v1/image/edit; auto-enhances the
+ * instruction internally for a distinct creative voice.
  */
-export type EnhanceProvider = "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "recraft";
+export type EnhanceProvider = "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
@@ -28,7 +28,7 @@ export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "grok",
   "kontext",
   "ideogram",
-  "recraft",
+  "reve",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
@@ -37,7 +37,7 @@ export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
   grok:     "Grok",
   kontext:  "Kontext",
   ideogram: "Ideogram",
-  recraft:  "Recraft",
+  reve:     "Reve",
 };
 
 /**
@@ -51,7 +51,7 @@ export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
   grok:     "bg-orange-950/40 text-orange-300 border-orange-800",
   kontext:  "bg-purple-950/40 text-purple-300 border-purple-800",
   ideogram: "bg-cyan-950/40 text-cyan-300 border-cyan-800",
-  recraft:  "bg-pink-950/40 text-pink-300 border-pink-800",
+  reve:     "bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-800",
 };
 
 /**
@@ -102,10 +102,10 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     description: "Ideogram 3.0 /v1/edit — typography-strong, best when the unit has visible OEM decals, model numbers, or signage to preserve.",
     titleClass:  "text-cyan-300",
   },
-  recraft: {
-    speedLabel:  "Moderate",
-    speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
-    description: "Recraft V3 imageToImage — product-photography-tuned, polished marketing-stock voice. Distinct vibe vs. the more general-creative providers.",
-    titleClass:  "text-pink-300",
+  reve: {
+    speedLabel:  "Fast",
+    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
+    description: "Reve image-edit (latest-fast) — synchronous /v1/image/edit; auto-enhances the instruction internally for a distinct creative voice.",
+    titleClass:  "text-fuchsia-300",
   },
 };

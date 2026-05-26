@@ -20,7 +20,7 @@ interface ClientRequest {
   /** Accepted for caller convenience; we don't forward it. Project meta
    *  lands via /api/projects/save instead. */
   forkliftMeta?: Record<string, string>;
-  provider?: "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "recraft";
+  provider?: "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve";
   /**
    * Drives the per-type anatomy block in _build_enhance_prompt. Optional
    * — backend defaults to "forklift" when omitted.
