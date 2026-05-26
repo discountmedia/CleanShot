@@ -381,6 +381,23 @@ def _build_enhance_prompt(
             f"boom / chassis, capacity plates, VIN / serial numbers, "
             f"model badges, safety stickers, and data tags all stay."
         )
+    if toggles.showroom_floor:
+        extras.append(
+            "ADDITIONAL ACTION — SHOWROOM / STUDIO FLOOR. The source "
+            "photo was shot inside a studio or showroom with a solid-"
+            "colour seamless floor (white, light grey, charcoal, or "
+            "black). Clean that floor to a uniform studio finish: "
+            "remove tape marks, scuff streaks, footprints, tire "
+            "tracks, dust trails, debris, drop-cloth wrinkles, gaffer-"
+            "tape edges, and any visible seam between the floor and "
+            "the backdrop. Preserve the unit's own shadow exactly as "
+            "cast — do not soften or remove the contact shadow. Keep "
+            "the original floor colour and finish (do NOT recolour a "
+            "grey floor to white or vice versa). If the photo is NOT "
+            "a studio shot — outdoor yard, warehouse floor, parking "
+            "lot, gravel — this action is a no-op; leave the ground "
+            "as-is."
+        )
     if toggles.remove_rental_branding:
         extras.append(
             "ADDITIONAL ACTION — RENTAL-FLEET BRANDING. Remove decals, "

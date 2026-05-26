@@ -41,7 +41,7 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 
 ## Image-gen providers — what's wired and which model
 
-The Enhance tab exposes a **4-checkbox** model selector. Provider literal: `"gemini" | "openai" | "grok" | "kontext"`. All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`.
+The Enhance tab exposes a **5-checkbox** model selector. Provider literal: `"gemini" | "openai" | "grok" | "kontext" | "ideogram"`. All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`.
 
 | Provider | Model ID | SDK / endpoint | Key |
 |---|---|---|---|
@@ -49,15 +49,14 @@ The Enhance tab exposes a **4-checkbox** model selector. Provider literal: `"gem
 | `openai` | `gpt-5` + `image_generation` tool | `openai.AsyncOpenAI` `client.responses.create(..., tools=[{"type":"image_generation"}], tool_choice={"type":"image_generation"})`. gpt-5 reads the input image + prompt then dispatches the image_generation tool, which internally invokes a gpt-image-* model. The forced tool_choice ensures gpt-5 always generates (without it, gpt-5 can decide the prompt is conversational and reply with text). | `cleanshot-openai-key` |
 | `grok` | `grok-imagine-image-quality` at `https://api.x.ai/v1/images/edits` | OpenAI-compatible image-edit API, Bearer auth, prompt max 4000 chars | `cleanshot-xai-key` |
 | `kontext` | `flux-1-kontext/max/edit` at `https://model-api.runcomfy.net/v1/models/blackforestlabs/flux-1-kontext/max/edit` | **RunComfy async proxy**. POST returns `request_id`; poll `/v1/requests/{id}/status` until `"completed"`; GET `/v1/requests/{id}/result` for the rendered image URL. Body field is `image_url` (singular string — NOT `images` array; that's Seedream's shape). RunComfy fetches the image via HTTPS so we mint a short-lived signed GCS GET URL via `services.gcs.mint_read_url` and pass that. | `cleanshot-runcomfy-key` |
-
-**Ideogram is wired but NOT as a primary generator** — it's a per-variant edit/inpaint *tool* only, surfaced as the cyan ✎ and rose 🖌 icons on each completed enhance variant. See the "Per-variant edit tools" section below. Considered + declined as a 5th enhance generator (creative drift + redundant with Kontext for identity preservation).
+| `ideogram` | `ideogram-3.0` at `https://api.ideogram.ai/v1/edit` | **Sync** multipart endpoint. POST returns JSON with `data[0].url` already populated; GET that URL (no auth header) for the bytes. Reuses the per-variant `_tweak_with_ideogram` helper — primary-enhance path just passes the full enhance prompt instead of a short tweak instruction. Surfaces twice in the UI: as the cyan provider card on Enhance (full generation) AND as the cyan ✎ + rose 🖌 per-variant tools (targeted edit + mask inpaint). Wired 2026-05-26 (`ad7b202`). | `cleanshot-ideogram-key` |
 
 **Removed / repositioned providers (don't reintroduce as primary generators without reading why):**
 
 - `reve` — undocumented RPM ceiling, opaque credit pricing, fragile under bursts. Dropped 2026-05-20. `cleanshot-reve-key` secret can be deleted from Secret Manager.
 - `flux` (as generator) — repositioned as the **Erase tool only**, not a generation provider. See "Per-variant edit tools" below.
 - `runway gen-4` — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the cost, slower API. Filed as "considered, declined" so future-Claude doesn't re-litigate.
-- `recraft v3` — evaluated 2026-05-26 as the most promising 5th generator if we ever shop again (product-photography-tuned, transparent pricing). Not wired; on the open-work list.
+- `recraft v3` — evaluated 2026-05-26 as the most promising next-generator if we ever shop again (product-photography-tuned, transparent pricing). Not wired; on the open-work list.
 
 **Cleanup worker** (anomaly-guided regen from Scan tab) uses the same Gemini AI Studio client as enhance.
 
@@ -242,12 +241,13 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 8. **Ideogram rate limiter.** No limiter currently in place. Ideogram doesn't publish a per-minute cap; add a defensive `AsyncRateLimiter` if 429s start showing up in production logs.
 9. **Considered + declined (do not re-litigate without new evidence):**
    - **Runway Gen-4** — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the per-image cost, slower API. Note in CLAUDE.md to prevent re-evaluation.
-   - **Ideogram as a 5th enhance generator** — evaluated 2026-05-26, declined as primary generator (creative-drift risk). Wired instead as the per-variant Edit + Inpaint tools, which is where its typography strength actually pays off.
 10. **Recently shipped, archived from this list:**
-    - Ideogram dual tools (Edit + Inpaint) as siblings to Gemini Tweak + Flux Erase (`1babd98`).
+    - Ideogram as 5th primary enhance generator + per-variant Edit/Inpaint tools (`1babd98`, `7d9ef6b`, `d0e93b1`, `ad7b202`). Initially declined as a primary generator on 2026-05-26 (creative-drift concern); reversed same day after operator request — wired end-to-end to the existing `_tweak_with_ideogram` helper. The two per-variant tools (cyan ✎ Edit + rose 🖌 Inpaint) ship alongside it for targeted decal/text repair on completed variants.
+    - Showroom Floor toggle on Enhance advanced toggles (this commit). New `showroomFloor` field in `EnhanceToggles`; backend prompt block under `_build_enhance_prompt` adds a SHOWROOM / STUDIO FLOOR action when set. Off by default — applying it to non-studio photos would over-clean a real ground surface.
     - Branded collage composer (`/api/v1/export/branded-collage` + Create Image Collage UI + preview-with-save-to-history) (`0a0b48a`, `68cc6b0`).
     - Branded collage layout proportions matched to company's blue reference (`cc531e8`).
     - AI-disclaimer watermark with operator opt-in checkbox (`8de9203`).
+    - Auto-advance toggle disabled during beta (greyed-out in Header; `onClick` no-op; one-line restore when it graduates).
     - Phase 3 toggles auto-reset + re-enhance with new toggles (`4291f17`), per-provider scan isolation (`0747d14`), Erase tool + canvas UI (`acd33ec`, `5f9bffa`, `370d542`), Kontext via RunComfy as 4th generator (`008cd51`, `85f16cc`), OpenAI gpt-5 + image_generation tool migration (`fe02b3c`), Reve removed (`a0cedac`).
 
 ---

@@ -67,6 +67,14 @@ export interface EnhanceToggles {
    * Default ON because most batches are ex-rental units.
    */
   removeRentalBranding: boolean;
+  /**
+   * When true, the prompt's SHOWROOM / STUDIO FLOOR block kicks in —
+   * cleans tape marks, scuffs, footprints, and floor-to-backdrop seams
+   * from solid-colour studio floors. No-op if the photo isn't a studio
+   * shot. Off by default because applying it to outdoor / yard photos
+   * would over-clean a real ground surface.
+   */
+  showroomFloor: boolean;
 }
 
 export const DEFAULT_TOGGLES: EnhanceToggles = {
@@ -79,6 +87,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   shineTires: false,
   improveLighting: false,
   removeRentalBranding: true,    // default ON — most batches are ex-rental units
+  showroomFloor: false,          // off — operator opts in for actual studio shots
 };
 
 /**
@@ -98,6 +107,7 @@ export const ALL_OFF_TOGGLES: EnhanceToggles = {
   shineTires: false,
   improveLighting: false,
   removeRentalBranding: false,
+  showroomFloor: false,
 };
 
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
@@ -110,6 +120,7 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   shineTires: "Shine Tires",
   improveLighting: "Improve Lighting",
   removeRentalBranding: "Remove Rental-Fleet Branding",
+  showroomFloor: "Perfect Showroom Floor",
 };
 
 export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
@@ -122,6 +133,7 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   shineTires: "Extra emphasis on tire dressing on this image",
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
+  showroomFloor: "Studio / showroom shots only — cleans tape marks, scuffs, footprints, and floor-to-backdrop seams from solid-colour studio floors. No-op for outdoor / yard photos",
 };
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
