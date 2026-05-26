@@ -53,7 +53,7 @@ export function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setMenuOpen((v) => !v)}
-        className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 hover:border-zinc-600 transition-colors"
+        className="flex items-center gap-3 px-4 py-2 rounded-lg bg-zinc-900 border-2 border-zinc-800 hover:border-zinc-500 transition-colors"
         aria-expanded={menuOpen}
         aria-label="User menu"
       >
@@ -62,17 +62,17 @@ export function UserMenu() {
           <img
             src={avatarUrl}
             alt=""
-            className="w-6 h-6 rounded-full object-cover bg-zinc-800"
+            className="w-9 h-9 rounded-full object-cover bg-zinc-800"
           />
         ) : (
-          <span className="w-6 h-6 rounded-full bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white">
+          <span className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold text-white">
             {initials}
           </span>
         )}
-        <span className="text-xs text-zinc-300 max-w-[140px] truncate hidden sm:block">{email}</span>
-        <svg className={`w-3 h-3 text-zinc-500 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+        <span className="text-base text-zinc-100 font-bold max-w-45 truncate hidden sm:block">{email}</span>
+        <svg className={`w-4 h-4 text-zinc-300 transition-transform ${menuOpen ? "rotate-180" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
         </svg>
       </button>
 

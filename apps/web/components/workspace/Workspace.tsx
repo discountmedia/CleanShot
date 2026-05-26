@@ -13,7 +13,6 @@ import { useEffect, useState } from "react";
 
 import { Header } from "./Header";
 import { TabBar, type TabId } from "./TabBar";
-import { BatchContextStrip } from "./BatchContextStrip";
 
 import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 import { ScanPanel } from "@/components/scan/ScanPanel";
@@ -221,17 +220,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
 
       {/* Tab bar */}
       <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
-
-      {/* Batch context strip — "what am I working on" one-liner shown on the
-          Enhance tab only. Hidden on Scan/Resize/History to keep them
-          minimal; the meta + image count are the Enhance-flow signal. */}
-      {activeTab === "enhance" && (
-        <BatchContextStrip
-          make={meta.make}
-          model={meta.model}
-          count={enhanceFileCount}
-        />
-      )}
 
       {/* Body */}
       <main className="flex-1 px-6 py-6 space-y-6 max-w-screen-2xl w-full mx-auto">

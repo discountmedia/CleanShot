@@ -93,15 +93,15 @@ export function Header({
               aria-pressed={false}
               aria-disabled="true"
               title="Auto-advance — not available during beta testing"
-              className="group flex items-center gap-2.5 px-3 py-1.5 rounded-md border border-zinc-800 bg-zinc-950/60 cursor-not-allowed opacity-50"
+              className="group flex items-center gap-3 px-4 py-2 rounded-md border-2 border-zinc-800 bg-zinc-950/60 cursor-not-allowed opacity-50"
             >
-              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+              <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-500">
                 Auto-advance
               </span>
-              <span className="relative w-7 h-4 rounded-full bg-zinc-700">
-                <span className="absolute top-0.5 left-0.5 w-3 h-3 rounded-full bg-zinc-400" />
+              <span className="relative w-9 h-5 rounded-full bg-zinc-700">
+                <span className="absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-zinc-400" />
               </span>
-              <span className="text-[9px] uppercase tracking-[0.16em] font-bold text-amber-400 ml-1">
+              <span className="text-xs uppercase tracking-[0.14em] font-extrabold text-amber-400 ml-1">
                 Beta
               </span>
             </button>
@@ -109,14 +109,14 @@ export function Header({
           {isAdmin && (
             <Link
               href="/admin"
-              className="text-[10px] uppercase tracking-[0.18em] font-semibold text-red-400 hover:text-red-300 border border-red-900 hover:border-red-700 bg-red-950/30 px-2 py-1 rounded transition-colors"
+              className="text-sm uppercase tracking-[0.16em] font-bold text-red-300 hover:text-white border-2 border-red-700 hover:border-red-500 bg-red-950/40 hover:bg-red-900/50 px-4 py-2 rounded transition-colors"
               aria-label="Open admin dashboard"
             >
               Admin
             </Link>
           )}
           {bypassed ? (
-            <span className="text-[10px] uppercase tracking-[0.18em] text-amber-500 border border-amber-700 px-2 py-1 rounded">
+            <span className="text-sm uppercase tracking-[0.16em] font-bold text-amber-300 border-2 border-amber-700 px-4 py-2 rounded">
               Dev bypass
             </span>
           ) : (

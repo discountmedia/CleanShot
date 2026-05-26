@@ -80,8 +80,8 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     titleClass:  "text-emerald-300",
   },
   grok: {
-    speedLabel:  "Fastest",
-    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
+    speedLabel:  "Fast",
+    speedClass:  "text-emerald-300 bg-emerald-950/60 border-emerald-800",
     description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
     titleClass:  "text-orange-300",
   },
@@ -92,8 +92,8 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     titleClass:  "text-fuchsia-300",
   },
   ideogram: {
-    speedLabel:  "Moderate",
-    speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
+    speedLabel:  "Fastest",
+    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
     description: "Ideogram 3.0 /v1/edit — typography-strong, best when the unit has visible OEM decals, model numbers, or signage to preserve.",
     titleClass:  "text-cyan-300",
   },
