@@ -145,7 +145,7 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   shineTires: "Extra emphasis on tire dressing on this image",
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
-  showroomFloor: "Studio / showroom shots only — cleans tape marks, scuffs, footprints, and floor-to-backdrop seams from solid-colour studio floors. No-op for outdoor / yard photos",
+  showroomFloor: "Studio / showroom shots only — replaces the floor with a perfect, shiny, middle-gray polished-concrete finish. Preserves the unit's contact shadow. No-op for outdoor / yard photos",
   straightenHorizon: "Rotate the scene so the horizon / floor line is level, then crop the rotation wedges. Only flip for photos shot at a tilt — leaves correctly-framed photos alone",
 };
 
