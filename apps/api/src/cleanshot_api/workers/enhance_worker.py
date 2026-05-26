@@ -939,16 +939,18 @@ async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
     image_bytes, ct = await _load_image_bytes(gcs_uri)
     filename = "input.png" if "png" in ct else "input.jpg"
 
+    # Body fields kept tight to what docs.recraft.ai shows for
+    # /images/imageToImage: prompt, strength, style. Model is implicit
+    # (V3 is the only model that supports imageToImage today; V4.1 is
+    # generations-only). `n` is omitted — not in the documented payload.
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             RECRAFT_IMAGE_TO_IMAGE_URL,
             headers={"Authorization": f"Bearer {recraft_key}"},
             data={
                 "prompt":   prompt,
-                "model":    ENHANCE_MODEL_RECRAFT,
                 "style":    "realistic_image",
                 "strength": str(RECRAFT_STRENGTH),
-                "n":        "1",
             },
             files={"image": (filename, image_bytes, ct)},
         )
