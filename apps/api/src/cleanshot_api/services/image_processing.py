@@ -226,13 +226,24 @@ _COLLAGE_THUMB_H  = 135  # 540 / 4 (canvas height 540 = 4×135)
 def _cover_crop(input_bytes: bytes, target_w: int, target_h: int) -> "pyvips.Image":
     """
     Decode `input_bytes`, scale to cover the target box in both dims,
-    then smart-crop to the exact target size. Used as the per-cell
-    resize for the branded collage HERO cell — zoom-to-fill.
+    then crop to the exact target size. Used as the per-cell resize
+    for the branded collage hero AND thumb cells.
+
+    Crop mode: `interesting="centre"` (NOT "attention"). The
+    attention-based smartcrop biases toward the most visually-
+    interesting region — which on a forklift studio shot means it
+    centres on the unit and chops off the "Discount Forklift" banner
+    above and the floor below. Centre-crop preserves the source's
+    full vertical extent (banner + unit + floor) — matches the blue
+    Genie GS-1930 reference template the operator wants. This
+    matters more than picking the "best" sub-region because the
+    listing photos already have the unit composed in the centre of
+    the frame by the studio photographer.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
     scale = max(target_w / img.width, target_h / img.height)
     img = img.resize(scale, kernel="lanczos3")
-    img = img.smartcrop(target_w, target_h, interesting="attention")
+    img = img.smartcrop(target_w, target_h, interesting="centre")
     # Strip alpha if present so the JPEG encoder doesn't choke on RGBA.
     if img.bands == 4:
         img = img.extract_band(0, n=3)
