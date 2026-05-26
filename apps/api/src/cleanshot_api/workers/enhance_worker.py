@@ -960,19 +960,25 @@ async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
     image_bytes, ct = await _load_image_bytes(gcs_uri)
     filename = "input.png" if "png" in ct else "input.jpg"
 
-    # Recraft's imageToImage caps the prompt at 1000 chars. Our generic
-    # enhance prompt is ~200 lines of declarative scene prose tuned for
-    # Gemini Nano Banana edit semantics — way over Recraft's ceiling.
-    # Truncate at 990 to leave headroom for Recraft's own validator.
+    # Recraft's imageToImage caps the prompt at "length 1000". Our
+    # generic enhance prompt is ~200 lines of declarative scene prose
+    # tuned for Gemini — well over the ceiling. Recraft's validator
+    # likely counts UTF-8 BYTES (not chars), and our prompt contains
+    # em-dashes (— = 3 bytes), curly quotes, etc., so a 990-char string
+    # can easily encode to >1000 bytes. Cap by byte length to avoid the
+    # mismatch, decode with errors='ignore' to drop any half-multibyte
+    # char at the cut boundary.
+    #
     # The real fix is a _build_recraft_prompt that authors short
-    # imperative product-photo prose (Open Work Item #1 in CLAUDE.md);
-    # this cap is the stopgap until that lands.
-    if len(prompt) > 990:
+    # imperative product-photo prose suited to Recraft's preset
+    # (Open Work Item #1 in CLAUDE.md). This cap is the stopgap.
+    encoded = prompt.encode("utf-8")
+    if len(encoded) > 990:
         logger.info(
-            "Recraft prompt truncated from %d to 990 chars (vendor cap=1000)",
-            len(prompt),
+            "Recraft prompt truncated from %d bytes (%d chars) to 990 bytes",
+            len(encoded), len(prompt),
         )
-        prompt = prompt[:990]
+        prompt = encoded[:990].decode("utf-8", errors="ignore")
 
     # Body fields kept tight to what docs.recraft.ai shows for
     # /images/imageToImage: prompt, strength, style. Model is implicit
