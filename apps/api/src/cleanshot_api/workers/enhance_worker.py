@@ -381,20 +381,6 @@ def _build_enhance_prompt(
             f"boom / chassis, capacity plates, VIN / serial numbers, "
             f"model badges, safety stickers, and data tags all stay."
         )
-    if toggles.straighten_horizon:
-        extras.append(
-            "ADDITIONAL ACTION — STRAIGHTEN HORIZON. The source photo "
-            "is rotated / tilted off-level. Rotate the entire scene so "
-            "the horizon (the ground plane / floor line / backdrop "
-            "seam at the base of the wall) is perfectly horizontal in "
-            "the output. After rotating, crop the resulting frame to "
-            "remove any triangular black corners introduced by the "
-            "rotation — the final image must still cover the full "
-            "subject with no empty wedges. Preserve everything else: "
-            "subject identity, perspective relative to the camera, "
-            "lighting, background environment, and overall framing "
-            "scale. This overrides the default no-rotate guardrail."
-        )
     if toggles.showroom_floor:
         extras.append(
             "ADDITIONAL ACTION — SHOWROOM / STUDIO FLOOR. The source "
@@ -447,26 +433,6 @@ def _build_enhance_prompt(
         )
 
     # ── Hard guardrails (scene + anatomy preservation) ─────────────────
-    # The last guardrail clause flips based on toggles.straighten_horizon:
-    # rotate + horizon-leveling are normally prohibited (to preserve the
-    # operator's framing) BUT the straighten-horizon toggle is the
-    # explicit opt-in to relax that single rule. Crop is still prohibited
-    # in the guardrail (the toggle's own action handles the rotation-
-    # wedge crop separately).
-    if toggles.straighten_horizon:
-        framing_clause = (
-            f"• Never isolate the {eq_display} on a white / studio / "
-            f"gradient backdrop. No zoom or re-posing. ROTATION + "
-            f"HORIZON-LEVELING IS PERMITTED FOR THIS IMAGE — see "
-            f"ADDITIONAL ACTION above; crop only to remove the wedges "
-            f"the rotation introduces."
-        )
-    else:
-        framing_clause = (
-            f"• Never isolate the {eq_display} on a white / studio / "
-            f"gradient backdrop. No zoom, crop, rotate, horizon-"
-            f"leveling, or re-posing."
-        )
     sections.append(
         f"GUARDRAILS — hard constraints:\n"
         f"• Make, model, year, trim level. {eq_anatomy}\n"
@@ -474,7 +440,8 @@ def _build_enhance_prompt(
         f"any bolt-on hardware that is not already in the source.\n"
         f"• Do not introduce damage, dents, broken parts, or wear that "
         f"was not in the source image.\n"
-        f"{framing_clause}"
+        f"• Never isolate the {eq_display} on a white / studio / gradient "
+        f"backdrop. No zoom, crop, rotate, horizon-leveling, or re-posing."
     )
 
     return "\n\n".join(sections)

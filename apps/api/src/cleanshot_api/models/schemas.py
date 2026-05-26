@@ -235,13 +235,6 @@ class EnhanceToggles(BaseModel):
     # it on for actual studio shots (it'll over-clean a real yard floor
     # if mis-applied).
     showroom_floor: bool = Field(False, alias="showroomFloor")
-    # When the source photo was shot at a tilt, tells the enhance
-    # prompt to rotate the entire scene so the horizon / ground line
-    # is level, then crop the rotation wedges. Off by default — flipping
-    # it on overrides the GUARDRAILS clause that normally prohibits
-    # horizon-leveling (to preserve original framing on non-crooked
-    # photos).
-    straighten_horizon: bool = Field(False, alias="straightenHorizon")
 
 
 class EnhanceResponse(BaseModel):
