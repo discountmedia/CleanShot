@@ -388,6 +388,27 @@ class ExportCollageRequest(BaseModel):
     ai_disclaimer: bool = False
 
 
+class ExportBrandedCollageRequest(BaseModel):
+    """
+    BRANDED COLLAGE preset — composes the marketing-layout collage that
+    Discount Forklift uses on listing sites: 1 large hero on the left
+    (640×580) + 4 thumbnails stacked on the right (384×145 each), final
+    canvas 1024×580, JPEG ≤99 kb.
+
+    `asset_ids` must contain EXACTLY 5 ids in render order: index 0 is
+    the hero, indices 1-4 fill the thumbnail strip top-to-bottom.
+
+    `equipment_type` is informational — drives the output filename
+    suffix so operators can tell forklift / scissor / telehandler
+    collages apart in their downloads folder. The layout itself is the
+    same across all three.
+    """
+    session_id: uuid.UUID
+    equipment_type: Literal["forklift", "scissor_lift", "telehandler"]
+    asset_ids: list[uuid.UUID] = Field(min_length=5, max_length=5)
+    ai_disclaimer: bool = False
+
+
 class ExportCustomRequest(BaseModel):
     """Custom export — crop-not-letterbox enforced absolutely."""
     session_id: uuid.UUID

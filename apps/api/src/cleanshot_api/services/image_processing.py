@@ -179,6 +179,109 @@ def export_collage(input_bytes: bytes, *, ai_disclaimer: bool = False) -> Export
     return ExportResult(data=data, content_type="image/jpeg", size_warning=size_warning)
 
 
+# ─── Branded collage composer ─────────────────────────────────────────────────
+#
+# Discount Forklift's marketing-layout collage: one large hero on the left
+# + four supporting thumbnails stacked on the right. Final canvas is
+# 1024×580 (long edge = 1024) and the JPEG quality loop targets ≤99 kb.
+#
+# Layout, edge-to-edge (no gaps):
+#
+#   ┌──────────────────────────────────┬──────────────────────────┐
+#   │                                  │      thumb 1 (384×145)   │
+#   │                                  ├──────────────────────────┤
+#   │       hero (640×580)             │      thumb 2 (384×145)   │
+#   │                                  ├──────────────────────────┤
+#   │                                  │      thumb 3 (384×145)   │
+#   │                                  ├──────────────────────────┤
+#   │                                  │      thumb 4 (384×145)   │
+#   └──────────────────────────────────┴──────────────────────────┘
+#                                                  1024 × 580
+#
+# Each cell is cover-cropped (zoom-to-fill) so the cell is fully filled
+# with no letterboxing. smartcrop with `attention` interest picks the
+# most visually-important region — same heuristic as export_pro.
+
+_COLLAGE_CANVAS_W = 1024
+_COLLAGE_CANVAS_H = 580
+_COLLAGE_HERO_W   = 640
+_COLLAGE_HERO_H   = 580
+_COLLAGE_THUMB_W  = 384  # 1024 - 640
+_COLLAGE_THUMB_H  = 145  # 580 / 4 (last row gets +0; canvas height 580 = 4×145)
+
+
+def _cover_crop(input_bytes: bytes, target_w: int, target_h: int) -> "pyvips.Image":
+    """
+    Decode `input_bytes`, scale to cover the target box in both dims,
+    then smart-crop to the exact target size. Used as the per-cell
+    resize for the branded collage composer.
+    """
+    img = pyvips.Image.new_from_buffer(input_bytes, "")
+    scale = max(target_w / img.width, target_h / img.height)
+    img = img.resize(scale, kernel="lanczos3")
+    img = img.smartcrop(target_w, target_h, interesting="attention")
+    # Strip alpha if present so the JPEG encoder doesn't choke on RGBA.
+    if img.bands == 4:
+        img = img.extract_band(0, n=3)
+    return img.copy(interpretation="srgb")
+
+
+def compose_branded_collage(
+    *,
+    hero_bytes:    bytes,
+    thumb_bytes:   list[bytes],
+    ai_disclaimer: bool = False,
+) -> ExportResult:
+    """
+    Compose the 1-hero + 4-thumb marketing collage. `thumb_bytes` MUST
+    have exactly 4 entries; the schema caller enforces this. Output is a
+    single JPEG, 1024×580, iteratively re-encoded until ≤99 kb (same
+    quality loop as export_collage).
+
+    When `ai_disclaimer=True`, burns the AI_DISCLAIMER_WATERMARK string
+    into the bottom-right corner after composition.
+    """
+    if len(thumb_bytes) != 4:
+        raise ValueError(
+            f"compose_branded_collage expects 4 thumbnails, got {len(thumb_bytes)}",
+        )
+
+    # Start from a black canvas of the final dimensions — pyvips
+    # `black()` makes a 1-band image; embed into 3 RGB bands so the
+    # subsequent composite-from-RGB works without band-count surprises.
+    canvas = pyvips.Image.black(_COLLAGE_CANVAS_W, _COLLAGE_CANVAS_H, bands=3).copy(
+        interpretation="srgb",
+    )
+
+    # Hero on the left.
+    hero = _cover_crop(hero_bytes, _COLLAGE_HERO_W, _COLLAGE_HERO_H)
+    canvas = canvas.insert(hero, 0, 0)
+
+    # Thumbnail strip on the right — top to bottom.
+    for i, raw in enumerate(thumb_bytes):
+        thumb = _cover_crop(raw, _COLLAGE_THUMB_W, _COLLAGE_THUMB_H)
+        canvas = canvas.insert(thumb, _COLLAGE_HERO_W, i * _COLLAGE_THUMB_H)
+
+    if ai_disclaimer:
+        canvas = _apply_disclaimer_watermark(canvas)
+
+    # JPEG quality iteration loop — mirror export_collage's 99 kb target.
+    quality = 85
+    max_size = 99 * 1024
+    data = b""
+    size_warning = False
+    for _attempt in range(10):
+        data = canvas.write_to_buffer(".jpg", Q=quality, optimize_coding=True)
+        if len(data) <= max_size:
+            break
+        quality -= 8
+        if quality < 20:
+            size_warning = True
+            break
+
+    return ExportResult(data=data, content_type="image/jpeg", size_warning=size_warning)
+
+
 def export_custom(
     input_bytes: bytes,
     *,

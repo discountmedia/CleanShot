@@ -253,6 +253,48 @@ export interface ExportCollageResult {
   warning: string | null;
 }
 
+// ─── Export (BRANDED COLLAGE: composed 1-hero + 4-thumb marketing layout) ───
+
+export interface BrandedCollageResult {
+  blob: Blob;
+  filename: string;
+  warning: string | null;
+}
+
+/**
+ * POST /api/export/branded-collage → composes a 1024×580 marketing
+ * collage from exactly 5 source asset_ids. The first asset becomes the
+ * hero (left, 640×580); the next four fill the thumbnail strip on the
+ * right (384×145 each). Backend pyvips does the layout + JPEG
+ * compression to ≤99 KB.
+ */
+export async function createBrandedCollage(params: {
+  sessionId: string;
+  /** "forklift" | "scissor_lift" | "telehandler" — drives output filename suffix. */
+  equipmentType: "forklift" | "scissor_lift" | "telehandler";
+  /** Exactly 5 asset IDs. First = hero; next 4 = thumbnail strip top-to-bottom. */
+  assetIds: string[];
+  /** When true, backend burns the AI-disclaimer watermark into the bottom-right. */
+  aiDisclaimer?: boolean;
+}): Promise<BrandedCollageResult> {
+  const res = await fetch("/api/export/branded-collage", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`POST /api/export/branded-collage → ${res.status}: ${text}`);
+  }
+  const disposition = res.headers.get("content-disposition") ?? "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match?.[1] ?? "cleanshot_collage.jpg";
+  const warning = res.headers.get("x-warning");
+  const blob = await res.blob();
+  return { blob, filename, warning };
+}
+
 /**
  * POST /api/export/collage → returns the binary response as a Blob so the
  * caller can trigger a browser download. Used for pre-composed multi-image

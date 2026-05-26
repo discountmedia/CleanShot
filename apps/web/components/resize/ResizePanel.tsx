@@ -27,6 +27,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 import {
   approveSet,
+  createBrandedCollage,
   exportCollageAsBlob,
   exportProPreviewStream,
   getSignedUploadUrl,
@@ -237,6 +238,9 @@ export function ResizePanel({
   const [isSaved,            setIsSaved]            = useState(false);
   const [isExporting,        setIsExporting]        = useState(false);
   const [isExportingCollage, setIsExportingCollage] = useState(false);
+  const [isCreatingCollage,  setIsCreatingCollage]  = useState(false);
+  const [collageEquipmentType, setCollageEquipmentType] =
+    useState<"forklift" | "scissor_lift" | "telehandler" | null>(null);
   const [error,              setError]              = useState<string | null>(null);
   // Operator toggle — when on, the export pipeline burns a very small,
   // semi-transparent disclaimer into the bottom-right corner of every
@@ -557,6 +561,41 @@ export function ResizePanel({
       setError(err instanceof Error ? err.message : "Collage export failed");
     } finally {
       setIsExportingCollage(false);
+    }
+  };
+
+  // ─── Branded collage ──────────────────────────────────────────────────────
+  //
+  // Builds the 5-image marketing collage shown to operators in the spec
+  // screenshots — 1 large hero on the left + 4 thumbnails stacked on the
+  // right, 1024×580 canvas, ≤99 KB JPEG. The first asset becomes the
+  // hero; the next four become the thumb strip. Backend pyvips does the
+  // composition (no client-side canvas work), so the output bytes match
+  // exactly what gets returned to other channels.
+  const handleCreateBrandedCollage = async () => {
+    if (!collageEquipmentType || allAssets.length < 5 || !isSaved) return;
+    setError(null);
+    setIsCreatingCollage(true);
+    try {
+      const { blob, filename, warning } = await createBrandedCollage({
+        sessionId,
+        equipmentType: collageEquipmentType,
+        assetIds:      allAssets.slice(0, 5).map((a) => a.assetId),
+        aiDisclaimer:  addAiDisclaimer,
+      });
+      if (warning) setAnyWarning(true);
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objectUrl;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(objectUrl);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Collage creation failed");
+    } finally {
+      setIsCreatingCollage(false);
     }
   };
 
@@ -1078,6 +1117,86 @@ export function ResizePanel({
                 : `Collage export — 1024 long edge (${allAssets.length})`}
         </button>
       </div>
+
+      {/* ── Create branded collage ── */}
+      {/* Composes the first 5 queued images into the marketing-layout
+          collage (1 hero + 4 thumb strip on the right, 1024×580, ≤99 KB
+          JPEG). Equipment-type pick is required so the operator can't
+          accidentally publish a collage labelled as the wrong category. */}
+      <section className="rounded-xl border-2 border-emerald-700 bg-emerald-950/20 p-5 space-y-4">
+        <div className="space-y-1.5">
+          <h3 className="text-lg font-bold text-emerald-100 uppercase tracking-[0.12em]">
+            Create branded collage
+          </h3>
+          <p className="text-base text-emerald-50 leading-relaxed">
+            Composes your first 5 queued images into the marketing-layout
+            collage — one large hero shot on the left, four supporting
+            thumbnails stacked on the right. Output is 1024 px on the long
+            edge, ≤99 KB JPEG, ready for marketplace upload.
+          </p>
+        </div>
+
+        {/* Equipment-type gate — the user must affirmatively pick what
+            kind of unit this collage represents before the button is
+            clickable. Defaults to nothing so the choice is deliberate. */}
+        <div className="space-y-2">
+          <span className="text-sm uppercase tracking-[0.16em] font-bold text-emerald-100">
+            What kind of equipment is this?
+          </span>
+          <div className="flex flex-wrap gap-2">
+            {([
+              { id: "forklift",     label: "Forklift" },
+              { id: "scissor_lift", label: "Scissor Lift" },
+              { id: "telehandler",  label: "Telehandler" },
+            ] as const).map((opt) => {
+              const selected = collageEquipmentType === opt.id;
+              return (
+                <button
+                  key={opt.id}
+                  type="button"
+                  onClick={() => setCollageEquipmentType(opt.id)}
+                  aria-pressed={selected}
+                  className={`text-base font-bold uppercase tracking-[0.14em] px-4 py-2.5 rounded-md border-2 transition-colors ${
+                    selected
+                      ? "border-emerald-400 bg-emerald-600 text-white"
+                      : "border-emerald-800 bg-zinc-900 text-emerald-100 hover:border-emerald-500"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <button
+          onClick={handleCreateBrandedCollage}
+          disabled={
+            !collageEquipmentType ||
+            allAssets.length < 5 ||
+            !isSaved ||
+            isCreatingCollage ||
+            isExporting ||
+            isExportingCollage
+          }
+          className={`
+            w-full py-3 px-6 rounded-xl font-bold text-base uppercase tracking-[0.12em] transition-all
+            ${collageEquipmentType && allAssets.length >= 5 && isSaved && !isCreatingCollage && !isExporting && !isExportingCollage
+              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40"
+              : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+          `}
+        >
+          {isCreatingCollage
+            ? "Composing collage…"
+            : !isSaved
+              ? "Save project first"
+              : !collageEquipmentType
+                ? "Pick equipment type to continue"
+                : allAssets.length < 5
+                  ? `Need 5 images (have ${allAssets.length})`
+                  : "Create image collage"}
+        </button>
+      </section>
 
       {/* ── Streaming progress ── */}
       {isExporting && (
