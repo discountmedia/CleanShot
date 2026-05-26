@@ -193,7 +193,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
                 placeholder={placeholder}
                 className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
               />
-              <span className="text-sm text-zinc-200 font-medium leading-snug">
+              <span className="text-base text-yellow-200 font-semibold leading-relaxed">
                 {hint}
               </span>
             </label>

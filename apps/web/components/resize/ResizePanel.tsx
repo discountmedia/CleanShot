@@ -173,7 +173,7 @@ function TextField({
         disabled={disabled}
         className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition disabled:opacity-50"
       />
-      {hint && <span className="text-sm text-zinc-200 font-medium leading-snug">{hint}</span>}
+      {hint && <span className="text-base text-yellow-200 font-semibold leading-relaxed">{hint}</span>}
     </label>
   );
 }
