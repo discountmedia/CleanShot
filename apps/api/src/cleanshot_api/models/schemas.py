@@ -240,18 +240,28 @@ class EraseRequest(BaseModel):
     The operator clicks "Erase" on a completed enhance variant, paints a
     binary mask in the browser, and submits both the source asset_id
     (the variant they want to clean up) and the mask as a base64 PNG.
-    `instruction` is optional — when omitted, BFL falls back to its
-    default "fill with plausible background" behavior.
+    `instruction` is optional — when omitted, the vendor falls back to
+    its default "fill with plausible background" behavior.
+
+    `tool` chooses the backend:
+      • "flux"     → BFL flux-tools/erase-v1 (default; identity-preserving)
+      • "ideogram" → Ideogram 3.0 inpaint (text-rendering specialist;
+                     stronger for OEM decals, model numbers, capacity
+                     stickers, signage)
     """
     session_id: uuid.UUID
     asset_id: uuid.UUID
     # Base64-encoded PNG of the mask. White (>= 128) pixels mark areas
     # to erase, black pixels mark areas to preserve. Mask dimensions
     # must match the source image; the worker resizes if not.
+    # NOTE: Ideogram's API inverts this convention (black = edit). The
+    # worker handles the inversion server-side so the frontend can keep
+    # producing the same WHITE=erase mask for either tool.
     mask_png_base64: str
     # Optional natural-language instruction for what should fill the
-    # erased region. Leave empty for BFL's default behaviour.
+    # erased region. Leave empty for the vendor's default behaviour.
     instruction: str | None = None
+    tool: Literal["flux", "ideogram"] = "flux"
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -266,6 +276,7 @@ class EraseTaskPayload(BaseModel):
     input_gcs_uri: str
     mask_png_base64: str
     instruction: str | None = None
+    tool: Literal["flux", "ideogram"] = "flux"
 
 
 class TweakRequest(BaseModel):
@@ -274,20 +285,22 @@ class TweakRequest(BaseModel):
 
     Operator clicks Tweak on a completed enhance variant, types a
     natural-language instruction ("remove the propane tank from the
-    side panel", "add some surface scuffs to the hood"), submits. The
-    backend dispatches variant + instruction to Gemini Flash Image
-    (same model as primary enhance, different intent — conversational
-    edit rather than full enhance).
+    side panel", "add some surface scuffs to the hood"), submits.
 
-    No mask: this is the conversational sibling to /enhance/erase.
-    Use Erase for surgical mask-based removal where the area to change
-    is visually obvious; use Tweak for everything else.
+    `tool` chooses the backend:
+      • "gemini"   → Gemini Flash Image (default; conversational, fast)
+      • "ideogram" → Ideogram 3.0 /v1/edit (typography-strong; better
+                     for decal restoration and embedded-text edits)
+
+    No mask: this is the conversational sibling to /enhance/erase. Use
+    Erase for surgical mask-based removal; Tweak for everything else.
     """
     session_id: uuid.UUID
     asset_id: uuid.UUID
-    # 600-char cap is more than enough — Gemini Flash Image's edit
-    # capability responds well to short imperative instructions.
+    # 600-char cap is more than enough — both Gemini and Ideogram
+    # respond best to short imperative instructions.
     instruction: str = Field(min_length=3, max_length=600)
+    tool: Literal["gemini", "ideogram"] = "gemini"
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -301,6 +314,7 @@ class TweakTaskPayload(BaseModel):
     input_asset_id: uuid.UUID
     input_gcs_uri: str
     instruction: str
+    tool: Literal["gemini", "ideogram"] = "gemini"
 
 
 class ScanBatchRequest(BaseModel):

@@ -98,6 +98,13 @@ class Settings(BaseSettings):
     # AI-Studio-backed genai client built in main.py's lifespan.
     # Mounted from GCP Secret Manager (cleanshot-gemini-key) on Cloud Run.
     gemini_api_key: str = Field("", alias="GEMINI_API_KEY")
+    # Ideogram (https://api.ideogram.ai) — used for the per-variant
+    # Edit-with-prompt tool (POST /v1/edit, text-only sibling to Gemini
+    # Tweak) and the Inpaint-with-prompt tool (POST /v1/ideogram-v3/inpaint,
+    # mask-based sibling to Flux Erase). Sync API; the worker calls it
+    # directly without async polling. Mounted from GCP Secret Manager
+    # (cleanshot-ideogram-key) on Cloud Run.
+    ideogram_api_key: str = Field("", alias="IDEOGRAM_API_KEY")
 
     # -------------------------------------------------------------------------
     # Operational

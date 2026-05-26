@@ -320,6 +320,28 @@ export function EnhancePanel({
     sourceUrl:     string;
   } | null>(null);
 
+  // Per-variant Ideogram edit dialog state — same shape as tweakTarget
+  // but routes the request through Ideogram /v1/edit instead of Gemini.
+  // The dialog component is the TweakDialog with tool="ideogram".
+  const [ideogramEditTarget, setIdeogramEditTarget] = useState<{
+    fileId:        string;
+    provider:      EnhanceProvider;
+    jobId:         string;
+    sourceAssetId: string;
+    sourceUrl:     string;
+  } | null>(null);
+
+  // Per-variant Ideogram inpaint dialog state — mask-based sibling to
+  // eraseTarget but routed through Ideogram 3.0 inpaint. Shares the
+  // EraseDialog component with tool="ideogram".
+  const [ideogramInpaintTarget, setIdeogramInpaintTarget] = useState<{
+    fileId:        string;
+    provider:      EnhanceProvider;
+    jobId:         string;
+    sourceAssetId: string;
+    sourceUrl:     string;
+  } | null>(null);
+
   // 1s tick used by VariantThumb to render the elapsed-vs-expected
   // progress estimate. Off when nothing is in flight to avoid burning
   // a wakeup every second on an idle tab.
@@ -929,6 +951,101 @@ export function EnhancePanel({
     [tweakTarget],
   );
 
+  // Same lookup-and-open shape as handleOpenTweak, just lights up the
+  // Ideogram-variant of the dialog (tool="ideogram"). Separate state
+  // slot so only one dialog opens at a time — opening the Ideogram
+  // editor doesn't tear down a half-typed Gemini Tweak instruction.
+  const handleOpenIdeogramEdit = useCallback(
+    (fileId: string, provider: EnhanceProvider) => {
+      const jobId = enhanceJobs.get(fileId)?.get(provider);
+      if (!jobId) return;
+      const completedItem = completed.get(jobId);
+      if (!completedItem) return;
+      setIdeogramEditTarget({
+        fileId,
+        provider,
+        jobId,
+        sourceAssetId: completedItem.outputAssetId,
+        sourceUrl:     completedItem.outputUrl,
+      });
+    },
+    [enhanceJobs, completed],
+  );
+
+  const handleIdeogramEditAccept = useCallback(
+    (result: TweakDialogResult) => {
+      if (!ideogramEditTarget) return;
+      const { jobId } = ideogramEditTarget;
+      setCompleted((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, {
+          ...cur,
+          outputAssetId: result.outputAssetId,
+          outputUrl:     result.outputUrl,
+        });
+        return next;
+      });
+      setJobStateMap((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, { ...cur, outputAssetId: result.outputAssetId });
+        return next;
+      });
+      setIdeogramEditTarget(null);
+    },
+    [ideogramEditTarget],
+  );
+
+  // Ideogram inpaint — mask-based sibling to Erase, same patch-in-place
+  // semantics. The EraseDialog renders the canvas and exports the mask;
+  // tool="ideogram" tells the worker to route through Ideogram inpaint.
+  const handleOpenIdeogramInpaint = useCallback(
+    (fileId: string, provider: EnhanceProvider) => {
+      const jobId = enhanceJobs.get(fileId)?.get(provider);
+      if (!jobId) return;
+      const completedItem = completed.get(jobId);
+      if (!completedItem) return;
+      setIdeogramInpaintTarget({
+        fileId,
+        provider,
+        jobId,
+        sourceAssetId: completedItem.outputAssetId,
+        sourceUrl:     completedItem.outputUrl,
+      });
+    },
+    [enhanceJobs, completed],
+  );
+
+  const handleIdeogramInpaintAccept = useCallback(
+    (result: EraseDialogResult) => {
+      if (!ideogramInpaintTarget) return;
+      const { jobId } = ideogramInpaintTarget;
+      setCompleted((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, {
+          ...cur,
+          outputAssetId: result.outputAssetId,
+          outputUrl:     result.outputUrl,
+        });
+        return next;
+      });
+      setJobStateMap((prev) => {
+        const cur = prev.get(jobId);
+        if (!cur) return prev;
+        const next = new Map(prev);
+        next.set(jobId, { ...cur, outputAssetId: result.outputAssetId });
+        return next;
+      });
+      setIdeogramInpaintTarget(null);
+    },
+    [ideogramInpaintTarget],
+  );
+
   // ─── Derived: SourceCompareCard inputs ─────────────────────────────────
 
   const variantsByFile = useMemo(() => {
@@ -1103,24 +1220,48 @@ export function EnhancePanel({
         </p>
       </TipBanner>
 
-      {/* ── Per-variant Erase dialog (singleton) ── */}
+      {/* ── Per-variant Erase dialog (singleton) — Flux backend ── */}
       <EraseDialog
         open={eraseTarget !== null}
         sessionId={sessionId}
         sourceAssetId={eraseTarget?.sourceAssetId ?? ""}
         sourceImageUrl={eraseTarget?.sourceUrl ?? ""}
+        tool="flux"
         onClose={() => setEraseTarget(null)}
         onAccept={handleEraseAccept}
       />
 
-      {/* ── Per-variant Tweak dialog (singleton) ── */}
+      {/* ── Per-variant Ideogram inpaint dialog (singleton) ── */}
+      <EraseDialog
+        open={ideogramInpaintTarget !== null}
+        sessionId={sessionId}
+        sourceAssetId={ideogramInpaintTarget?.sourceAssetId ?? ""}
+        sourceImageUrl={ideogramInpaintTarget?.sourceUrl ?? ""}
+        tool="ideogram"
+        onClose={() => setIdeogramInpaintTarget(null)}
+        onAccept={handleIdeogramInpaintAccept}
+      />
+
+      {/* ── Per-variant Tweak dialog (singleton) — Gemini backend ── */}
       <TweakDialog
         open={tweakTarget !== null}
         sessionId={sessionId}
         sourceAssetId={tweakTarget?.sourceAssetId ?? ""}
         sourceImageUrl={tweakTarget?.sourceUrl ?? ""}
+        tool="gemini"
         onClose={() => setTweakTarget(null)}
         onAccept={handleTweakAccept}
+      />
+
+      {/* ── Per-variant Ideogram edit dialog (singleton) ── */}
+      <TweakDialog
+        open={ideogramEditTarget !== null}
+        sessionId={sessionId}
+        sourceAssetId={ideogramEditTarget?.sourceAssetId ?? ""}
+        sourceImageUrl={ideogramEditTarget?.sourceUrl ?? ""}
+        tool="ideogram"
+        onClose={() => setIdeogramEditTarget(null)}
+        onAccept={handleIdeogramEditAccept}
       />
 
       {/* ── Headless pollers ── */}
@@ -1501,6 +1642,8 @@ export function EnhancePanel({
                   onRetry={(provider) => retryProvider(f, provider)}
                   onErase={(provider) => handleOpenErase(f.id, provider)}
                   onTweak={(provider) => handleOpenTweak(f.id, provider)}
+                  onIdeogramEdit={(provider) => handleOpenIdeogramEdit(f.id, provider)}
+                  onIdeogramInpaint={(provider) => handleOpenIdeogramInpaint(f.id, provider)}
                 />
               );
             })}

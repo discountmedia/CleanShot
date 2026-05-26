@@ -51,6 +51,10 @@ interface EraseDialogProps {
   sourceAssetId: string;
   /** Source variant's signed GET URL, displayed as the canvas background. */
   sourceImageUrl: string;
+  /** Vendor backend — "flux" (default) or "ideogram". Picks the API the
+   *  worker calls plus drives the dialog's subtitle/accent copy so the
+   *  operator knows which model their mask is going to. */
+  tool?: "flux" | "ideogram";
   /** Called when the operator dismisses without accepting a result. */
   onClose: () => void;
   /** Called when the operator accepts the erased result. */
@@ -67,9 +71,23 @@ export function EraseDialog({
   sessionId,
   sourceAssetId,
   sourceImageUrl,
+  tool = "flux",
   onClose,
   onAccept,
 }: EraseDialogProps) {
+  // Per-tool cosmetic + subtitle copy. Functionally the dialog is the
+  // same; only the model that runs on submit changes.
+  const toolMeta = tool === "ideogram"
+    ? {
+        title:    "Ideogram Inpaint — paint over what should be removed",
+        subtitle: "Routed through Ideogram 3.0 /v1/ideogram-v3/inpaint. Stronger at preserving and rendering text — best when the area to remove sits near OEM decals or model numbers.",
+        progress: "Ideogram inpainting…",
+      }
+    : {
+        title:    "Erase — paint over what should be removed",
+        subtitle: "Routed through BFL flux-tools/erase-v1. Heavier strokes give the model more room to invent a clean fill.",
+        progress: "BFL working…",
+      };
   const imgRef    = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -313,7 +331,8 @@ export function EraseDialog({
         assetId:          sourceAssetId,
         maskPngBase64:    mask,
         instruction:      instruction.trim() || undefined,
-        idempotencyKey:   `erase-${sourceAssetId}-${uuidv4()}`,
+        tool,
+        idempotencyKey:   `erase-${tool}-${sourceAssetId}-${uuidv4()}`,
       });
       setJobId(newJobId);
     } catch (err) {
@@ -327,6 +346,7 @@ export function EraseDialog({
     sessionId,
     sourceAssetId,
     instruction,
+    tool,
   ]);
 
   // ── Poll the erase job ──────────────────────────────────────────────
@@ -378,10 +398,10 @@ export function EraseDialog({
     if (!jobId) return "Submitting…";
     const s = job?.status;
     if (s === "queued")     return "Queued — waiting for a worker…";
-    if (s === "processing") return "BFL working…";
+    if (s === "processing") return toolMeta.progress;
     if (s === "complete")   return "Finalising…";
     return "Working…";
-  }, [submitting, jobId, job?.status]);
+  }, [submitting, jobId, job?.status, toolMeta.progress]);
 
   if (!open) return null;
 
@@ -403,10 +423,10 @@ export function EraseDialog({
         <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-900">
           <div>
             <h2 className="text-xl font-bold text-white">
-              Erase — paint over what should be removed
+              {toolMeta.title}
             </h2>
             <p className="text-base text-zinc-200 mt-1 leading-relaxed">
-              Routed through BFL flux-tools/erase-v1. Heavier strokes give the model more room to invent a clean fill.
+              {toolMeta.subtitle}
             </p>
           </div>
           <button

@@ -122,22 +122,26 @@ export async function getAssetUrl(assetId: string): Promise<{ url: string; expir
   return get(`/api/assets/${assetId}/url`);
 }
 
-// ─── Erase (mask-based object removal via BFL flux-tools/erase-v1) ───────────
+// ─── Erase (mask-based object removal — Flux or Ideogram backend) ────────────
 
 export async function enqueueErase(params: {
   sessionId: string;
   /** Asset to erase from — typically the outputAssetId of a completed enhance variant. */
   assetId: string;
-  /** Base64 PNG of the mask. White (>= 128) marks the area to erase. */
+  /** Base64 PNG of the mask. White (>= 128) marks the area to erase.
+   * (The server inverts this for Ideogram, which uses the opposite convention.) */
   maskPngBase64: string;
   /** Optional natural-language hint for what should fill the erased region. */
   instruction?: string;
+  /** Vendor backend — "flux" (BFL flux-tools/erase-v1, default) or
+   *  "ideogram" (Ideogram 3.0 inpaint — stronger on typography/decals). */
+  tool?: "flux" | "ideogram";
   idempotencyKey: string;
 }): Promise<{ jobId: string }> {
   return post("/api/enhance/erase", params);
 }
 
-// ─── Tweak (text-guided variant refinement via Gemini Flash Image) ───────────
+// ─── Tweak (text-guided variant refinement — Gemini or Ideogram backend) ─────
 
 export async function enqueueTweak(params: {
   sessionId: string;
@@ -145,6 +149,9 @@ export async function enqueueTweak(params: {
   assetId: string;
   /** Natural-language instruction describing the targeted change. 3-600 chars. */
   instruction: string;
+  /** Vendor backend — "gemini" (Flash Image, default) or "ideogram"
+   *  (/v1/edit — typography-strong, better for decal restoration). */
+  tool?: "gemini" | "ideogram";
   idempotencyKey: string;
 }): Promise<{ jobId: string }> {
   return post("/api/enhance/tweak", params);

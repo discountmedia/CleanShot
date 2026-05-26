@@ -129,6 +129,7 @@ async def enqueue_erase_job(
         input_gcs_uri=asset.gcs_uri,
         mask_png_base64=body.mask_png_base64,
         instruction=body.instruction,
+        tool=body.tool,
     )
     tasks_name = enqueue_erase(task_payload)
 
@@ -177,6 +178,7 @@ async def enqueue_tweak_job(
         input_asset_id=body.asset_id,
         input_gcs_uri=asset.gcs_uri,
         instruction=body.instruction,
+        tool=body.tool,
     )
     tasks_name = enqueue_tweak(task_payload)
 

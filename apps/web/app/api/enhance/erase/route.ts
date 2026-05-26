@@ -21,6 +21,8 @@ interface ClientRequest {
   assetId: string;
   maskPngBase64: string;
   instruction?: string;
+  /** "flux" (default) or "ideogram". */
+  tool?: "flux" | "ideogram";
   idempotencyKey: string;
 }
 
@@ -42,6 +44,7 @@ export async function POST(request: NextRequest) {
       asset_id:         body.assetId,
       mask_png_base64:  body.maskPngBase64,
       ...(body.instruction?.trim() ? { instruction: body.instruction } : {}),
+      tool:             body.tool ?? "flux",
       idempotency_key:  body.idempotencyKey,
     }),
     signal: request.signal,

@@ -16,6 +16,8 @@ interface ClientRequest {
   sessionId: string;
   assetId: string;
   instruction: string;
+  /** "gemini" (default) or "ideogram". */
+  tool?: "gemini" | "ideogram";
   idempotencyKey: string;
 }
 
@@ -36,6 +38,7 @@ export async function POST(request: NextRequest) {
       session_id:      body.sessionId,
       asset_id:        body.assetId,
       instruction:     body.instruction,
+      tool:            body.tool ?? "gemini",
       idempotency_key: body.idempotencyKey,
     }),
     signal: request.signal,

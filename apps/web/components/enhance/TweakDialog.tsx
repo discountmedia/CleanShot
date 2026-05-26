@@ -35,6 +35,9 @@ interface TweakDialogProps {
   sourceAssetId: string;
   /** Signed GET URL for the source variant — displayed as the dialog's preview. */
   sourceImageUrl: string;
+  /** Vendor backend — "gemini" (default) or "ideogram". Picks the API
+   *  the worker calls and drives the dialog's subtitle/example copy. */
+  tool?: "gemini" | "ideogram";
   onClose: () => void;
   onAccept: (result: TweakDialogResult) => void;
 }
@@ -54,9 +57,23 @@ export function TweakDialog({
   sessionId,
   sourceAssetId,
   sourceImageUrl,
+  tool = "gemini",
   onClose,
   onAccept,
 }: TweakDialogProps) {
+  const toolMeta = tool === "ideogram"
+    ? {
+        title:    "Ideogram Edit — describe a targeted change",
+        subtitle: "Routed through Ideogram 3.0 /v1/edit. Stronger on embedded text — best when the change involves restoring or editing OEM decals, model numbers, capacity stickers, or signage.",
+        progress: "Ideogram editing…",
+        action:   "Apply Ideogram edit",
+      }
+    : {
+        title:    "Tweak — describe a targeted change",
+        subtitle: "Routed through Gemini Flash Image. Best for additive changes or text-easier-than-mask edits. Use Erase for surgical mask-based removal.",
+        progress: "Gemini editing…",
+        action:   "Apply tweak",
+      };
   const [instruction, setInstruction] = useState("");
   const [jobId,       setJobId]       = useState<string | null>(null);
   const [submitting,  setSubmitting]  = useState(false);
@@ -113,14 +130,15 @@ export function TweakDialog({
         sessionId,
         assetId:        sourceAssetId,
         instruction:    trimmed,
-        idempotencyKey: `tweak-${sourceAssetId}-${uuidv4()}`,
+        tool,
+        idempotencyKey: `tweak-${tool}-${sourceAssetId}-${uuidv4()}`,
       });
       setJobId(newJobId);
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "Tweak failed.");
       setSubmitting(false);
     }
-  }, [submitting, resultUrl, instruction, sessionId, sourceAssetId]);
+  }, [submitting, resultUrl, instruction, sessionId, sourceAssetId, tool]);
 
   useJobPoller(
     jobId,
@@ -166,11 +184,11 @@ export function TweakDialog({
     if (!submitting) return null;
     if (!jobId) return "Submitting…";
     const s = job?.status;
-    if (s === "queued")     return "Queued — waiting for Gemini…";
-    if (s === "processing") return "Gemini editing…";
+    if (s === "queued")     return "Queued — waiting for a worker…";
+    if (s === "processing") return toolMeta.progress;
     if (s === "complete")   return "Finalising…";
     return "Working…";
-  }, [submitting, jobId, job?.status]);
+  }, [submitting, jobId, job?.status, toolMeta.progress]);
 
   if (!open) return null;
 
@@ -189,10 +207,10 @@ export function TweakDialog({
         <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-900">
           <div>
             <h2 className="text-xl font-bold text-white">
-              Tweak — describe a targeted change
+              {toolMeta.title}
             </h2>
             <p className="text-base text-zinc-200 mt-1 leading-relaxed">
-              Routed through Gemini Flash Image. Best for additive changes or text-easier-than-mask edits. Use Erase for surgical mask-based removal.
+              {toolMeta.subtitle}
             </p>
           </div>
           <button
@@ -284,7 +302,7 @@ export function TweakDialog({
                   ? "bg-blue-600 hover:bg-blue-500 text-white"
                   : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}`}
             >
-              {submitting ? "Working…" : "Apply tweak"}
+              {submitting ? "Working…" : toolMeta.action}
             </button>
           ) : (
             <>

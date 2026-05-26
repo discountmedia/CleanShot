@@ -48,6 +48,10 @@ interface SourceCompareCardProps {
   onErase: (provider: EnhanceProvider) => void;
   /** Opens the per-variant Gemini tweak dialog. */
   onTweak: (provider: EnhanceProvider) => void;
+  /** Opens the per-variant Ideogram text-edit dialog (sibling to Tweak). */
+  onIdeogramEdit: (provider: EnhanceProvider) => void;
+  /** Opens the per-variant Ideogram inpaint dialog (sibling to Erase). */
+  onIdeogramInpaint: (provider: EnhanceProvider) => void;
 }
 
 export function SourceCompareCard({
@@ -63,6 +67,8 @@ export function SourceCompareCard({
   onRetry,
   onErase,
   onTweak,
+  onIdeogramEdit,
+  onIdeogramInpaint,
 }: SourceCompareCardProps) {
   // Stable-ordered list of providers that have a variant for this source.
   // Order follows ENHANCE_PROVIDERS so re-renders don't shuffle.
@@ -242,6 +248,8 @@ export function SourceCompareCard({
                   onRegen={() => onRetry(p)}
                   onErase={() => onErase(p)}
                   onTweak={() => onTweak(p)}
+                  onIdeogramEdit={() => onIdeogramEdit(p)}
+                  onIdeogramInpaint={() => onIdeogramInpaint(p)}
                 />
               );
             })}
@@ -324,9 +332,16 @@ interface VariantThumbProps {
    * instead of the mask-drawing EraseDialog.
    */
   onTweak: () => void;
+  /** Ideogram sibling of onTweak — same dialog, Ideogram /v1/edit backend. */
+  onIdeogramEdit: () => void;
+  /** Ideogram sibling of onErase — same dialog, Ideogram inpaint backend. */
+  onIdeogramInpaint: () => void;
 }
 
-function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onErase, onTweak }: VariantThumbProps) {
+function VariantThumb({
+  provider, variant, chosen, nowMs,
+  onChoose, onRegen, onErase, onTweak, onIdeogramEdit, onIdeogramInpaint,
+}: VariantThumbProps) {
   const status = variant?.job?.status ?? (variant ? "queued" : "idle");
   const isComplete = status === "complete";
   const isProcessing = status === "queued" || status === "processing";
@@ -450,7 +465,7 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onE
                 onTweak();
               }}
               title="Tweak with text — small targeted edits (Gemini)"
-              aria-label="Open tweak tool for this variant"
+              aria-label="Open Gemini tweak tool for this variant"
               className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-blue-600 text-blue-300 hover:text-white border-2 border-blue-700 hover:border-blue-400 transition-colors shadow-lg"
             >
               {/* Pencil / magic-wand icon */}
@@ -469,14 +484,50 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onE
               </svg>
             </button>
             <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-blue-700 rounded-md px-3 py-1.5 text-sm font-bold text-blue-100 shadow-2xl opacity-0 group-hover/tweak:opacity-100 transition-opacity duration-150 z-20">
-              Tweak with text — &ldquo;remove the propane tank&rdquo;
+              Tweak with text — Gemini (&ldquo;remove the propane tank&rdquo;)
+            </span>
+          </div>
+        )}
+
+        {/* Per-variant Ideogram edit — sibling to Tweak (Gemini), routed
+            through Ideogram /v1/edit. Cyan accent to read as a sibling
+            of the blue Gemini Tweak. */}
+        {isComplete && (
+          <div className="group/ideogram-edit absolute top-2 left-24 z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onIdeogramEdit();
+              }}
+              title="Edit with text — Ideogram (typography-strong, best for decals)"
+              aria-label="Open Ideogram edit tool for this variant"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-cyan-600 text-cyan-300 hover:text-white border-2 border-cyan-700 hover:border-cyan-400 transition-colors shadow-lg"
+            >
+              {/* Type / typography icon — distinguishes Ideogram (text-strong) from Gemini's general pencil */}
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 6h16M9 6v14M15 6v14"
+                />
+              </svg>
+            </button>
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-cyan-700 rounded-md px-3 py-1.5 text-sm font-bold text-cyan-100 shadow-2xl opacity-0 group-hover/ideogram-edit:opacity-100 transition-opacity duration-150 z-20">
+              Edit with text — Ideogram (best for decals + signage)
             </span>
           </div>
         )}
 
         {/* Per-variant erase — opens the BFL flux-tools/erase-v1 mask dialog. */}
         {isComplete && (
-          <div className="group/erase absolute top-2 left-24 z-10">
+          <div className="group/erase absolute top-2 left-35 z-10">
             <button
               type="button"
               onClick={(e) => {
@@ -504,7 +555,43 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onE
               </svg>
             </button>
             <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-purple-700 rounded-md px-3 py-1.5 text-sm font-bold text-purple-100 shadow-2xl opacity-0 group-hover/erase:opacity-100 transition-opacity duration-150 z-20">
-              Erase with brush — paint over what to remove
+              Erase with brush — Flux (paint over what to remove)
+            </span>
+          </div>
+        )}
+
+        {/* Per-variant Ideogram inpaint — sibling to Flux Erase, routed
+            through Ideogram /v1/ideogram-v3/inpaint. Rose accent so it
+            visually pairs with the purple Flux eraser. */}
+        {isComplete && (
+          <div className="group/ideogram-inpaint absolute top-2 left-46 z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onIdeogramInpaint();
+              }}
+              title="Inpaint with brush — Ideogram (typography-strong, best for decals)"
+              aria-label="Open Ideogram inpaint tool for this variant"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-rose-600 text-rose-300 hover:text-white border-2 border-rose-700 hover:border-rose-400 transition-colors shadow-lg"
+            >
+              {/* Brush/paint icon — distinguishes Ideogram inpaint from Flux eraser */}
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42"
+                />
+              </svg>
+            </button>
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-rose-700 rounded-md px-3 py-1.5 text-sm font-bold text-rose-100 shadow-2xl opacity-0 group-hover/ideogram-inpaint:opacity-100 transition-opacity duration-150 z-20">
+              Inpaint with brush — Ideogram (best for decals + signage)
             </span>
           </div>
         )}

@@ -697,6 +697,169 @@ async def _enhance_with_openai(
     )
 
 
+# Ideogram model IDs / endpoints — versioned constants so we can swap
+# without grep-hunting through the worker. Sync API; no polling.
+IDEOGRAM_EDIT_URL    = "https://api.ideogram.ai/v1/edit"
+IDEOGRAM_INPAINT_URL = "https://api.ideogram.ai/v1/ideogram-v3/inpaint"
+IDEOGRAM_MODEL_LABEL = "ideogram-3.0"  # for usage_event.model column
+
+
+async def _tweak_with_ideogram(gcs_uri: str, instruction: str) -> bytes:
+    """
+    Targeted text-guided edit via Ideogram /v1/edit. Sister to
+    _tweak_with_gemini — same input contract (image URI + text
+    instruction → edited image bytes) but routed through Ideogram for
+    its typography strength (OEM decals, model numbers, signage, data
+    plates — the regions Gemini most often mangles).
+
+    Sync API: POST multipart → JSON response with a direct image URL,
+    GET the URL → image bytes. No polling.
+    """
+    settings = get_settings()
+    if not settings.ideogram_api_key:
+        raise RuntimeError(
+            "Ideogram tweak requested but IDEOGRAM_API_KEY is not set. "
+            "Mount cleanshot-ideogram-key:latest via Cloud Run "
+            "--set-secrets and re-deploy."
+        )
+
+    image_bytes, ct = await _load_image_bytes(gcs_uri)
+    # Ideogram accepts JPEG/PNG/WebP up to 10 MB; our enhance outputs
+    # are PNG and well under the cap, so pass-through is safe.
+    filename = "input.png" if "png" in ct else "input.jpg"
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            IDEOGRAM_EDIT_URL,
+            headers={"Api-Key": settings.ideogram_api_key},
+            data={"prompt": instruction.strip()},
+            files={"images": (filename, image_bytes, ct)},
+        )
+        if resp.status_code >= 400:
+            raise ValueError(
+                f"Ideogram edit failed ({resp.status_code}): {resp.text[:300]}"
+            )
+        data = resp.json()
+        items = data.get("data") or []
+        if not items:
+            raise ValueError(f"Ideogram edit returned empty data: {data}")
+        item = items[0]
+        if not item.get("is_image_safe", True):
+            raise ValueError(
+                f"Ideogram refused the edit on safety grounds: {item}"
+            )
+        url = item.get("url")
+        if not url:
+            raise ValueError(f"Ideogram edit item missing url: {item}")
+
+        # Result URL is a presigned CDN URL — no auth header on the GET.
+        # The docs warn the link is short-lived so fetch immediately.
+        fetched = await client.get(url)
+        if fetched.status_code >= 400:
+            raise ValueError(
+                f"Ideogram result GET failed ({fetched.status_code}): "
+                f"{fetched.text[:200]}"
+            )
+        return fetched.content
+
+
+async def _inpaint_with_ideogram(
+    gcs_uri: str,
+    mask_png_base64: str,
+    instruction: str | None,
+) -> bytes:
+    """
+    Mask-based inpaint via Ideogram /v1/ideogram-v3/inpaint. Sister to
+    _erase_with_flux — same client-supplied WHITE=erase mask convention,
+    but Ideogram's API uses the inverted convention (BLACK = region to
+    edit). We invert the mask server-side so the EraseDialog can stay
+    vendor-agnostic.
+
+    Ideogram inpaint requires a prompt (unlike Flux erase where it's
+    optional). When the operator leaves the fill hint blank we fall
+    back to a neutral "fill with plausible background" instruction —
+    same effective behaviour as Flux's default.
+    """
+    settings = get_settings()
+    if not settings.ideogram_api_key:
+        raise RuntimeError(
+            "Ideogram inpaint requested but IDEOGRAM_API_KEY is not set. "
+            "Mount cleanshot-ideogram-key:latest via Cloud Run "
+            "--set-secrets and re-deploy."
+        )
+
+    image_bytes, _ct = await _load_image_bytes(gcs_uri)
+
+    # Same EXIF/dim normalisation as _erase_with_flux — and then invert
+    # the mask so WHITE=erase (our convention) becomes BLACK=edit
+    # (Ideogram's convention).
+    def _normalise() -> tuple[bytes, bytes]:
+        import pyvips
+        src = pyvips.Image.new_from_buffer(image_bytes, "")
+        src = src.autorot()
+        src_w, src_h = src.width, src.height
+        src_png = src.write_to_buffer(".png")
+
+        mask_raw = base64.b64decode(mask_png_base64)
+        mask = pyvips.Image.new_from_buffer(mask_raw, "")
+        if mask.width != src_w or mask.height != src_h:
+            mask = mask.resize(
+                src_w / mask.width,
+                vscale=src_h / mask.height,
+                kernel="nearest",
+            )
+        # Invert: pyvips `invert()` flips each pixel value (255-x for
+        # U8), turning WHITE strokes into BLACK regions that Ideogram
+        # reads as "edit here".
+        mask = mask.invert()
+        mask_png = mask.write_to_buffer(".png")
+        return src_png, mask_png
+
+    src_png, mask_png = await asyncio.to_thread(_normalise)
+
+    prompt = (instruction or "").strip() or "fill with plausible background"
+
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        resp = await client.post(
+            IDEOGRAM_INPAINT_URL,
+            headers={"Api-Key": settings.ideogram_api_key},
+            data={
+                "prompt": prompt,
+                "rendering_speed": "DEFAULT",
+                "style_type": "REALISTIC",
+            },
+            files={
+                "image": ("image.png", src_png,  "image/png"),
+                "mask":  ("mask.png",  mask_png, "image/png"),
+            },
+        )
+        if resp.status_code >= 400:
+            raise ValueError(
+                f"Ideogram inpaint failed ({resp.status_code}): "
+                f"{resp.text[:300]}"
+            )
+        data = resp.json()
+        items = data.get("data") or []
+        if not items:
+            raise ValueError(f"Ideogram inpaint returned empty data: {data}")
+        item = items[0]
+        if not item.get("is_image_safe", True):
+            raise ValueError(
+                f"Ideogram refused the inpaint on safety grounds: {item}"
+            )
+        url = item.get("url")
+        if not url:
+            raise ValueError(f"Ideogram inpaint item missing url: {item}")
+
+        fetched = await client.get(url)
+        if fetched.status_code >= 400:
+            raise ValueError(
+                f"Ideogram inpaint result GET failed ({fetched.status_code}): "
+                f"{fetched.text[:200]}"
+            )
+        return fetched.content
+
+
 async def _erase_with_flux(
     gcs_uri: str,
     mask_png_base64: str,
@@ -1310,16 +1473,28 @@ async def _run_erase(
 
     import time as _time
     call_started_at = _time.monotonic()
-    provider_model = "flux-erase-v1"
+    if payload.tool == "ideogram":
+        provider_label = "ideogram"
+        provider_model = IDEOGRAM_MODEL_LABEL
+    else:
+        provider_label = "flux"
+        provider_model = "flux-erase-v1"
 
     try:
-        output_bytes = await _erase_with_flux(
-            payload.input_gcs_uri,
-            payload.mask_png_base64,
-            payload.instruction,
-        )
+        if payload.tool == "ideogram":
+            output_bytes = await _inpaint_with_ideogram(
+                payload.input_gcs_uri,
+                payload.mask_png_base64,
+                payload.instruction,
+            )
+        else:
+            output_bytes = await _erase_with_flux(
+                payload.input_gcs_uri,
+                payload.mask_png_base64,
+                payload.instruction,
+            )
         if not output_bytes:
-            raise ValueError("BFL erase returned no image bytes")
+            raise ValueError(f"{provider_label} erase returned no image bytes")
 
         try:
             async with pool.acquire() as conn:
@@ -1328,7 +1503,7 @@ async def _run_erase(
                     user_email=user_email,
                     session_id=payload.session_id,
                     job_id=payload.job_id,
-                    provider="flux",
+                    provider=provider_label,
                     model=provider_model,
                     operation="erase",
                     status="success",
@@ -1378,7 +1553,7 @@ async def _run_erase(
                     user_email=user_email,
                     session_id=payload.session_id,
                     job_id=payload.job_id,
-                    provider="flux",
+                    provider=provider_label,
                     model=provider_model,
                     operation="erase",
                     status="failed",
@@ -1422,27 +1597,39 @@ async def _run_tweak(
 
     import time as _time
     call_started_at = _time.monotonic()
-    provider_model = ENHANCE_MODEL_GEMINI  # same underlying model as enhance
+    if payload.tool == "ideogram":
+        provider_label = "ideogram"
+        provider_model = IDEOGRAM_MODEL_LABEL
+    else:
+        provider_label = "gemini"
+        provider_model = ENHANCE_MODEL_GEMINI  # same model id as primary enhance
 
     try:
-        if not genai_aistudio_client:
-            raise RuntimeError(
-                "Tweak requested but the Gemini AI Studio client is not "
-                "initialized. Mount cleanshot-gemini-key:latest as "
-                "GEMINI_API_KEY via Cloud Run --set-secrets."
-            )
-
-        # Use the same Gemini concurrency semaphore as primary enhance.
-        # Tweaks share the AI Studio quota with enhance/cleanup, so we
-        # don't want a burst of tweaks to starve in-flight enhance jobs.
-        async with gemini_semaphore:
-            output_bytes = await _tweak_with_gemini(
-                genai_aistudio_client,
+        if payload.tool == "ideogram":
+            # Ideogram has no shared concurrency budget with our other
+            # Gemini-quota work, so it skips the gemini_semaphore.
+            output_bytes = await _tweak_with_ideogram(
                 payload.input_gcs_uri,
                 payload.instruction,
             )
+        else:
+            if not genai_aistudio_client:
+                raise RuntimeError(
+                    "Tweak requested but the Gemini AI Studio client is not "
+                    "initialized. Mount cleanshot-gemini-key:latest as "
+                    "GEMINI_API_KEY via Cloud Run --set-secrets."
+                )
+            # Use the same Gemini concurrency semaphore as primary enhance.
+            # Tweaks share the AI Studio quota with enhance/cleanup, so we
+            # don't want a burst of tweaks to starve in-flight enhance jobs.
+            async with gemini_semaphore:
+                output_bytes = await _tweak_with_gemini(
+                    genai_aistudio_client,
+                    payload.input_gcs_uri,
+                    payload.instruction,
+                )
         if not output_bytes:
-            raise ValueError("Gemini tweak returned no image bytes")
+            raise ValueError(f"{provider_label} tweak returned no image bytes")
 
         try:
             async with pool.acquire() as conn:
@@ -1451,7 +1638,7 @@ async def _run_tweak(
                     user_email=user_email,
                     session_id=payload.session_id,
                     job_id=payload.job_id,
-                    provider="gemini",
+                    provider=provider_label,
                     model=provider_model,
                     operation="tweak",
                     status="success",
@@ -1501,7 +1688,7 @@ async def _run_tweak(
                     user_email=user_email,
                     session_id=payload.session_id,
                     job_id=payload.job_id,
-                    provider="gemini",
+                    provider=provider_label,
                     model=provider_model,
                     operation="tweak",
                     status="failed",
