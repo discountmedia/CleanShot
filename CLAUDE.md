@@ -50,10 +50,14 @@ The Enhance tab exposes a **4-checkbox** model selector. Provider literal: `"gem
 | `grok` | `grok-imagine-image-quality` at `https://api.x.ai/v1/images/edits` | OpenAI-compatible image-edit API, Bearer auth, prompt max 4000 chars | `cleanshot-xai-key` |
 | `kontext` | `flux-1-kontext/max/edit` at `https://model-api.runcomfy.net/v1/models/blackforestlabs/flux-1-kontext/max/edit` | **RunComfy async proxy**. POST returns `request_id`; poll `/v1/requests/{id}/status` until `"completed"`; GET `/v1/requests/{id}/result` for the rendered image URL. Body field is `image_url` (singular string — NOT `images` array; that's Seedream's shape). RunComfy fetches the image via HTTPS so we mint a short-lived signed GCS GET URL via `services.gcs.mint_read_url` and pass that. | `cleanshot-runcomfy-key` |
 
-**Removed providers (don't reintroduce without reading why):**
+**Ideogram is wired but NOT as a primary generator** — it's a per-variant edit/inpaint *tool* only, surfaced as the cyan ✎ and rose 🖌 icons on each completed enhance variant. See the "Per-variant edit tools" section below. Considered + declined as a 5th enhance generator (creative drift + redundant with Kontext for identity preservation).
+
+**Removed / repositioned providers (don't reintroduce as primary generators without reading why):**
 
 - `reve` — undocumented RPM ceiling, opaque credit pricing, fragile under bursts. Dropped 2026-05-20. `cleanshot-reve-key` secret can be deleted from Secret Manager.
-- `flux` (as generator) — repositioned as the **Erase tool only**, not a generation provider. See the Erase pipeline section below.
+- `flux` (as generator) — repositioned as the **Erase tool only**, not a generation provider. See "Per-variant edit tools" below.
+- `runway gen-4` — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the cost, slower API. Filed as "considered, declined" so future-Claude doesn't re-litigate.
+- `recraft v3` — evaluated 2026-05-26 as the most promising 5th generator if we ever shop again (product-photography-tuned, transparent pricing). Not wired; on the open-work list.
 
 **Cleanup worker** (anomaly-guided regen from Scan tab) uses the same Gemini AI Studio client as enhance.
 
@@ -91,25 +95,44 @@ Also note: the OpenAI client is `max_retries=8, timeout=300.0` because the SDK's
 
 ---
 
-## Erase pipeline (per-variant mask-based object removal)
+## Per-variant edit tools (Tweak + Erase, dual backends each)
 
-A completely separate flow from enhance/regen. Operator clicks the small purple eraser icon on any completed variant in the Enhance tab → [EraseDialog.tsx](apps/web/components/enhance/EraseDialog.tsx) opens with that variant's image as the canvas background → operator paints a binary mask with the brush → submits → cleaned image swaps in-place.
+Five small icons on every completed enhance variant (top-left, left to right): **↻ Regenerate** (amber) · **✎ Tweak with Gemini** (blue) · **T Edit with Ideogram** (cyan) · **⌫ Erase with Flux** (purple) · **🖌 Inpaint with Ideogram** (rose). Tweak + Edit are text-only; Erase + Inpaint are mask-based. Each pair shares a dialog component; a `tool` prop drives copy + vendor routing.
 
-**Backend:**
+### Tools matrix
 
-- **Endpoint:** `POST /api/v1/enhance/erase` (router in [operations.py](apps/api/src/cleanshot_api/routers/operations.py))
-- **Schema:** `EraseRequest` { session_id, asset_id, mask_png_base64, instruction?, idempotency_key } in [schemas.py](apps/api/src/cleanshot_api/models/schemas.py)
-- **Worker:** `handle_erase_task` + `_run_erase` + `_erase_with_flux` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Reuses the `cleanshot-image-gen` Cloud Tasks queue.
-- **Vendor endpoint:** `POST https://api.bfl.ai/v1/flux-tools/erase-v1` with `x-key` auth (same `cleanshot-bfl-key` secret as the old Flux generator path). Body is `{ image, mask, prompt? }`; async-poll pattern identical to flux-2-max.
-- **Asset writes:** result lands as a new asset under `OperationEnum.erase` (DB enum was extended via `ALTER TYPE operation_enum ADD VALUE IF NOT EXISTS 'erase'` in `migrate.py` — this DOES need to be done explicitly; Pydantic enum additions don't migrate the Postgres type).
+| Icon | Tool name | Input | Vendor / endpoint | Best for |
+|---|---|---|---|---|
+| ✎ blue | Tweak | text instruction | Gemini Flash Image (AI Studio) — `_tweak_with_gemini` | Additive changes, conversational edits, fast |
+| T cyan | Ideogram Edit | text instruction | Ideogram 3.0 — `POST /v1/edit` (sync multipart) — `_tweak_with_ideogram` | Decal/typography repair, model-number restoration |
+| ⌫ purple | Erase | binary mask | BFL `flux-tools/erase-v1` (async poll) — `_erase_with_flux` | Identity-preserving object removal |
+| 🖌 rose | Ideogram Inpaint | binary mask | Ideogram 3.0 — `POST /v1/ideogram-v3/inpaint` (sync) — `_inpaint_with_ideogram` | Mask-based edits in/near OEM text or signage |
 
-**Frontend:**
+### Backend
 
-- **EraseDialog** stores strokes in **normalized [0,1] coords** + brush diameter relative to display width — strokes are device-pixel-ratio-aware on the display canvas, and the export canvas is sized to the source image's natural pixel dims so the mask BFL receives has the operator's pixel intent at full source resolution.
-- **EXIF normalization** is critical: iPhone-style JPEGs have EXIF Orientation tags. Browsers respect them (so `naturalWidth/naturalHeight` reflect post-rotation dims, which the mask uses), but BFL reads raw JPEG bytes and sees pre-rotation dims, returning a 422 "Erase image and mask must have the same dimensions." The backend now runs the source through `pyvips.Image.autorot().write_to_buffer(".png")` before submit so EXIF is baked in and PNG carries no orientation metadata. The mask is also pyvips-resized (nearest-neighbour) to match if the dims still diverge.
-- **Result handling:** on Accept, EnhancePanel patches the variant **in-place** — `completed[jobId].outputAssetId/outputUrl` updates to the new asset, original jobId stays put so winner-picks + sent-to-Scan flags + the poller all stay coherent.
+- **Endpoints:** `POST /api/v1/enhance/erase` and `POST /api/v1/enhance/tweak` in [operations.py](apps/api/src/cleanshot_api/routers/operations.py). Each request carries a `tool` Literal — `"flux" | "ideogram"` for erase, `"gemini" | "ideogram"` for tweak — defaulted to the original backend so old callers don't break.
+- **Schemas:** `EraseRequest`, `TweakRequest`, `EraseTaskPayload`, `TweakTaskPayload` in [schemas.py](apps/api/src/cleanshot_api/models/schemas.py) — all carry the `tool` field through.
+- **Worker dispatch:** `_run_erase` / `_run_tweak` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py) branch on `payload.tool` and call the matching helper. Both tools reuse the `cleanshot-image-gen` Cloud Tasks queue.
+- **Usage events:** rows tagged with the actual provider (`flux` / `gemini` / `ideogram`) and matching model label (`flux-erase-v1` / `gemini-3.1-flash-image-preview` / `ideogram-3.0`) so the admin dashboard attributes spend correctly per backend.
 
-**Don't reach for asyncio.TaskGroup** anywhere in this stack — the scan worker already learned that lesson the hard way (see scan section).
+### Ideogram specifics (sync API, no polling)
+
+- Sync HTTP: POST multipart → JSON response with `data[0].url` → GET that URL → image bytes. The result URL is a short-lived presigned CDN URL (no auth on the GET).
+- Mask convention is **inverted** vs Flux: Ideogram reads BLACK as "edit here." The worker pyvips-`invert()`s the mask server-side so EraseDialog can keep producing the WHITE-equals-erase mask for either backend without branching on tool in the frontend.
+- Ideogram inpaint **requires** a prompt (unlike Flux erase where it's optional). When the operator leaves the fill hint blank, the worker falls back to `"fill with plausible background"`.
+- Secret: `cleanshot-ideogram-key` → `IDEOGRAM_API_KEY` env var (baked into deploy-api.yml's `--set-secrets`).
+
+### Frontend dialogs
+
+- [EraseDialog.tsx](apps/web/components/enhance/EraseDialog.tsx) accepts `tool="flux" | "ideogram"` — drives title, subtitle, action label, progress label. Same canvas/mask export code path either way. Idempotency key includes the tool name so back-to-back Flux + Ideogram submits on the same variant don't dedupe to one job.
+- [TweakDialog.tsx](apps/web/components/enhance/TweakDialog.tsx) accepts `tool="gemini" | "ideogram"` — same dual-target pattern.
+- EnhancePanel keeps **four separate dialog target states** (`eraseTarget`, `tweakTarget`, `ideogramEditTarget`, `ideogramInpaintTarget`) so opening the Ideogram editor doesn't tear down a half-typed Gemini instruction.
+
+### Hard-won bits
+
+- **EXIF normalization** is critical for mask-based vendors. iPhone JPEGs carry EXIF Orientation; browsers respect it (so `naturalWidth/Height` reflect post-rotation dims) but BFL/Ideogram read raw JPEG bytes pre-rotation. Fix lives in `_normalise()` inside both `_erase_with_flux` and `_inpaint_with_ideogram`: pyvips `autorot()` → write PNG → resize mask nearest-neighbour to match if dims still diverge.
+- **Result handling:** on Accept, EnhancePanel patches the variant **in-place** — `completed[jobId].outputAssetId/outputUrl` updates to the new asset, original `jobId` stays put so winner-picks + sent-to-Scan flags + the poller all stay coherent. Same patch-in-place semantics across all four tools.
+- **Don't reach for `asyncio.TaskGroup`** anywhere in this stack — the scan worker already learned that lesson (see scan section).
 
 ---
 

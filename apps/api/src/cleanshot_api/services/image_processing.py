@@ -183,31 +183,38 @@ def export_collage(input_bytes: bytes, *, ai_disclaimer: bool = False) -> Export
 #
 # Discount Forklift's marketing-layout collage: one large hero on the left
 # + four supporting thumbnails stacked on the right. Final canvas is
-# 1024×580 (long edge = 1024) and the JPEG quality loop targets ≤99 kb.
+# 1024×540 (long edge = 1024) and the JPEG quality loop targets ≤99 kb.
 #
 # Layout, edge-to-edge (no gaps):
 #
-#   ┌──────────────────────────────────┬──────────────────────────┐
-#   │                                  │      thumb 1 (384×145)   │
-#   │                                  ├──────────────────────────┤
-#   │       hero (640×580)             │      thumb 2 (384×145)   │
-#   │                                  ├──────────────────────────┤
-#   │                                  │      thumb 3 (384×145)   │
-#   │                                  ├──────────────────────────┤
-#   │                                  │      thumb 4 (384×145)   │
-#   └──────────────────────────────────┴──────────────────────────┘
-#                                                  1024 × 580
+#   ┌─────────────────────────────────────┬───────────────────────┐
+#   │                                     │   thumb 1 (304×135)   │
+#   │                                     ├───────────────────────┤
+#   │       hero (720×540)                │   thumb 2 (304×135)   │
+#   │                                     ├───────────────────────┤
+#   │                                     │   thumb 3 (304×135)   │
+#   │                                     ├───────────────────────┤
+#   │                                     │   thumb 4 (304×135)   │
+#   └─────────────────────────────────────┴───────────────────────┘
+#                                                       1024 × 540
+#
+# Dimension rationale: matches the company's existing marketing-layout
+# collage (reference: blue Genie GS-1930 example). Hero is 4:3 (720×540)
+# so the studio banner across the top of the source frames cleanly
+# without being side-cropped. Thumbs are 304×135 (≈2.25:1) — narrower
+# than the prior 384×145, again so the banner makes it into each thumb
+# instead of getting cropped off.
 #
 # Each cell is cover-cropped (zoom-to-fill) so the cell is fully filled
 # with no letterboxing. smartcrop with `attention` interest picks the
 # most visually-important region — same heuristic as export_pro.
 
 _COLLAGE_CANVAS_W = 1024
-_COLLAGE_CANVAS_H = 580
-_COLLAGE_HERO_W   = 640
-_COLLAGE_HERO_H   = 580
-_COLLAGE_THUMB_W  = 384  # 1024 - 640
-_COLLAGE_THUMB_H  = 145  # 580 / 4 (last row gets +0; canvas height 580 = 4×145)
+_COLLAGE_CANVAS_H = 540
+_COLLAGE_HERO_W   = 720
+_COLLAGE_HERO_H   = 540
+_COLLAGE_THUMB_W  = 304  # 1024 - 720
+_COLLAGE_THUMB_H  = 135  # 540 / 4 (canvas height 540 = 4×135)
 
 
 def _cover_crop(input_bytes: bytes, target_w: int, target_h: int) -> "pyvips.Image":
