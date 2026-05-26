@@ -130,6 +130,12 @@ export function ModifyPanel({
   // ── Submission lifecycle ──────────────────────────────────────────────
   const [isApplying, setIsApplying] = useState(false);
   const [error,      setError]      = useState<string | null>(null);
+  // Count of images modified in the most recent successful Apply. Drives
+  // the green "→ Continue to Resize" success card that appears next to
+  // the Apply button after a run. `null` = no recent success (banner
+  // hidden). Cleared when the operator clicks Dismiss; preserved when
+  // they keep adjusting sliders so a fresh Apply can replace it.
+  const [appliedCount, setAppliedCount] = useState<number | null>(null);
 
   // ── Standalone uploads ───────────────────────────────────────────────
   const [uploads, setUploads] = useState<StandaloneUpload[]>([]);
@@ -420,6 +426,10 @@ export function ModifyPanel({
       });
       handleResetAll();
       setSelectedAssetId(null);
+      // Show the green "→ Continue to Resize" success card. handleResetAll
+      // doesn't clear this; only an explicit Dismiss or a subsequent
+      // successful Apply replaces the count.
+      setAppliedCount(next.length);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Modify failed");
     } finally {
@@ -903,6 +913,39 @@ export function ModifyPanel({
                 <p className="text-base text-red-300 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3">
                   {error}
                 </p>
+              )}
+
+              {appliedCount !== null && (
+                <div className="bg-emerald-950/50 border-2 border-emerald-600 rounded-xl px-5 py-4 flex items-center gap-4">
+                  <div className="flex-1">
+                    <p className="text-base font-bold text-emerald-100">
+                      ✓ {appliedCount} image{appliedCount !== 1 ? "s" : ""} modified successfully
+                    </p>
+                    <p className="text-sm text-emerald-300 mt-0.5">
+                      Ready for Resize, or keep adjusting and Apply again to replace.
+                    </p>
+                  </div>
+                  {onSkipToResize && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAppliedCount(null);
+                        onSkipToResize();
+                      }}
+                      className="px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-[0.12em] bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-lg shadow-emerald-900/40 transition-colors whitespace-nowrap"
+                    >
+                      Continue to Resize →
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setAppliedCount(null)}
+                    aria-label="Dismiss"
+                    className="text-emerald-400 hover:text-emerald-200 text-xl leading-none px-1"
+                  >
+                    ×
+                  </button>
+                </div>
               )}
 
               <button
