@@ -18,6 +18,7 @@ import asyncio
 import base64
 import logging
 import mimetypes
+import re
 import uuid
 from typing import Any
 
@@ -921,20 +922,40 @@ async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
     See RECRAFT_STRENGTH constant for the calibration rationale.
     """
     settings = get_settings()
-    # .strip() defends against trailing whitespace / newlines baked into
-    # the Secret Manager value (a `printf` vs `echo` mistake at secret-
-    # creation time will silently leave a "\n" in the key). Recraft
-    # rejects headers that don't match `^Bearer [^\s]+$` with a
-    # "Authorization header format must be Bearer {token}" 400, which
-    # is otherwise mysterious because the format string IS correct on
-    # our side — the whitespace is invisible in the rendered header.
-    recraft_key = settings.recraft_api_key.strip()
+    # Recraft's gateway enforces `^Bearer [^\s]+$` on the Authorization
+    # header. A single embedded whitespace / newline / CR anywhere in
+    # the key value produces the otherwise-baffling 400:
+    #     "Authorization header format must be Bearer {token}"
+    # even though the format string on our side is correct — the bad
+    # byte is just invisible.
+    #
+    # Common ways this happens to a freshly-rotated secret:
+    #   - `echo "$KEY" | gcloud secrets versions add ...`   → trailing \n
+    #   - Pasting into Cloud Shell from a wrapped terminal  → embedded \r
+    #   - Copying through a tool that ANSI-escapes the value
+    #
+    # We previously only `.strip()`-ed (leading/trailing only). That
+    # didn't cover the middle. Real Recraft tokens are URL-safe
+    # alphanumeric/hex with no embedded whitespace, so nuke ALL
+    # whitespace defensively.
+    raw_key = settings.recraft_api_key or ""
+    recraft_key = re.sub(r"\s+", "", raw_key)
     if not recraft_key:
         raise RuntimeError(
             "Recraft enhance requested but RECRAFT_API_KEY is not set. "
             "Mount cleanshot-recraft-key:latest via Cloud Run "
             "--set-secrets and re-deploy."
         )
+    # Diagnostic breadcrumb on failure paths — length + first/last 4
+    # chars is enough to spot "the secret got truncated" or "the wrong
+    # value got stored" without leaking the key. Logged only on the
+    # failure branches below.
+    key_fingerprint = (
+        f"len={len(recraft_key)} "
+        f"prefix={recraft_key[:4]!r} "
+        f"suffix={recraft_key[-4:]!r} "
+        f"raw_len={len(raw_key)}"
+    )
 
     image_bytes, ct = await _load_image_bytes(gcs_uri)
     filename = "input.png" if "png" in ct else "input.jpg"
@@ -955,6 +976,10 @@ async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
             files={"image": (filename, image_bytes, ct)},
         )
         if resp.status_code >= 400:
+            logger.warning(
+                "Recraft enhance failed status=%d body=%r key_fp=%s",
+                resp.status_code, resp.text[:300], key_fingerprint,
+            )
             raise ValueError(
                 f"Recraft enhance failed ({resp.status_code}): "
                 f"{resp.text[:300]}"
