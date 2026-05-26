@@ -131,6 +131,16 @@ GROK_GENERATE_URL = "https://api.x.ai/v1/images/edits"
 ENHANCE_MODEL_GROK = "grok-imagine-image-quality"
 GROK_PROMPT_MAX_CHARS = 4000
 
+# Ideogram model label for usage_events.model when Ideogram is picked as a
+# PRIMARY enhance provider (the 5th card on the Enhance tab). Same /v1/edit
+# endpoint as the per-variant Ideogram Edit tool — see _tweak_with_ideogram
+# for the lower-level call helper. The primary-enhance path reuses
+# _tweak_with_ideogram and just passes the full enhance prompt instead of
+# a short tweak instruction. Distinct constant from IDEOGRAM_MODEL_LABEL
+# (which is used for the per-variant tweak/inpaint tools) so future model
+# bumps can move independently per surface if needed.
+ENHANCE_MODEL_IDEOGRAM = "ideogram-3.0"
+
 
 # Display name + per-type anatomy guardrail for the equipment-aware prompt.
 # Keep these short — they slot into a sentence inside GUARDRAILS so the
@@ -1283,6 +1293,15 @@ async def _run_enhance(
             # No published RunComfy per-minute cap — start without a
             # limiter and add one if we observe 429s in production.
             output_bytes = await _enhance_with_kontext(
+                payload.input_gcs_uri, prompt
+            )
+        elif payload.provider == "ideogram":
+            provider_model = ENHANCE_MODEL_IDEOGRAM
+            # Ideogram /v1/edit is sync (no async poll). Same helper as
+            # the per-variant Edit tool — full enhance prompt slots into
+            # the same `instruction` field. No published per-minute cap;
+            # add a limiter if we observe 429s.
+            output_bytes = await _tweak_with_ideogram(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default

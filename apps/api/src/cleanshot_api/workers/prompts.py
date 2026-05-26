@@ -38,7 +38,7 @@ from __future__ import annotations
 
 from typing import Literal
 
-Provider = Literal["gemini", "openai", "grok", "kontext"]
+Provider = Literal["gemini", "openai", "grok", "kontext", "ideogram"]
 EquipmentType = Literal["forklift", "scissor_lift", "telehandler"]
 
 
