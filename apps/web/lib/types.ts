@@ -75,6 +75,15 @@ export interface EnhanceToggles {
    * would over-clean a real ground surface.
    */
   showroomFloor: boolean;
+  /**
+   * When true, the prompt's STRAIGHTEN HORIZON block kicks in. The
+   * model rotates the entire scene so the ground/horizon line is
+   * level, then crops the rotation wedges. Off by default — the base
+   * prompt's GUARDRAILS block normally PROHIBITS horizon-leveling
+   * (to preserve original framing); flipping this toggle overrides
+   * that single clause for this image only.
+   */
+  straightenHorizon: boolean;
 }
 
 export const DEFAULT_TOGGLES: EnhanceToggles = {
@@ -88,6 +97,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   improveLighting: false,
   removeRentalBranding: true,    // default ON — most batches are ex-rental units
   showroomFloor: false,          // off — operator opts in for actual studio shots
+  straightenHorizon: false,      // off — only flip when the photo is actually crooked
 };
 
 /**
@@ -108,6 +118,7 @@ export const ALL_OFF_TOGGLES: EnhanceToggles = {
   improveLighting: false,
   removeRentalBranding: false,
   showroomFloor: false,
+  straightenHorizon: false,
 };
 
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
@@ -121,6 +132,7 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   improveLighting: "Improve Lighting",
   removeRentalBranding: "Remove Rental-Fleet Branding",
   showroomFloor: "Perfect Showroom Floor",
+  straightenHorizon: "Straighten Horizon",
 };
 
 export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
@@ -134,6 +146,7 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
   showroomFloor: "Studio / showroom shots only — cleans tape marks, scuffs, footprints, and floor-to-backdrop seams from solid-colour studio floors. No-op for outdoor / yard photos",
+  straightenHorizon: "Rotate the scene so the horizon / floor line is level, then crop the rotation wedges. Only flip for photos shot at a tilt — leaves correctly-framed photos alone",
 };
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
