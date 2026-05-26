@@ -921,7 +921,15 @@ async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
     See RECRAFT_STRENGTH constant for the calibration rationale.
     """
     settings = get_settings()
-    if not settings.recraft_api_key:
+    # .strip() defends against trailing whitespace / newlines baked into
+    # the Secret Manager value (a `printf` vs `echo` mistake at secret-
+    # creation time will silently leave a "\n" in the key). Recraft
+    # rejects headers that don't match `^Bearer [^\s]+$` with a
+    # "Authorization header format must be Bearer {token}" 400, which
+    # is otherwise mysterious because the format string IS correct on
+    # our side — the whitespace is invisible in the rendered header.
+    recraft_key = settings.recraft_api_key.strip()
+    if not recraft_key:
         raise RuntimeError(
             "Recraft enhance requested but RECRAFT_API_KEY is not set. "
             "Mount cleanshot-recraft-key:latest via Cloud Run "
@@ -934,7 +942,7 @@ async def _enhance_with_recraft(gcs_uri: str, prompt: str) -> bytes:
     async with httpx.AsyncClient(timeout=180.0) as client:
         resp = await client.post(
             RECRAFT_IMAGE_TO_IMAGE_URL,
-            headers={"Authorization": f"Bearer {settings.recraft_api_key}"},
+            headers={"Authorization": f"Bearer {recraft_key}"},
             data={
                 "prompt":   prompt,
                 "model":    ENHANCE_MODEL_RECRAFT,
