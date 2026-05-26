@@ -209,15 +209,20 @@ export function ScanCard({
         </div>
       </header>
 
-      {/* Body — thumb (left) + anomalies/progress (right) */}
+      {/* Body — large preview (left) + anomalies/progress (right) */}
+      {/* Preview bumped from a 160px-square cover-cropped thumb to a
+          ~3x-larger 4:3 landscape frame using object-contain — the
+          operator needs to actually SEE the enhanced image to spot
+          issues during the scan review, not a postage-stamp slice.
+          The minmax() keeps it reasonable on narrower viewports. */}
       <div className="p-5">
-        <div className="grid grid-cols-[160px_1fr] gap-5 items-start">
-          <figure className="relative aspect-square rounded-lg overflow-hidden border border-zinc-800 bg-black">
+        <div className="grid grid-cols-1 md:grid-cols-[minmax(320px,440px)_1fr] gap-5 items-start">
+          <figure className="relative aspect-4/3 rounded-lg overflow-hidden border border-zinc-800 bg-black">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={scan.thumbnailUrl}
               alt={`${scan.filename} (enhanced)`}
-              className="absolute inset-0 w-full h-full object-cover"
+              className="absolute inset-0 w-full h-full object-contain"
             />
             {!isScanning && consensus?.verdict === "pass" && (
               <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-green-500 flex items-center justify-center">
