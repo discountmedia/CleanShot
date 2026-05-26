@@ -20,7 +20,7 @@ interface TabBarProps {
 export function TabBar({ tabs, active, onChange }: TabBarProps) {
   return (
     <nav className="border-b border-zinc-900 bg-black" role="tablist" aria-label="Workspace sections">
-      <div className="flex items-end px-6 gap-8 overflow-x-auto">
+      <div className="flex items-end px-6 gap-10 overflow-x-auto">
         {tabs.map((tab) => {
           const isActive = tab.id === active;
           return (
@@ -30,26 +30,26 @@ export function TabBar({ tabs, active, onChange }: TabBarProps) {
               aria-selected={isActive}
               onClick={() => onChange(tab.id)}
               className={`
-                relative flex items-center gap-2 py-3 text-xs font-semibold uppercase tracking-[0.16em]
+                relative flex items-center gap-2 py-4 text-base font-bold uppercase tracking-[0.16em]
                 transition-colors whitespace-nowrap
                 ${isActive
-                  ? "text-red-500"
-                  : "text-zinc-500 hover:text-zinc-300"}
+                  ? "text-red-400"
+                  : "text-zinc-200 hover:text-white"}
               `}
             >
               <span>{tab.label}</span>
               {typeof tab.count === "number" && (
                 <span className={`
-                  inline-flex items-center justify-center min-w-[22px] h-[18px] px-1.5
-                  rounded text-[10px] font-bold tabular-nums
-                  ${isActive ? "bg-red-950 text-red-300" : "bg-zinc-900 text-zinc-400"}
+                  inline-flex items-center justify-center min-w-6.5 h-5.5 px-2
+                  rounded text-sm font-bold tabular-nums
+                  ${isActive ? "bg-red-900 text-red-100" : "bg-zinc-800 text-zinc-100"}
                 `}>
                   {tab.count}
                 </span>
               )}
               {isActive && (
                 <span
-                  className="absolute left-0 right-0 bottom-0 h-[2px] bg-red-600"
+                  className="absolute left-0 right-0 bottom-0 h-0.75 bg-red-600"
                   aria-hidden="true"
                 />
               )}

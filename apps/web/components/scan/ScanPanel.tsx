@@ -570,16 +570,19 @@ export function ScanPanel({
       {/* ── Standalone upload zone ── */}
       {scanStates.length === 0 && (
         <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-          <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
-                Upload images
+          <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
+            <div className="flex flex-col gap-1">
+              <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+                Upload images to scan directly
               </span>
-              <span className="text-[10px] text-zinc-500">
-                Drop images here to scan directly — no Enhance step required. Auto-converted to JPEG before upload.
+              <span className="text-sm text-zinc-300 leading-relaxed">
+                Use this when you already have a finished photo and just want
+                a quality check on it — no Enhance step required. Three AI
+                quality checkers will vote pass / fail and flag any issues
+                they spot. Files are auto-converted to JPEG before upload.
               </span>
             </div>
-            <span className="text-[10px] uppercase tracking-[0.18em] font-mono text-zinc-500">
+            <span className="text-sm uppercase tracking-[0.18em] font-mono text-zinc-300 tabular-nums shrink-0">
               {uploads.length} / {MAX_UPLOADS}
             </span>
           </header>
@@ -616,14 +619,14 @@ export function ScanPanel({
               className="sr-only"
               disabled={uploads.length >= MAX_UPLOADS}
             />
-            <p className="text-sm text-zinc-300">
+            <p className="text-base text-zinc-100 font-semibold">
               {uploads.length >= MAX_UPLOADS
                 ? `Maximum ${MAX_UPLOADS} uploads reached`
                 : isDragging
                   ? "Drop to upload"
                   : "Click or drop image files here"}
             </p>
-            <p className="text-[11px] text-zinc-500 mt-1">
+            <p className="text-sm text-zinc-300 mt-1">
               JPEG, PNG, WebP · auto-converted to JPEG before upload
             </p>
           </div>

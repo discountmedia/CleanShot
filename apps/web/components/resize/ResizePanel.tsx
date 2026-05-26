@@ -151,17 +151,18 @@ function validateForm(form: ProjectForm): { valid: boolean; yearNum: number | nu
 // ─── Form field components ────────────────────────────────────────────────────
 
 function TextField({
-  label, value, onChange, placeholder, disabled,
+  label, value, onChange, placeholder, disabled, hint,
 }: {
   label: string;
   value: string;
   onChange: (v: string) => void;
   placeholder?: string;
   disabled?: boolean;
+  hint?: string;
 }) {
   return (
-    <label className="flex flex-col gap-1">
-      <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+    <label className="flex flex-col gap-1.5">
+      <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
         {label}
       </span>
       <input
@@ -170,8 +171,9 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition disabled:opacity-50"
+        className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition disabled:opacity-50"
       />
+      {hint && <span className="text-xs text-zinc-400 leading-snug">{hint}</span>}
     </label>
   );
 }
@@ -640,17 +642,19 @@ export function ResizePanel({
           skip Enhance/Scan entirely — they go straight to GCS and join
           the export set. Same MAX_UPLOADS cap as EnhancePanel. */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-        <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
-              Upload images
+        <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
+          <div className="flex flex-col gap-1">
+            <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+              Upload images directly
             </span>
-            <span className="text-[10px] text-zinc-500">
-              Use this when you want to resize a photo without running it through Enhance or Scan first.
-              Files are auto-converted to JPEG client-side.
+            <span className="text-sm text-zinc-300 leading-relaxed">
+              Skip the Enhance + Scan steps and drop photos straight in here.
+              Use this when a photo is already good enough and you just need
+              it cropped to listing-site size. Files are auto-converted to
+              JPEG before upload.
             </span>
           </div>
-          <span className="text-[10px] uppercase tracking-[0.18em] font-mono text-zinc-500">
+          <span className="text-sm uppercase tracking-[0.18em] font-mono text-zinc-300 tabular-nums shrink-0">
             {uploads.length} / {MAX_UPLOADS}
           </span>
         </header>
@@ -687,14 +691,14 @@ export function ResizePanel({
             className="sr-only"
             disabled={uploads.length >= MAX_UPLOADS}
           />
-          <p className="text-sm text-zinc-300">
+          <p className="text-base text-zinc-100 font-semibold">
             {uploads.length >= MAX_UPLOADS
               ? `Maximum ${MAX_UPLOADS} uploads reached`
               : isDragging
                 ? "Drop to upload"
                 : "Click or drop image files here"}
           </p>
-          <p className="text-[11px] text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-300 mt-1">
             JPEG, PNG, WebP · auto-converted to JPEG before upload
           </p>
         </div>
@@ -768,16 +772,18 @@ export function ResizePanel({
           and matches the standalone-upload grid above. */}
       {enhancedAssets.length > 0 && (
         <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-          <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
-            <div className="flex flex-col gap-0.5">
-              <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+          <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
+            <div className="flex flex-col gap-1">
+              <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
                 From Enhance / Scan
               </span>
-              <span className="text-[10px] text-zinc-500">
-                Images you sent over from the other tabs. They&apos;ll be included in the next export.
+              <span className="text-sm text-zinc-300 leading-relaxed">
+                These images came from the other tabs via the &quot;Send to
+                Resize&quot; buttons. They&apos;ll be included in the next
+                export below.
               </span>
             </div>
-            <span className="text-[10px] uppercase tracking-[0.18em] font-mono text-zinc-500">
+            <span className="text-sm uppercase tracking-[0.18em] font-mono text-zinc-300 tabular-nums shrink-0">
               {enhancedAssets.length}
             </span>
           </header>
@@ -814,29 +820,40 @@ export function ResizePanel({
           queued OR an export preview lingering OR an in-flight upload
           (lets the operator bail on a stuck upload too). Styled as a
           de-emphasised text link to match the Enhance tab's "Clear all". */}
-      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 flex items-center justify-between gap-3">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-4 flex items-center justify-between gap-3 flex-wrap">
         <div className="flex flex-col">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-500 font-semibold">
-            Assets queued
+          <span className="text-base uppercase tracking-[0.14em] text-zinc-100 font-semibold">
+            Assets queued for export
           </span>
-          {standaloneAssets.length > 0 && enhancedAssets.length > 0 && (
-            <span className="text-[10px] text-zinc-500 mt-0.5">
-              {enhancedAssets.length} from Enhance/Scan + {standaloneAssets.length} uploaded directly
-            </span>
-          )}
+          <span className="text-sm text-zinc-300 mt-1 leading-relaxed">
+            {hasAssets
+              ? (
+                <>
+                  {enhancedAssets.length > 0 && (
+                    <>{enhancedAssets.length} from Enhance/Scan</>
+                  )}
+                  {enhancedAssets.length > 0 && standaloneAssets.length > 0 && " + "}
+                  {standaloneAssets.length > 0 && (
+                    <>{standaloneAssets.length} uploaded directly</>
+                  )}
+                  {" — these will all be cropped and packed when you export."}
+                </>
+              )
+              : "Nothing queued yet. Drop files above, or approve images from Scan to send them here."}
+          </span>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-4">
           {(hasAssets || uploads.length > 0 || previewItems.length > 0) && (
             <button
               type="button"
               onClick={handleClearAll}
-              className="text-xs text-zinc-500 hover:text-red-400 transition-colors"
+              className="text-sm text-zinc-300 hover:text-red-400 transition-colors font-semibold"
               title="Wipe queued assets, uploads, and previews"
             >
               Clear all
             </button>
           )}
-          <span className={`text-sm font-mono tabular-nums ${hasAssets ? "text-zinc-200" : "text-zinc-500"}`}>
+          <span className={`text-2xl font-mono tabular-nums font-semibold ${hasAssets ? "text-yellow-300" : "text-zinc-500"}`}>
             {allAssets.length}
           </span>
         </div>
@@ -844,64 +861,78 @@ export function ResizePanel({
 
       {/* ── Project form ── */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-        <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
-          <div className="flex flex-col gap-0.5">
-            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
-              Project Details
+        <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
+          <div className="flex flex-col gap-1">
+            <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+              Project details
             </span>
-            <span className="text-[10px] text-zinc-500">
-              Save Project commits this metadata AND adds the queued image set to your History tab. Only <span className="text-zinc-300">Make</span> and <span className="text-zinc-300">Model</span> are required.
+            <span className="text-sm text-zinc-300 leading-relaxed">
+              Clicking <span className="font-semibold text-white">Save Project</span> does two things:
+              it locks in this metadata so the export endpoints will work, AND
+              it copies the queued images into your History tab so you can
+              re-download them within 60 days. Only{" "}
+              <span className="font-semibold text-yellow-300">Make</span> and{" "}
+              <span className="font-semibold text-yellow-300">Model</span> are
+              required — the rest are pre-filled from the Enhance tab when
+              you came from there.
             </span>
           </div>
           {isSaved && (
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-green-400">
-              Saved ✓
+            <span className="text-sm uppercase tracking-[0.18em] font-semibold text-green-400 shrink-0">
+              ✓ Saved
             </span>
           )}
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 p-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5">
           <TextField
             label="Make *"
             value={form.make}
             onChange={(v) => updateField("make", v)}
             placeholder="Toyota"
+            hint="OEM brand — Toyota, Hyster, Yale, Crown, etc."
           />
           <TextField
             label="Model *"
             value={form.model}
             onChange={(v) => updateField("model", v)}
             placeholder="8FGU25"
+            hint="Model number from the data plate."
           />
           <TextField
             label="Year"
             value={form.year}
             onChange={(v) => updateField("year", v.replace(/[^0-9]/g, "").slice(0, 4))}
             placeholder="defaults to current year"
+            hint="Model year (1900–2100). Leave blank for current year."
           />
           <TextField
             label="Username"
             value={form.username}
             onChange={(v) => updateField("username", v)}
             placeholder="defaults to your login email"
+            hint="Who's saving this — defaults to your account email."
           />
           <TextField
             label="Capacity"
             value={form.capacity}
             onChange={(v) => updateField("capacity", v)}
             placeholder="5000 lbs"
+            hint="Rated load capacity from the data plate."
           />
           <TextField
             label="Tire type"
             value={form.tireType}
             onChange={(v) => updateField("tireType", v)}
             placeholder="Pneumatic / Cushion / Non-marking"
+            hint="Pneumatic (outdoor), cushion (indoor), or non-marking."
           />
           <TextField
             label="Fuel type"
             value={form.fuelType}
             onChange={(v) => updateField("fuelType", v)}
             placeholder="LP / Diesel / Electric"
+            hint="LP, diesel, electric, gasoline, dual-fuel."
           />
         </div>
       </section>

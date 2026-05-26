@@ -10,6 +10,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { TipBanner } from "../workspace/TipBanner";
+
 interface ApprovalSetAsset {
   assetId:      string;
   filename:     string;
@@ -81,18 +83,26 @@ function FilterBar({
 
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-      <header className="flex items-center justify-between px-4 py-3 bg-zinc-900/50 border-b border-zinc-800">
-        <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
-          Filter
-        </span>
-        <div className="flex items-center gap-3">
-          <span className="text-[10px] uppercase tracking-[0.16em] text-zinc-500 tabular-nums">
+      <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800 flex-wrap">
+        <div className="flex flex-col gap-1 min-w-0">
+          <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+            Filter
+          </span>
+          <span className="text-sm text-zinc-300 leading-relaxed">
+            Use the search box to find a specific lift by Make, Model,
+            filename, or folder name. Date filters narrow the list to
+            sets approved in a window. Use the Make / Model dropdowns
+            to pin one unit type at a time.
+          </span>
+        </div>
+        <div className="flex items-center gap-4 shrink-0">
+          <span className="text-sm uppercase tracking-[0.16em] text-zinc-300 tabular-nums font-semibold">
             {filteredCount} / {totalSets} set{totalSets !== 1 ? "s" : ""}
           </span>
           {isFiltered && (
             <button
               onClick={() => onChange(EMPTY_FILTERS)}
-              className="text-[10px] uppercase tracking-[0.18em] font-semibold text-red-400 hover:text-red-300 transition-colors"
+              className="text-sm uppercase tracking-[0.18em] font-semibold text-red-300 hover:text-red-200 transition-colors"
             >
               Clear filters
             </button>
@@ -100,10 +110,10 @@ function FilterBar({
         </div>
       </header>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 p-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-5">
         {/* Free-text search */}
-        <label className="flex flex-col gap-1 md:col-span-2">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+        <label className="flex flex-col gap-1.5 md:col-span-2">
+          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
             Search
           </span>
           <input
@@ -111,43 +121,43 @@ function FilterBar({
             value={filters.query}
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
             placeholder="Make, model, filename, or folder…"
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
           />
         </label>
 
         {/* Date range */}
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
             From date
           </span>
           <input
             type="date"
             value={filters.startDate}
             onChange={(e) => onChange({ ...filters, startDate: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
           />
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
             To date
           </span>
           <input
             type="date"
             value={filters.endDate}
             onChange={(e) => onChange({ ...filters, endDate: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
           />
         </label>
 
         {/* Make + model dropdowns */}
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
             Make
           </span>
           <select
             value={filters.make}
             onChange={(e) => onChange({ ...filters, make: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
           >
             <option value="">All makes</option>
             {availableMakes.map((m) => (
@@ -155,14 +165,14 @@ function FilterBar({
             ))}
           </select>
         </label>
-        <label className="flex flex-col gap-1">
-          <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 font-semibold">
+        <label className="flex flex-col gap-1.5">
+          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
             Model
           </span>
           <select
             value={filters.model}
             onChange={(e) => onChange({ ...filters, model: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
           >
             <option value="">All models</option>
             {availableModels.map((m) => (
@@ -410,25 +420,59 @@ export function HistoryList({
 
   if (!data || data.sets.length === 0) {
     return (
-      <div className="text-center py-16 space-y-2">
-        <p className="text-zinc-500">No approved image sets in the last 60 days.</p>
-        <p className="text-xs text-zinc-700">
-          Approve images in the Scan tab to save them to your library.
-        </p>
+      <div className="space-y-4">
+        <TipBanner title="History tab — what this does">
+          <p>
+            Every time you approve a set of photos on the Resize tab,
+            they get copied here and held for 60 days. You can come back
+            and re-download any approved set, search by Make / Model /
+            filename, or filter by approval date.
+          </p>
+        </TipBanner>
+        <div className="text-center py-16 space-y-3">
+          <p className="text-base text-zinc-200 font-semibold">
+            No approved image sets in the last 60 days.
+          </p>
+          <p className="text-sm text-zinc-400">
+            Approve a set on the Resize tab to save it here.
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
-          {data.totalSets} set{data.totalSets !== 1 ? "s" : ""} · Images stored 60 days from approval · {userEmail}
+      {/* ── Plain-language explanation of what this tab is for ── */}
+      <TipBanner
+        title="History tab — what this does"
+        steps={[
+          <>Every approved set from the Resize tab lands here automatically.</>,
+          <>Sets are kept for <span className="font-semibold text-yellow-300">60 days</span> from the approval date, then auto-deleted.</>,
+          <>Use the filter bar below to search by Make / Model / filename / folder, or narrow by approval date.</>,
+          <>Click any thumbnail to open the full-size signed URL in a new tab.</>,
+        ]}
+      >
+        <p>
+          Your library of approved image sets. Every photo you&apos;ve
+          ever signed off on lives here for 60 days so you can pull it
+          back if a listing site asks for it again.
+        </p>
+      </TipBanner>
+
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <p className="text-sm uppercase tracking-[0.16em] text-zinc-300 font-semibold">
+          <span className="text-yellow-300">{data.totalSets}</span>{" "}
+          set{data.totalSets !== 1 ? "s" : ""}
+          <span className="text-zinc-500"> · </span>
+          Images stored 60 days from approval
+          <span className="text-zinc-500"> · </span>
+          <span className="text-zinc-200 font-mono">{userEmail}</span>
         </p>
         <button
           onClick={() => setRefreshTick((t) => t + 1)}
           disabled={loading}
-          className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-400 hover:text-white border border-zinc-700 hover:border-zinc-500 px-2 py-1 rounded transition-colors disabled:opacity-50"
+          className="text-sm uppercase tracking-[0.16em] font-semibold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-2 rounded transition-colors disabled:opacity-50"
           aria-label="Reload history"
         >
           {loading ? "Loading…" : "Refresh"}

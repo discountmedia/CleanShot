@@ -172,8 +172,10 @@ function ToggleSwitch({
         />
       </div>
       <div className="min-w-0">
-        <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-zinc-500 mt-0.5 leading-snug">{description}</span>
+        <span className="block text-base font-semibold">{label}</span>
+        <span className={`block text-sm mt-1 leading-snug ${checked ? "text-blue-100" : "text-zinc-300"}`}>
+          {description}
+        </span>
       </div>
     </label>
   );
@@ -1233,23 +1235,23 @@ export function EnhancePanel({
           type="button"
           onClick={() => setAdvancedOpen((v) => !v)}
           aria-expanded={advancedOpen}
-          className="w-full flex items-center justify-between px-5 py-3 bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors text-left"
         >
-          <div className="flex items-center gap-3">
-            <span className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
               Advanced
             </span>
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
-              optional emphasis + custom prompt
+            <span className="text-sm uppercase tracking-[0.16em] text-zinc-300">
+              Optional emphasis + custom prompt
             </span>
             {customPromptActive && (
-              <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-amber-400 bg-amber-950/40 border border-amber-900 rounded px-1.5 py-0.5">
+              <span className="text-xs uppercase tracking-[0.18em] font-bold text-amber-200 bg-amber-900/60 border border-amber-700 rounded px-2 py-0.5">
                 Prompt active
               </span>
             )}
           </div>
           <svg
-            className={`w-4 h-4 text-zinc-500 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+            className={`w-5 h-5 text-zinc-200 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1262,11 +1264,11 @@ export function EnhancePanel({
               aria-disabled={customPromptActive || undefined}
               className={customPromptActive ? "opacity-40 pointer-events-none" : ""}
             >
-              <div className="flex items-baseline justify-between mb-2">
-                <h3 className="text-sm font-semibold text-zinc-200">
+              <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+                <h3 className="text-lg font-semibold text-zinc-100">
                   Optional emphasis
                   {customPromptActive && (
-                    <span className="ml-2 text-[10px] uppercase tracking-[0.18em] text-amber-500">
+                    <span className="ml-2 text-sm uppercase tracking-[0.16em] text-amber-300">
                       disabled — custom prompt active
                     </span>
                   )}
@@ -1277,15 +1279,21 @@ export function EnhancePanel({
                     setToggles(DEFAULT_TOGGLES);
                     markUserToggleChange();
                   }}
-                  className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
+                  className="text-sm text-zinc-300 hover:text-white transition-colors font-semibold"
                 >
                   Reset
                 </button>
               </div>
-              <p className="text-xs text-zinc-500 mb-3">
-                Every enhance run does the standard makeover (paint, decals, rust,
-                tires, lighting). Toggles below add extra emphasis or specific
-                actions on top.
+              <p className="text-sm text-zinc-200 mb-4 leading-relaxed">
+                Every enhance run already does the standard makeover (paint
+                refresh, decal restoration, rust cleanup, tire shine, lighting
+                correction). The toggles below add{" "}
+                <span className="font-semibold text-yellow-300">extra emphasis</span>{" "}
+                on a specific area, or kick in a{" "}
+                <span className="font-semibold text-yellow-300">specific action</span>{" "}
+                (like painting the forks red, or removing rental decals). Leave
+                them off if the standard treatment is already doing what you
+                want — these are nudges, not requirements.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
@@ -1316,23 +1324,23 @@ export function EnhancePanel({
             </div>
 
             <div className="border-t border-zinc-900 pt-5 space-y-3">
-              <div className="flex items-baseline justify-between">
+              <div className="flex items-baseline justify-between gap-3 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setCustomPromptOpen((v) => !v)}
                   aria-expanded={customPromptOpen}
-                  className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-300 hover:text-white transition-colors flex items-center gap-2"
+                  className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100 hover:text-white transition-colors flex items-center gap-2"
                 >
                   <svg
-                    className={`w-3.5 h-3.5 text-zinc-500 transition-transform ${customPromptOpen ? "rotate-180" : ""}`}
+                    className={`w-4 h-4 text-zinc-300 transition-transform ${customPromptOpen ? "rotate-180" : ""}`}
                     fill="none" viewBox="0 0 24 24" stroke="currentColor"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                   </svg>
                   Custom prompt
                 </button>
-                <span className="text-[11px] text-zinc-600">
-                  advanced — overrides every toggle above
+                <span className="text-sm text-zinc-300">
+                  Advanced — overrides every toggle above
                 </span>
               </div>
 
@@ -1340,20 +1348,26 @@ export function EnhancePanel({
                 <>
                   <div
                     role="alert"
-                    className="flex items-start gap-2 rounded-lg border border-amber-900 bg-amber-950/30 px-3 py-2"
+                    className="flex items-start gap-3 rounded-lg border border-amber-900 bg-amber-950/30 px-4 py-3"
                   >
                     <svg
-                      className="w-4 h-4 text-amber-500 mt-0.5 shrink-0"
+                      className="w-5 h-5 text-amber-300 mt-0.5 shrink-0"
                       fill="none" viewBox="0 0 24 24" stroke="currentColor"
                     >
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
                         d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
                     </svg>
-                    <p className="text-xs text-amber-200 leading-relaxed">
-                      A custom prompt bypasses every toggle above and is sent to the model verbatim.
-                      Results can be unpredictable — the safety / invariant clauses (preserve make,
-                      model, decals, proportions) are NOT auto-added. Write them in yourself if
-                      they matter.
+                    <p className="text-sm text-amber-100 leading-relaxed">
+                      <span className="font-semibold">Power-user only.</span> A
+                      custom prompt completely replaces the carefully-tuned
+                      default and is sent to the AI verbatim. The built-in
+                      safety clauses (preserve make / model / decals /
+                      proportions, keep used-character signs visible, avoid
+                      bait-and-switch) are <span className="font-semibold">NOT</span>{" "}
+                      automatically added — you have to write them in yourself
+                      if they matter. Results can be unpredictable. Use this
+                      only when you know exactly what you want and the toggles
+                      above can&apos;t express it.
                     </p>
                   </div>
                   <textarea
@@ -1361,10 +1375,12 @@ export function EnhancePanel({
                     onChange={(e) => setCustomPrompt(e.target.value)}
                     placeholder="Example: Repaint this forklift in matte black with red OSHA forks, keep all decals intact, soft studio lighting."
                     rows={5}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2 text-sm text-white placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition font-mono leading-relaxed"
+                    className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition font-mono leading-relaxed"
                   />
-                  <p className="text-[11px] text-zinc-500">
-                    Clear the textarea to re-enable the toggles above.
+                  <p className="text-sm text-zinc-300">
+                    Clear the textarea above to re-enable the standard
+                    toggles. The textarea has to be empty (no trailing
+                    spaces) for the toggle path to kick back in.
                   </p>
                 </>
               )}
