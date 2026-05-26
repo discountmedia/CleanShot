@@ -443,6 +443,16 @@ export function HistoryList({
 
   return (
     <div className="space-y-4">
+      {/* ── Page heading ── */}
+      <header className="space-y-1">
+        <h1 className="text-3xl font-extrabold text-white tracking-tight">
+          Your photo vault
+        </h1>
+        <p className="text-base text-zinc-300">
+          Every approved set you&apos;ve shipped — kept for 60 days, then auto-deleted.
+        </p>
+      </header>
+
       {/* ── Plain-language explanation of what this tab is for ── */}
       <TipBanner
         title="History tab — what this does"
