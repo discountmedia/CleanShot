@@ -59,10 +59,21 @@ const createAuth = () =>
       modelName: "ba_session",
       expiresIn: 60 * 60 * 24 * 7,          // 7 days
       updateAge: 60 * 60 * 24,               // refresh cookie if >1 day old
-      cookieCache: {
-        enabled: true,
-        maxAge: 60 * 5,                      // 5-minute client-side cache
-      },
+      // cookieCache is intentionally OFF.
+      //
+      // When enabled, Better Auth sets a second cookie
+      // (`better-auth.session_data`) that stuffs the full session + user
+      // object — signed — alongside the small session_token cookie. For
+      // accounts with non-trivial profile fields the signed blob crosses
+      // the browser's 4096-byte per-cookie cap, the browser silently
+      // drops it, and the console fills with:
+      //   "Set-Cookie header is ignored ... combined size of name and
+      //    value must be ≤ 4096 characters"
+      // The session_token itself stays under the cap so auth keeps
+      // working, but every get-session call falls back to a DB lookup
+      // anyway (cache always misses), so we may as well turn the cache
+      // off cleanly. Session lookups are an indexed PK read against
+      // ba_session — already O(1) over the pg pool.
     },
 
     socialProviders: {
