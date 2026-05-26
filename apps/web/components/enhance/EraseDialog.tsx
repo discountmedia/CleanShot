@@ -400,12 +400,12 @@ export function EraseDialog({
     >
       <div className="w-full max-w-5xl max-h-full bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* ── Header ── */}
-        <header className="flex items-center justify-between px-5 py-3 border-b border-zinc-900">
+        <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-900">
           <div>
-            <h2 className="text-sm font-semibold text-zinc-100">
+            <h2 className="text-xl font-bold text-white">
               Erase — paint over what should be removed
             </h2>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <p className="text-base text-zinc-200 mt-1 leading-relaxed">
               Routed through BFL flux-tools/erase-v1. Heavier strokes give the model more room to invent a clean fill.
             </p>
           </div>
@@ -413,7 +413,7 @@ export function EraseDialog({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="text-xs uppercase tracking-[0.16em] text-zinc-500 hover:text-zinc-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-200 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
           >
             {resultUrl ? "Close" : "Cancel"}
           </button>
@@ -453,15 +453,29 @@ export function EraseDialog({
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
-                <span className="text-sm text-blue-300">{progressLabel}</span>
+                <span className="text-base font-bold text-blue-200">{progressLabel}</span>
               </div>
             )}
           </div>
 
+          {/* Tip banner — how to use the brush. */}
+          {!resultUrl && (
+            <div className="rounded-lg border border-yellow-700/60 bg-yellow-950/30 px-4 py-3">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-yellow-200 mb-1">
+                How to use the eraser
+              </p>
+              <p className="text-base text-yellow-100 leading-relaxed">
+                Drag your cursor over anything you want gone — extra cones, propane tanks, people,
+                logos, debris. Cover the whole object plus a little extra around the edges. The AI
+                will invent a clean fill (sky, dirt, concrete, etc.) based on what surrounds it.
+              </p>
+            </div>
+          )}
+
           {/* Brush + Clear */}
           {!resultUrl && (
             <div className="flex items-center gap-4 flex-wrap">
-              <label className="flex items-center gap-2 text-xs text-zinc-400">
+              <label className="flex items-center gap-3 text-base font-bold text-zinc-100">
                 Brush
                 <input
                   type="range"
@@ -472,7 +486,7 @@ export function EraseDialog({
                   onChange={(e) => setBrushPx(Number(e.target.value))}
                   className="w-48 accent-blue-500 disabled:opacity-40"
                 />
-                <span className="font-mono text-zinc-500 tabular-nums w-8 text-right">
+                <span className="font-mono text-zinc-200 tabular-nums w-12 text-right text-base">
                   {brushPx}px
                 </span>
               </label>
@@ -480,11 +494,11 @@ export function EraseDialog({
                 type="button"
                 onClick={handleClear}
                 disabled={!hasStrokes || submitting}
-                className="text-[11px] uppercase tracking-[0.16em] text-zinc-500 hover:text-zinc-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-2 py-1 rounded border border-zinc-800 hover:border-zinc-600 disabled:hover:border-zinc-800"
+                className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-200 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded border border-zinc-700 hover:border-zinc-400 disabled:hover:border-zinc-700"
               >
                 Clear mask
               </button>
-              <span className="text-[11px] text-zinc-600 ml-auto">
+              <span className="text-sm font-bold text-zinc-200 ml-auto">
                 {strokes.length} stroke{strokes.length === 1 ? "" : "s"}
               </span>
             </div>
@@ -493,7 +507,7 @@ export function EraseDialog({
           {/* Instruction */}
           {!resultUrl && (
             <label className="block">
-              <span className="text-xs text-zinc-400 mb-1 block">
+              <span className="text-sm font-bold uppercase tracking-[0.16em] text-zinc-100 mb-1.5 block">
                 Fill hint (optional)
               </span>
               <input
@@ -502,9 +516,9 @@ export function EraseDialog({
                 onChange={(e) => setInstruction(e.target.value.slice(0, MAX_INSTRUCTION_CHARS))}
                 disabled={submitting}
                 placeholder="e.g. plain concrete floor"
-                className="w-full bg-zinc-900 border border-zinc-800 focus:border-blue-600 focus:outline-none rounded-lg px-3 py-2 text-sm text-zinc-200 placeholder:text-zinc-600 disabled:opacity-40"
+                className="w-full bg-zinc-900 border border-zinc-700 focus:border-blue-500 focus:outline-none rounded-lg px-3 py-2.5 text-base text-white placeholder:text-zinc-400 disabled:opacity-40"
               />
-              <span className="text-[10px] text-zinc-600 mt-1 block text-right">
+              <span className="text-sm text-zinc-300 mt-1 block text-right tabular-nums">
                 {instruction.length}/{MAX_INSTRUCTION_CHARS}
               </span>
             </label>
@@ -512,20 +526,20 @@ export function EraseDialog({
 
           {/* Submit error */}
           {submitError && (
-            <p className="text-xs text-red-400 bg-red-950/40 border border-red-900 rounded px-3 py-2">
+            <p className="text-base font-medium text-red-300 bg-red-950/40 border border-red-800 rounded px-3 py-2">
               {submitError}
             </p>
           )}
         </div>
 
         {/* ── Footer actions ── */}
-        <footer className="flex items-center justify-end gap-2 px-5 py-3 border-t border-zinc-900">
+        <footer className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-900">
           {!resultUrl ? (
             <button
               type="button"
               onClick={handleSubmit}
               disabled={!hasStrokes || submitting || !naturalSize}
-              className={`px-5 py-2 rounded-lg text-sm font-semibold transition-colors
+              className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors
                 ${hasStrokes && !submitting && naturalSize
                   ? "bg-blue-600 hover:bg-blue-500 text-white"
                   : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}`}
@@ -537,14 +551,14 @@ export function EraseDialog({
               <button
                 type="button"
                 onClick={handleDiscardResult}
-                className="px-4 py-2 rounded-lg text-sm text-zinc-300 hover:text-white bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                className="px-5 py-2.5 rounded-lg text-base font-bold text-zinc-100 hover:text-white bg-zinc-800 hover:bg-zinc-700 transition-colors"
               >
                 Try again
               </button>
               <button
                 type="button"
                 onClick={handleAccept}
-                className="px-5 py-2 rounded-lg text-sm font-semibold bg-green-600 hover:bg-green-500 text-white transition-colors"
+                className="px-6 py-2.5 rounded-lg text-base font-bold bg-green-600 hover:bg-green-500 text-white transition-colors"
               >
                 Accept &amp; replace variant
               </button>

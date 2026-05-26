@@ -399,100 +399,114 @@ function VariantThumb({ provider, variant, chosen, nowMs, onChoose, onRegen, onE
           </div>
         )}
 
-        {/* Per-variant tweak — opens the Gemini text-edit dialog.
-            Sits between the regen and erase buttons so the operator
-            sees the quick-action cluster in a clear "↻ ✎ ⌫" order:
-            regen → tweak (text) → erase (mask). */}
-        {isComplete && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onTweak();
-            }}
-            title="Tweak a detail with text (Gemini)"
-            aria-label="Open tweak tool for this variant"
-            className="absolute top-1.5 left-9 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-blue-700 text-blue-300 hover:text-white border border-blue-800 hover:border-blue-500 transition-colors"
-          >
-            {/* Pencil / magic-wand icon */}
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"
-              />
-            </svg>
-          </button>
-        )}
-
-        {/* Per-variant erase — opens the BFL flux-tools/erase-v1 mask
-            dialog. Sits alongside the regen and tweak buttons so the
-            operator's quick actions cluster in one corner. */}
-        {isComplete && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onErase();
-            }}
-            title="Erase a detail (Flux mask)"
-            aria-label="Open erase tool for this variant"
-            className="absolute top-1.5 left-17 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-purple-700 text-purple-300 hover:text-white border border-purple-800 hover:border-purple-500 transition-colors"
-          >
-            {/* Eraser icon */}
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M16.862 4.487l3.65 3.65a2 2 0 010 2.828L9.172 22.305H5.025a1 1 0 01-1-1V17.16a2 2 0 01.586-1.414L16.034 4.487a2 2 0 012.828 0z"
-              />
-              <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l4 4" />
-            </svg>
-          </button>
-        )}
-
         {/* Per-variant regen — visible on completed thumbs. Re-enqueues
             the same provider via the same retry handler the failed-strip
             uses; the thumb resets to a spinner via EnhancePanel's
             eviction of the old jobId. stopPropagation so the click
-            doesn't also trigger the outer "pick winner" select. */}
+            doesn't also trigger the outer "pick winner" select.
+
+            The three quick-action icons (regen / tweak / erase) cluster in
+            the top-left in a clear "↻ ✎ ⌫" order. Each one wraps a `group`
+            so a styled hover-tooltip can fade in below the button. */}
         {isComplete && (
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              onRegen();
-            }}
-            title={`Regenerate with ${ENHANCE_PROVIDER_LABELS[provider]}`}
-            aria-label={`Regenerate ${ENHANCE_PROVIDER_LABELS[provider]} variant`}
-            className="absolute top-1.5 left-1.5 inline-flex items-center justify-center w-6 h-6 rounded-full bg-black/70 hover:bg-amber-700 text-amber-300 hover:text-white border border-amber-800 hover:border-amber-500 transition-colors"
-          >
-            <svg
-              className="w-3.5 h-3.5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
+          <div className="group/regen absolute top-2 left-2 z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRegen();
+              }}
+              title={`Regenerate this variant with ${ENHANCE_PROVIDER_LABELS[provider]}`}
+              aria-label={`Regenerate ${ENHANCE_PROVIDER_LABELS[provider]} variant`}
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-amber-600 text-amber-300 hover:text-white border-2 border-amber-700 hover:border-amber-400 transition-colors shadow-lg"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-              />
-            </svg>
-          </button>
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+            </button>
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-amber-700 rounded-md px-3 py-1.5 text-sm font-bold text-amber-100 shadow-2xl opacity-0 group-hover/regen:opacity-100 transition-opacity duration-150 z-20">
+              Regenerate — run {ENHANCE_PROVIDER_LABELS[provider]} again
+            </span>
+          </div>
+        )}
+
+        {/* Per-variant tweak — opens the Gemini text-edit dialog. */}
+        {isComplete && (
+          <div className="group/tweak absolute top-2 left-13 z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onTweak();
+              }}
+              title="Tweak with text — small targeted edits (Gemini)"
+              aria-label="Open tweak tool for this variant"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-blue-600 text-blue-300 hover:text-white border-2 border-blue-700 hover:border-blue-400 transition-colors shadow-lg"
+            >
+              {/* Pencil / magic-wand icon */}
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"
+                />
+              </svg>
+            </button>
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-blue-700 rounded-md px-3 py-1.5 text-sm font-bold text-blue-100 shadow-2xl opacity-0 group-hover/tweak:opacity-100 transition-opacity duration-150 z-20">
+              Tweak with text — &ldquo;remove the propane tank&rdquo;
+            </span>
+          </div>
+        )}
+
+        {/* Per-variant erase — opens the BFL flux-tools/erase-v1 mask dialog. */}
+        {isComplete && (
+          <div className="group/erase absolute top-2 left-24 z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onErase();
+              }}
+              title="Erase with brush — paint over the area to remove it (Flux)"
+              aria-label="Open erase tool for this variant"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-purple-600 text-purple-300 hover:text-white border-2 border-purple-700 hover:border-purple-400 transition-colors shadow-lg"
+            >
+              {/* Eraser icon */}
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16.862 4.487l3.65 3.65a2 2 0 010 2.828L9.172 22.305H5.025a1 1 0 01-1-1V17.16a2 2 0 01.586-1.414L16.034 4.487a2 2 0 012.828 0z"
+                />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l4 4" />
+              </svg>
+            </button>
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-purple-700 rounded-md px-3 py-1.5 text-sm font-bold text-purple-100 shadow-2xl opacity-0 group-hover/erase:opacity-100 transition-opacity duration-150 z-20">
+              Erase with brush — paint over what to remove
+            </span>
+          </div>
         )}
 
         {isProcessing && (
