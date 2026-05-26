@@ -68,14 +68,20 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
         return img
 
     # Shadow: black RGBA with the same text mask, dimmed to ~55% alpha.
+    # `.copy(interpretation="srgb")` is REQUIRED — bandjoin produces a
+    # 4-band image that pyvips otherwise tags as "multiband", which
+    # libvips composite() refuses to align with the canvas's srgb
+    # (errors: "vips_colourspace: no known route from 'multiband' to
+    # 'srgb'"). Forcing the interpretation tells libvips to treat the
+    # 4 bands as srgb+alpha.
     shadow = mask.new_from_image([0, 0, 0]).bandjoin(
         (mask * 0.55).cast("uchar"),
-    )
+    ).copy(interpretation="srgb")
     # Foreground: white RGBA, dimmed to ~70% alpha so the disclaimer is
     # readable but unmistakably a watermark, not a primary element.
     fg = mask.new_from_image([255, 255, 255]).bandjoin(
         (mask * 0.70).cast("uchar"),
-    )
+    ).copy(interpretation="srgb")
 
     img = img.composite(shadow, "over", x=x + 1, y=y + 1)
     img = img.composite(fg,     "over", x=x,     y=y)
@@ -221,7 +227,7 @@ def _cover_crop(input_bytes: bytes, target_w: int, target_h: int) -> "pyvips.Ima
     """
     Decode `input_bytes`, scale to cover the target box in both dims,
     then smart-crop to the exact target size. Used as the per-cell
-    resize for the branded collage composer.
+    resize for the branded collage HERO cell.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
     scale = max(target_w / img.width, target_h / img.height)
@@ -231,6 +237,51 @@ def _cover_crop(input_bytes: bytes, target_w: int, target_h: int) -> "pyvips.Ima
     if img.bands == 4:
         img = img.extract_band(0, n=3)
     return img.copy(interpretation="srgb")
+
+
+def _letterbox_to_aspect(
+    input_bytes: bytes,
+    cell_w: int,
+    cell_h: int,
+    aspect_w: int,
+    aspect_h: int,
+) -> "pyvips.Image":
+    """
+    Decode `input_bytes`, fit it (longest-edge, no crop) inside the
+    largest `aspect_w:aspect_h` box that still fits inside `cell_w x
+    cell_h`, then embed that into a black `cell_w x cell_h` canvas,
+    centered. Used as the per-cell resize for the branded collage
+    THUMB cells — operator wants each thumb to show the source at the
+    7:5 listing aspect with black bars filling any leftover space in
+    the cell, not a smart-cropped fill.
+    """
+    img = pyvips.Image.new_from_buffer(input_bytes, "")
+    if img.bands == 4:
+        img = img.extract_band(0, n=3)
+    img = img.copy(interpretation="srgb")
+
+    # Largest aspect_w:aspect_h box that fits inside (cell_w, cell_h).
+    box_w_from_h = int(cell_h * aspect_w / aspect_h)
+    box_h_from_w = int(cell_w * aspect_h / aspect_w)
+    if box_w_from_h <= cell_w:
+        inner_w, inner_h = box_w_from_h, cell_h
+    else:
+        inner_w, inner_h = cell_w, box_h_from_w
+
+    # Fit the source inside that inner box (no crop — letterbox the
+    # source's own aspect into the 7:5 frame as needed, so the operator
+    # sees the full source).
+    scale = min(inner_w / img.width, inner_h / img.height)
+    img = img.resize(scale, kernel="lanczos3")
+
+    # Build a black cell-sized canvas and insert the fit image,
+    # centered. `gravity` would be neater but isn't on this libvips
+    # build everywhere we run; manual insert keeps it portable.
+    canvas = pyvips.Image.black(cell_w, cell_h, bands=3).copy(interpretation="srgb")
+    x_off = (cell_w - img.width) // 2
+    y_off = (cell_h - img.height) // 2
+    canvas = canvas.insert(img, x_off, y_off)
+    return canvas
 
 
 def compose_branded_collage(
@@ -260,13 +311,24 @@ def compose_branded_collage(
         interpretation="srgb",
     )
 
-    # Hero on the left.
+    # Hero on the left — cover-crop (zoom-to-fill, no letterboxing).
     hero = _cover_crop(hero_bytes, _COLLAGE_HERO_W, _COLLAGE_HERO_H)
     canvas = canvas.insert(hero, 0, 0)
 
-    # Thumbnail strip on the right — top to bottom.
+    # Thumbnail strip on the right — top to bottom. Per operator
+    # request: each thumb shows the source at the 7:5 listing aspect
+    # (the same aspect as the PRO export) with black bars filling
+    # whatever's left of the 304x135 cell. Pillarbox / letterbox
+    # rather than cover-crop so the operator sees the FULL source
+    # framed for listing, not a cropped slice.
     for i, raw in enumerate(thumb_bytes):
-        thumb = _cover_crop(raw, _COLLAGE_THUMB_W, _COLLAGE_THUMB_H)
+        thumb = _letterbox_to_aspect(
+            raw,
+            cell_w=_COLLAGE_THUMB_W,
+            cell_h=_COLLAGE_THUMB_H,
+            aspect_w=7,
+            aspect_h=5,
+        )
         canvas = canvas.insert(thumb, _COLLAGE_HERO_W, i * _COLLAGE_THUMB_H)
 
     if ai_disclaimer:
