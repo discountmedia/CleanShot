@@ -43,11 +43,24 @@ jobs:
       - name: Unit tests
         run: pnpm test
 
+      # Deploy via the official Vercel CLI directly. The third-party
+      # amondnet/vercel-action@v25 wrapper pinned vercel@25.1.0, which
+      # is ~22 major versions behind current and gets rejected by
+      # Vercel's API with "this endpoint requires version 47.2.2 or
+      # later". Running the CLI ourselves keeps us on @latest, drops
+      # a third-party dependency, and removes the Node.js 20 forced
+      # by the wrapper (this step now runs on the setup-node step's
+      # Node 22 / Node 24).
+      #
+      # VERCEL_ORG_ID + VERCEL_PROJECT_ID are read automatically from
+      # the env block; only --token has to be passed explicitly.
       - name: Deploy to Vercel
-        uses: amondnet/vercel-action@v25
-        with:
-          vercel-token:      ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id:     ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
-          vercel-args:       '--prod'
-          working-directory: apps/web
+        working-directory: apps/web
+        env:
+          VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install --global vercel@latest
+          vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
+          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
