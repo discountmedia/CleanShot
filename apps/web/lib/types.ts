@@ -42,6 +42,30 @@ export const EQUIPMENT_TYPES: readonly EquipmentType[] = [
   "scissor_lift",
 ] as const;
 
+// Structured grouping so the UI can render each cluster as its own
+// segmented control with a visual gap between them. Without this the
+// chip strip is just "7 buttons in a row" — the warehouse-vs-aerial
+// distinction isn't legible at a glance. Driving the buttons from
+// this array (instead of the flat EQUIPMENT_TYPES list) gives the
+// operator an obvious "these five go together; these two go together"
+// visual cue without making them read the labels.
+export interface EquipmentGroup {
+  /** Short label shown above the group of chips (optional — falls back to no header). */
+  label?: string;
+  /** Member equipment types, displayed left-to-right inside this group. */
+  members: readonly EquipmentType[];
+}
+export const EQUIPMENT_GROUPS: readonly EquipmentGroup[] = [
+  {
+    label:   "Warehouse forks",
+    members: ["forklift", "reach_truck", "order_picker", "walkie_stacker", "pallet_jack"],
+  },
+  {
+    label:   "Aerial",
+    members: ["telehandler", "scissor_lift"],
+  },
+] as const;
+
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   forklift:       "Forklift",
   reach_truck:    "Reach Truck",

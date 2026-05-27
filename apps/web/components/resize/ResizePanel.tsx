@@ -37,7 +37,7 @@ import {
 } from "../../lib/api";
 import { convertToJpeg } from "../../lib/compress";
 import {
-  EQUIPMENT_TYPES,
+  EQUIPMENT_GROUPS,
   EQUIPMENT_TYPE_LABELS,
   type EquipmentType,
   type ForkliftMeta,
@@ -1220,30 +1220,43 @@ export function ResizePanel({
 
         {/* Equipment-type gate — the user must affirmatively pick what
             kind of unit this collage represents before the button is
-            clickable. Defaults to nothing so the choice is deliberate. */}
+            clickable. Defaults to nothing so the choice is deliberate.
+            Two visually distinct clusters (warehouse forks vs aerial)
+            with a wider gap between them so the operator's eye lands
+            on the right group instantly instead of scanning all
+            seven labels. */}
         <div className="space-y-2">
           <span className="text-sm uppercase tracking-[0.16em] font-bold text-emerald-100">
             What kind of equipment is this?
           </span>
-          <div className="flex flex-wrap gap-2">
-            {EQUIPMENT_TYPES.map((id) => {
-              const selected = collageEquipmentType === id;
-              return (
-                <button
-                  key={id}
-                  type="button"
-                  onClick={() => setCollageEquipmentType(id)}
-                  aria-pressed={selected}
-                  className={`text-base font-bold uppercase tracking-[0.14em] px-4 py-2.5 rounded-md border-2 transition-colors ${
-                    selected
-                      ? "border-emerald-400 bg-emerald-600 text-white"
-                      : "border-emerald-800 bg-zinc-900 text-emerald-100 hover:border-emerald-500"
-                  }`}
-                >
-                  {EQUIPMENT_TYPE_LABELS[id]}
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+            {EQUIPMENT_GROUPS.map((group) => (
+              <div
+                key={group.label ?? group.members.join("-")}
+                className="flex flex-wrap gap-2"
+                role="group"
+                aria-label={group.label}
+              >
+                {group.members.map((id) => {
+                  const selected = collageEquipmentType === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      onClick={() => setCollageEquipmentType(id)}
+                      aria-pressed={selected}
+                      className={`text-base font-bold uppercase tracking-[0.14em] px-4 py-2.5 rounded-md border-2 transition-colors ${
+                        selected
+                          ? "border-emerald-400 bg-emerald-600 text-white"
+                          : "border-emerald-800 bg-zinc-900 text-emerald-100 hover:border-emerald-500"
+                      }`}
+                    >
+                      {EQUIPMENT_TYPE_LABELS[id]}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
 

@@ -8,7 +8,7 @@
 // the Resize tab's Save Project form.
 
 import {
-  EQUIPMENT_TYPES,
+  EQUIPMENT_GROUPS,
   EQUIPMENT_TYPE_LABELS,
   type EquipmentType,
   type ForkliftMeta,
@@ -113,30 +113,43 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
       <div className="px-5 py-4 flex items-end gap-4 flex-wrap">
         {/* Equipment type — sits before Make so the operator sees they
             can swap categories. Compact chip row to match the Enhance
-            tab's ProviderRow vocabulary. */}
+            tab's ProviderRow vocabulary. Driven from EQUIPMENT_GROUPS
+            so each cluster (Warehouse forks vs Aerial) renders as its
+            own segmented control with a clear visual gap between
+            them — without the group structure the seven options were
+            running together as one indistinguishable strip. */}
         <div className="flex flex-col gap-1.5">
           <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
             Equipment
           </span>
-          <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
-            {EQUIPMENT_TYPES.map((t, i) => {
-              const selected = t === equipmentType;
-              return (
-                <button
-                  key={t}
-                  type="button"
-                  onClick={() => update("equipmentType", t)}
-                  aria-pressed={selected}
-                  className={`text-sm uppercase tracking-[0.14em] font-semibold px-4 py-2.5 transition-colors ${
-                    selected
-                      ? "bg-red-950/40 text-red-300"
-                      : "bg-zinc-900 text-zinc-300 hover:text-white"
-                  } ${i > 0 ? "border-l border-zinc-700" : ""}`}
-                >
-                  {EQUIPMENT_TYPE_LABELS[t]}
-                </button>
-              );
-            })}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+            {EQUIPMENT_GROUPS.map((group) => (
+              <div
+                key={group.label ?? group.members.join("-")}
+                className="inline-flex rounded-md border border-zinc-700 overflow-hidden"
+                role="group"
+                aria-label={group.label}
+              >
+                {group.members.map((t, i) => {
+                  const selected = t === equipmentType;
+                  return (
+                    <button
+                      key={t}
+                      type="button"
+                      onClick={() => update("equipmentType", t)}
+                      aria-pressed={selected}
+                      className={`text-sm uppercase tracking-[0.14em] font-semibold px-4 py-2.5 transition-colors ${
+                        selected
+                          ? "bg-red-950/40 text-red-300"
+                          : "bg-zinc-900 text-zinc-300 hover:text-white"
+                      } ${i > 0 ? "border-l border-zinc-700" : ""}`}
+                    >
+                      {EQUIPMENT_TYPE_LABELS[t]}
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
           </div>
         </div>
 
