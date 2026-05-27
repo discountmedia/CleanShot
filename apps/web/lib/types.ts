@@ -25,14 +25,21 @@ export type EquipmentType =
   | "pallet_jack"
   | "walkie_stacker";
 
+// Display order: warehouse fork-based units first (size descending so
+// the most common picks land at the start of the chip strip), then
+// aerial / construction equipment grouped at the end. Operator-driven
+// grouping decision 2026-05-27 — picking equipment is faster when
+// related categories sit next to each other instead of interleaved.
 export const EQUIPMENT_TYPES: readonly EquipmentType[] = [
+  // ── Warehouse fork lifts (size descending) ──
   "forklift",
   "reach_truck",
+  "order_picker",
+  "walkie_stacker",
+  "pallet_jack",
+  // ── Aerial / construction ──
   "telehandler",
   "scissor_lift",
-  "order_picker",
-  "pallet_jack",
-  "walkie_stacker",
 ] as const;
 
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
