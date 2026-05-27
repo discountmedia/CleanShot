@@ -112,13 +112,19 @@ ENHANCE_MODEL_KONTEXT = "flux-1-kontext-max-edit"
 # hard cap but most BFL models tolerate up to ~4k chars; staying
 # inside that bound matches what we send to the other providers.
 KONTEXT_PROMPT_MAX_CHARS = 3800
-# Match Flux's poll cadence — Kontext typical finish is 15–40s with
-# the same ~90-second tail budget.
+# Kontext typical finish is 15–40s. Front-load the schedule to
+# discover completion ~1–2s sooner on the typical case, then a tight
+# 1.0s steady interval so we don't sit on a finished job for up to
+# 2s after it lands. Larger MAX_ATTEMPTS preserves the prior ~90s
+# total budget (was 50 × 2s ≈ 100s; now 90 × 1s ≈ 90s) so we don't
+# regress on the long-tail cases. RunComfy publishes no status-poll
+# rate limit; ~60-90 status polls per minute is well within
+# reasonable usage.
 KONTEXT_POLL_INTERVALS_S: tuple[float, ...] = (
-    0.75, 0.75, 1.0, 1.25, 1.5, 1.5, 1.75, 2.0,
+    0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0,
 )
-KONTEXT_POLL_STEADY_INTERVAL_S = 2.0
-KONTEXT_POLL_MAX_ATTEMPTS = 50
+KONTEXT_POLL_STEADY_INTERVAL_S = 1.0
+KONTEXT_POLL_MAX_ATTEMPTS = 90
 
 # Grok / xAI image editing — synchronous JSON request to /v1/images/edits.
 # Auth via Bearer header. Source image is sent as a base64 data URI
@@ -745,6 +751,14 @@ async def _enhance_with_openai(
 
     response = await openai_client.responses.create(
         model=ENHANCE_MODEL_OPENAI,
+        # reasoning_effort="low" — image edits don't need deep planning;
+        # the prompt itself carries the spec. medium (default) burns
+        # ~25-40s of reasoning tokens on each call before the
+        # image_generation tool ever dispatches. Dropping to "low"
+        # keeps the tool-choice gate intact (gpt-5 still calls the
+        # tool because tool_choice is forced) while reclaiming that
+        # latency. Revisit if image quality regresses.
+        reasoning={"effort": "low"},
         input=[
             {
                 "role": "user",
@@ -815,7 +829,19 @@ async def _tweak_with_ideogram(gcs_uri: str, instruction: str) -> bytes:
         resp = await client.post(
             IDEOGRAM_EDIT_URL,
             headers={"Api-Key": settings.ideogram_api_key},
-            data={"prompt": instruction.strip()},
+            # rendering_speed=TURBO — Ideogram exposes a three-tier
+            # speed/quality knob (TURBO / DEFAULT / QUALITY). DEFAULT
+            # is the implicit fallback; TURBO trades a small amount of
+            # render fidelity for ~10s of wall-clock. The Ideogram
+            # surface here (per-variant tweak + primary-enhance path
+            # via the same helper) is text-led — operator typing a
+            # short instruction — so the speed/quality trade lands on
+            # the right side. Bump to "DEFAULT" if a particular
+            # tweak ever needs more care; the param is per-call.
+            data={
+                "prompt":          instruction.strip(),
+                "rendering_speed": "TURBO",
+            },
             files={"images": (filename, image_bytes, ct)},
         )
         if resp.status_code >= 400:
