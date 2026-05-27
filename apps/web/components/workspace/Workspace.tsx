@@ -10,15 +10,26 @@
 //   → KPI row → tab bar → active panel content
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 
 import { Header } from "./Header";
 import { TabBar, type TabId } from "./TabBar";
 
+// EnhancePanel is the default landing tab — keep it in the initial
+// bundle so first paint never waits on a code-split chunk. The other
+// four panels are code-split via next/dynamic, then additionally
+// gated by `visitedTabs` (see useEffect below) so their JS chunks
+// only fetch + mount when the operator first switches to that tab.
+// Once a panel has been visited, it stays mounted across subsequent
+// switches — same state-preservation semantics as the prior all-
+// static design, but with a smaller initial JS payload.
+// Real Experience Score fix 2026-05-27.
 import { EnhancePanel } from "@/components/enhance/EnhancePanel";
-import { ScanPanel } from "@/components/scan/ScanPanel";
-import { ResizePanel } from "@/components/resize/ResizePanel";
-import { HistoryList } from "@/components/history/HistoryList";
-import { ModifyPanel } from "@/components/modify/ModifyPanel";
+
+const ScanPanel    = dynamic(() => import("@/components/scan/ScanPanel").then(m => ({ default: m.ScanPanel })),       { ssr: false });
+const ModifyPanel  = dynamic(() => import("@/components/modify/ModifyPanel").then(m => ({ default: m.ModifyPanel })), { ssr: false });
+const ResizePanel  = dynamic(() => import("@/components/resize/ResizePanel").then(m => ({ default: m.ResizePanel })), { ssr: false });
+const HistoryList  = dynamic(() => import("@/components/history/HistoryList").then(m => ({ default: m.HistoryList })), { ssr: false });
 
 import { createSession } from "@/lib/api";
 import type { ForkliftMeta, ResizeResult } from "@/lib/types";
@@ -64,6 +75,27 @@ interface WorkspaceProps {
 
 export function Workspace({ userEmail, bypassed = false, isAdmin = false }: WorkspaceProps) {
   const [activeTab, setActiveTab] = useState<TabId>("enhance");
+
+  // Tracks which tabs have been activated at least once. Used to gate
+  // dynamic-imported panels' first mount — they don't show up until
+  // the operator first switches to them, which saves the JS-chunk
+  // download + initial-mount work on landing. Once a tab is in this
+  // set it stays in it for the workspace's lifetime, so subsequent
+  // switches behave identically to the prior all-mounted design
+  // (panel state preserved across tab changes). Enhance is preseeded
+  // because it's the default landing tab.
+  // Real Experience Score fix 2026-05-27.
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabId>>(
+    () => new Set<TabId>(["enhance"]),
+  );
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
 
   // Auto-advance toggle — defaults OFF (per product owner: power-user
   // shortcut, not the first-run experience). Lives in Workspace so the
@@ -272,7 +304,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           </PanelSlot>
 
           <PanelSlot active={activeTab === "scan"}>
-            {sessionId && (
+            {sessionId && visitedTabs.has("scan") && (
               <ScanPanel
                 // key bumps when handleClearPipeline runs, forcing a fresh
                 // mount so internal scanStates/uploads don't outlive the
@@ -290,7 +322,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           </PanelSlot>
 
           <PanelSlot active={activeTab === "modify"}>
-            {sessionId && (
+            {sessionId && visitedTabs.has("modify") && (
               <ModifyPanel
                 key={pipelineGeneration}
                 sessionId={sessionId}
@@ -303,7 +335,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           </PanelSlot>
 
           <PanelSlot active={activeTab === "resize"}>
-            {sessionId && (
+            {sessionId && visitedTabs.has("resize") && (
               <ResizePanel
                 // key bumps when handleClearPipeline runs — see ScanPanel above.
                 key={pipelineGeneration}
@@ -323,7 +355,9 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           </PanelSlot>
 
           <PanelSlot active={activeTab === "history"}>
-            <HistoryList userEmail={userEmail} active={activeTab === "history"} />
+            {visitedTabs.has("history") && (
+              <HistoryList userEmail={userEmail} active={activeTab === "history"} />
+            )}
           </PanelSlot>
 
           {!sessionId && !sessionError && activeTab !== "history" && (

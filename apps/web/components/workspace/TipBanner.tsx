@@ -8,7 +8,9 @@
 //   • info  — blue (default). Use for general "here's what this tab is."
 //   • warn  — amber. Use when there's a gotcha worth flagging.
 
-import type { ReactNode } from "react";
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
 
 interface TipBannerProps {
   title:    string;
@@ -51,6 +53,19 @@ export function TipBanner({
   children,
 }: TipBannerProps) {
   const t = TONE[tone];
+
+  // Defer the numbered step list one paint after mount so the initial
+  // visible content is just the icon + title + short prose body — a
+  // smaller LCP candidate that paints sooner. The steps list (often
+  // 4-6 items, can be the biggest visual block on the tab) snaps in
+  // a frame later. Effectively a free LCP improvement that doesn't
+  // change the final visible state. Real Experience Score fix
+  // 2026-05-27.
+  const [showSteps, setShowSteps] = useState(false);
+  useEffect(() => {
+    setShowSteps(true);
+  }, []);
+
   return (
     <section
       className={`rounded-xl border ${t.border} ${t.bg} px-5 py-4 flex items-start gap-4`}
@@ -91,7 +106,7 @@ export function TipBanner({
         <div className="text-sm text-zinc-200 leading-relaxed space-y-2">
           {children}
         </div>
-        {steps && steps.length > 0 && (
+        {showSteps && steps && steps.length > 0 && (
           <ol className="space-y-1.5 text-sm text-zinc-200 leading-relaxed list-decimal pl-5 pt-1 marker:text-zinc-400 marker:font-semibold">
             {steps.map((s, i) => (
               <li key={i}>{s}</li>

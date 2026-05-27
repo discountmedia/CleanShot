@@ -71,6 +71,13 @@ function ThumbnailCard({ file }: { file: UploadFile }) {
       <img
         src={file.previewUrl}
         alt={file.file.name}
+        /* Explicit 1:1 dims belt-and-suspender the aspect-square
+           Tailwind class — the CSS already enforces the square but
+           the width/height attrs let the browser establish the aspect
+           ratio before the blob image decodes, killing any micro-CLS
+           on the upload grid (Real Experience Score fix 2026-05-27). */
+        width={300}
+        height={300}
         className="w-full aspect-square object-cover"
       />
 

@@ -62,9 +62,17 @@ export function UserMenu() {
           <img
             src={avatarUrl}
             alt=""
+            width={36}
+            height={36}
             className="w-9 h-9 rounded-full object-cover bg-zinc-800"
           />
         ) : (
+          /* Initials fallback shares the avatar's exact 36×36 footprint
+             so swapping in the real <img> after the /api/profile fetch
+             resolves doesn't shift the header layout. Without explicit
+             width/height on the <img>, the browser couldn't reserve
+             space before the image bytes arrived → CLS spike each
+             page-load. (Real Experience Score fix 2026-05-27.) */
           <span className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold text-white">
             {initials}
           </span>

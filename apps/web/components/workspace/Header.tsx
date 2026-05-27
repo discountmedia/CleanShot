@@ -62,6 +62,13 @@ export function Header({
           <img
             src="/discount-forklift-logo.png"
             alt="Discount Forklift"
+            /* Intrinsic 1438×400 → 64px tall → 230px wide. Explicit
+               dims let the browser reserve space before the PNG bytes
+               arrive, eliminating the load-time layout shift that was
+               showing up as the dominant CLS contributor on /
+               (Real Experience Score fix 2026-05-27). */
+            width={230}
+            height={64}
             className="h-16 w-auto block"
           />
         </Link>

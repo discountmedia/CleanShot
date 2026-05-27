@@ -604,7 +604,10 @@ export function ModifyPanel({
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={u.previewUrl} alt={u.filename} className="w-full aspect-square object-cover" />
+                {/* Explicit 1:1 dims to lock aspect ratio before the blob
+                    image decodes — see EnhancePanel ThumbnailCard for the
+                    same fix. (Real Experience Score fix 2026-05-27.) */}
+                <img src={u.previewUrl} alt={u.filename} width={300} height={300} className="w-full aspect-square object-cover" />
                 {u.status !== "done" && (
                   <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-2 gap-1">
                     {u.status === "uploading" && (
