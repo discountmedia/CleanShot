@@ -61,14 +61,19 @@ vars are picked up.
 The Microsoft OAuth flow runs entirely in the Next.js BFF on Vercel. Cloud
 Run only sees the authenticated `X-User-Email` header that the BFF injects.
 
-## 6. Apply GCS lifecycle rule
+## 6. GCS lifecycle — photo library is stored indefinitely
+
+As of 2026-05-26, the approved/ photo library is kept forever (operator
+decided "photo library storage is infinite"). No lifecycle rule needed.
+
+If the bucket inherits an old policy from a prior setup, clear it:
 
 ```bash
 gcloud storage buckets update gs://cleanshot-derivatives-prod \
-  --lifecycle-file=infra/gcs-lifecycle-approved.json
+  --clear-lifecycle
 ```
 
-Verify:
+Verify the bucket has no active lifecycle rules:
 ```bash
 gcloud storage buckets describe gs://cleanshot-derivatives-prod \
   --format="value(lifecycle_config)"

@@ -130,8 +130,7 @@ cleanshot/
 │   └── types/                        # Shared TS interfaces (OpenAPI-generated)
 │
 ├── infra/
-│   ├── terraform/                    # GCP resources
-│   └── gcs-lifecycle-approved.json   # 30-day lifecycle rule for approved/ prefix
+│   └── terraform/                    # GCP resources
 │
 ├── .github/workflows/
 │   ├── deploy-api.yml                # WIF → Docker build → Cloud Run deploy
@@ -438,11 +437,11 @@ gcloud storage buckets create gs://cleanshot-derivatives-493512 \
 gcloud storage buckets update gs://cleanshot-derivatives-493512 \
   --no-soft-delete
 
-# Apply lifecycle rules:
-#   - approved/ prefix: delete after 30 days
-#   - tmp/ prefix: delete after 1 day
+# No GCS lifecycle rules — photo library is stored indefinitely
+# (operator decision 2026-05-26). If an old lifecycle rule was
+# previously applied, clear it:
 gcloud storage buckets update gs://cleanshot-derivatives-493512 \
-  --lifecycle-file=infra/gcs-lifecycle-approved.json
+  --clear-lifecycle
 ```
 
 ---

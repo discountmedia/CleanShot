@@ -1,12 +1,20 @@
 "use client";
 // apps/web/components/history/HistoryList.tsx
-// Renders the user's last 60 days of approval sets.
-// Each ApprovalSet has a date, make/model label, image thumbnails, and download.
+// Renders ALL of the user's approval sets (stored indefinitely as of
+// 2026-05-26 — operator decided photo library is infinite). Each
+// ApprovalSet has a date, make/model label, image thumbnails, and
+// download.
 //
 // Filter bar across the top supports free-text search (matches make, model,
 // directory name, filenames) and a date range. Make + model dropdowns are
 // populated from the actual loaded data. All filtering happens client-side
 // — /api/history returns up to 200 sets, easy to filter in-browser.
+//
+// expiresAt: nullable on the wire — null means "stored indefinitely"
+// (new default). Legacy rows from when the GCS lifecycle rule deleted
+// approved/ objects after 60 days may still carry an ISO timestamp; we
+// render a countdown badge for those until they age out and the
+// backend stops returning them.
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -21,14 +29,14 @@ interface ApprovalSetAsset {
 
 interface ApprovalSet {
   id:           string;
-  createdAt:    string;   // ISO 8601
-  expiresAt:    string;   // ISO 8601 — 60 days after createdAt
-  dirName:      string;   // YYYY-MM-DD_{make}_{model}_{session-short}
+  createdAt:    string;          // ISO 8601
+  expiresAt:    string | null;   // null = stored indefinitely; ISO string = legacy 60-day row
+  dirName:      string;          // YYYY-MM-DD_{make}_{model}_{session-short}
   make:         string;
   model:        string;
   imageCount:   number;
   assets:       ApprovalSetAsset[];
-  zipSignedUrl?: string;  // pre-signed ZIP download URL (if available)
+  zipSignedUrl?: string;         // pre-signed ZIP download URL (if available)
 }
 
 interface HistoryResponse {
@@ -189,7 +197,9 @@ function FilterBar({
 
 function ApprovalSetCard({ set }: { set: ApprovalSet }) {
   const [expanded, setExpanded] = useState(false);
-  const daysLeft = daysUntilExpiry(set.expiresAt);
+  // null expiresAt = stored indefinitely (new default). Only legacy
+  // rows have a real timestamp; compute countdown + expired for those.
+  const daysLeft = set.expiresAt ? daysUntilExpiry(set.expiresAt) : null;
   const expired  = daysLeft === 0;
 
   return (
@@ -225,16 +235,20 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          {/* Expiry */}
-          <span className={`text-[10px] uppercase tracking-[0.18em] font-semibold px-2 py-1 rounded border ${
-            expired
-              ? "text-red-400 border-red-900 bg-red-950/40"
-              : daysLeft <= 5
-                ? "text-amber-400 border-amber-900 bg-amber-950/40"
-                : "text-zinc-500 border-zinc-800 bg-zinc-900"
-          }`}>
-            {expired ? "Expired" : `${daysLeft}d left`}
-          </span>
+          {/* Expiry badge — only rendered for legacy rows (expiresAt set).
+              New "stored indefinitely" rows (expiresAt === null) get no
+              badge at all; the absence is the indication. */}
+          {daysLeft !== null && (
+            <span className={`text-[10px] uppercase tracking-[0.18em] font-semibold px-2 py-1 rounded border ${
+              expired
+                ? "text-red-400 border-red-900 bg-red-950/40"
+                : daysLeft <= 5
+                  ? "text-amber-400 border-amber-900 bg-amber-950/40"
+                  : "text-zinc-500 border-zinc-800 bg-zinc-900"
+            }`}>
+              {expired ? "Expired" : `${daysLeft}d left`}
+            </span>
+          )}
 
           {/* ZIP download */}
           {set.zipSignedUrl && !expired && (
@@ -424,14 +438,14 @@ export function HistoryList({
         <TipBanner title="Your Photo Library — what this does">
           <p>
             Every time you approve a set of photos on the Resize tab,
-            they get copied here and held for 60 days. You can come back
-            and re-download any approved set, search by Make / Model /
-            filename, or filter by approval date.
+            they get copied here and kept indefinitely. You can come back
+            any time, re-download any approved set, search by Make /
+            Model / filename, or filter by approval date.
           </p>
         </TipBanner>
         <div className="text-center py-16 space-y-3">
           <p className="text-base text-zinc-200 font-semibold">
-            No approved image sets in the last 60 days.
+            No approved image sets yet.
           </p>
           <p className="text-sm text-zinc-400">
             Approve a set on the Resize tab to save it here.
@@ -449,7 +463,7 @@ export function HistoryList({
           Your Photo Library
         </h1>
         <p className="text-base text-zinc-300">
-          Every approved set you&apos;ve shipped — kept for 60 days, then auto-deleted.
+          Every approved set you&apos;ve shipped — kept indefinitely.
         </p>
       </header>
 
@@ -458,15 +472,15 @@ export function HistoryList({
         title="Your Photo Library — what this does"
         steps={[
           <>Every approved set from the Resize tab lands here automatically.</>,
-          <>Sets are kept for <span className="font-semibold text-yellow-300">60 days</span> from the approval date, then auto-deleted.</>,
+          <>Sets are kept <span className="font-semibold text-yellow-300">indefinitely</span> — no auto-deletion. Old sets stay until you manually clean them up.</>,
           <>Use the filter bar below to search by Make / Model / filename / folder, or narrow by approval date.</>,
           <>Click any thumbnail to open the full-size signed URL in a new tab.</>,
         ]}
       >
         <p>
           Your library of approved image sets. Every photo you&apos;ve
-          ever signed off on lives here for 60 days so you can pull it
-          back if a listing site asks for it again.
+          ever signed off on lives here so you can pull it back any
+          time a listing site asks for it again.
         </p>
       </TipBanner>
 
@@ -475,7 +489,7 @@ export function HistoryList({
           <span className="text-yellow-300">{data.totalSets}</span>{" "}
           set{data.totalSets !== 1 ? "s" : ""}
           <span className="text-zinc-500"> · </span>
-          Images stored 60 days from approval
+          Stored indefinitely
           <span className="text-zinc-500"> · </span>
           <span className="text-zinc-200 font-mono">{userEmail}</span>
         </p>

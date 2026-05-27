@@ -12,9 +12,11 @@ POST /api/v1/approvals
   - Returns { approvalSetId, gcsDir, assetCount }.
 
 GET /api/v1/history?user_email={email}
-  Returns the user's approval sets from the last 60 days,
-  with per-asset signed GET URLs for thumbnail display.
-  Expired sets (past 60 days) are excluded.
+  Returns the user's approval sets (stored indefinitely as of
+  2026-05-26 — operator decided photo library is infinite), with
+  per-asset signed GET URLs for thumbnail display. Legacy rows with
+  non-NULL expires_at in the past are still excluded because their
+  GCS objects were already deleted by the prior 60-day lifecycle rule.
 """
 
 from __future__ import annotations
@@ -162,9 +164,12 @@ async def create_approval_set(
             detail="No valid assets found to approve",
         )
 
-    # Persist approval set
-    expires_at = datetime.datetime.now(tz=datetime.timezone.utc) + datetime.timedelta(days=60)
-
+    # Persist approval set. expires_at is intentionally omitted from the
+    # INSERT column list — the column is nullable (see migrate_auth.py)
+    # and NULL is our canonical "stored indefinitely" sentinel. The GCS
+    # lifecycle rule that previously enforced the 60-day deletion was
+    # removed 2026-05-26 (infra/gcs-lifecycle-approved.json deleted),
+    # so the column is now informational-only for legacy rows.
     async with pool.acquire() as conn:
         # Look up project for FK (optional — may not be saved yet)
         project = await queries.get_project_for_session(conn, body.session_id)
@@ -173,8 +178,8 @@ async def create_approval_set(
             """
             INSERT INTO approval_sets
                 (user_email, session_id, project_id, gcs_dir, make, model,
-                 image_count, expires_at)
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                 image_count)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING id
             """,
             user_email,
@@ -184,7 +189,6 @@ async def create_approval_set(
             make,
             model,
             len(copied_assets),
-            expires_at,
         )
         approval_set_id = row["id"]
 
@@ -222,8 +226,10 @@ async def get_history(
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> dict:
     """
-    Returns the user's approval sets from the last 60 days.
-    Expired sets are excluded. Assets get fresh signed GET URLs.
+    Returns the user's approval sets. New sets have expires_at = NULL
+    (stored indefinitely). Legacy rows with non-NULL expires_at in the
+    past are excluded because their GCS objects were already deleted
+    by the previous 60-day lifecycle rule.
     """
     if x_user_email.lower() != user_email.lower():
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Email mismatch")
@@ -236,7 +242,7 @@ async def get_history(
             SELECT id, gcs_dir, make, model, image_count, created_at, expires_at
             FROM   approval_sets
             WHERE  user_email = $1
-              AND  expires_at  > $2
+              AND  (expires_at IS NULL OR expires_at > $2)
             ORDER  BY created_at DESC
             LIMIT  200
             """,
@@ -279,7 +285,10 @@ async def get_history(
         result_sets.append({
             "id":          str(set_id),
             "createdAt":   s["created_at"].isoformat(),
-            "expiresAt":   expires_at.isoformat(),
+            # null for new "stored indefinitely" rows; ISO string for
+            # legacy rows that still carry an expiry. Frontend handles
+            # both (hides the expiry badge when null).
+            "expiresAt":   expires_at.isoformat() if expires_at else None,
             "dirName":     dir_name,
             "make":        s["make"],
             "model":       s["model"],

@@ -131,7 +131,13 @@ ON CONFLICT (type, value) DO NOTHING;
 -- One row per "Approve All" click.
 -- user_email: authenticated Microsoft email (from Better Auth session).
 -- gcs_dir:    the GCS directory path for this set (human-readable).
--- expires_at: 60 days after created_at — enforced by GCS lifecycle + this column.
+-- expires_at: NULL = stored indefinitely (current default — operator decided
+--             "photo library is infinite" 2026-05-26). Legacy rows from when
+--             the GCS lifecycle rule deleted approved/ objects after 60 days
+--             may still have non-NULL values; the SELECT filter in
+--             approvals.py treats those as the original "expires when this
+--             timestamp passes" semantics so old expired rows naturally drop
+--             out of the History view without a backfill.
 CREATE TABLE IF NOT EXISTS approval_sets (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_email  TEXT NOT NULL,
@@ -141,15 +147,17 @@ CREATE TABLE IF NOT EXISTS approval_sets (
     make        TEXT NOT NULL DEFAULT '',
     model       TEXT NOT NULL DEFAULT '',
     image_count INT  NOT NULL DEFAULT 0,
-    expires_at  TIMESTAMPTZ NOT NULL DEFAULT (now() + INTERVAL '60 days'),
+    expires_at  TIMESTAMPTZ,                -- nullable; NULL = no expiry
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
--- Update the default for old-schema tables created with the 30-day default.
--- Existing rows are unchanged; only future inserts that omit expires_at use
--- the new default. The API at approvals.py always sets expires_at explicitly,
--- so this is a cosmetic alignment.
+-- Migration for existing deployments where expires_at was originally
+-- defined as NOT NULL DEFAULT (now() + INTERVAL '60 days'). Both ALTERs
+-- are idempotent; running them on a fresh schema (the CREATE TABLE
+-- above already has expires_at nullable with no default) is a no-op.
 ALTER TABLE approval_sets
-    ALTER COLUMN expires_at SET DEFAULT (now() + INTERVAL '60 days');
+    ALTER COLUMN expires_at DROP NOT NULL;
+ALTER TABLE approval_sets
+    ALTER COLUMN expires_at DROP DEFAULT;
 CREATE INDEX IF NOT EXISTS idx_approval_sets_user_email ON approval_sets(user_email);
 CREATE INDEX IF NOT EXISTS idx_approval_sets_expires_at ON approval_sets(expires_at);
 
