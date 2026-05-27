@@ -284,7 +284,7 @@ Two-app monorepo. Next.js owns the browser surface and proxies every API call th
 <table>
   <tr><th>Layer</th><th>Tech</th><th>Notes</th></tr>
   <tr><td>Web</td><td>Next.js 16 (App Router), React 19, Tailwind v4, TypeScript</td><td>Vercel deploy. All FastAPI calls go through <code>apps/web/app/api/*</code> Route Handlers.</td></tr>
-  <tr><td>API</td><td>FastAPI on Python 3.13</td><td>Cloud Run <code>cleanshot-api</code>, us-central1, project <code>cleanshot-493512</code>. Single container handles HTTP + worker callbacks.</td></tr>
+  <tr><td>API</td><td>FastAPI on Python 3.13</td><td>Cloud Run <code>cleanshot-api</code>, us-central1, project <code>cleanshot-493512</code>. Single container handles HTTP + worker callbacks. <code>min-instances=5</code>, <code>concurrency=80</code>, gen2 execution env, 1 CPU / 1 GiB.</td></tr>
   <tr><td>Postgres</td><td>v17 on Cloud SQL</td><td>asyncpg pool. Secret: <code>cleanshot-database-url</code>.</td></tr>
   <tr><td>Cache</td><td>Valkey 9 on Memorystore</td><td>In-VPC at <code>10.122.45.83:6379</code>.</td></tr>
   <tr><td>Object storage</td><td>GCS</td><td>Two buckets: originals + derivatives.</td></tr>
@@ -321,26 +321,27 @@ Two-app monorepo. Next.js owns the browser surface and proxies every API call th
   <li><strong>Upload.</strong> Browser PUTs raw photo bytes directly to GCS via a signed URL minted by FastAPI. JPEG conversion + long-edge cap to 1024 px happen client-side in <code>compress.ts</code> before the PUT.</li>
   <li><strong>Enhance.</strong> Operator clicks Enhance with N providers selected. FastAPI creates one job per (asset_id, provider) pair, enqueues a Cloud Task. The worker fans out to the picked vendors (Gemini / OpenAI / Grok / Kontext) via per-provider helpers in <code>enhance_worker.py</code>, writes each output to GCS, marks the job complete.</li>
   <li><strong>Scan.</strong> Multi-vendor consensus &mdash; Gemini (Vertex), OpenAI (gpt-5.4), Anthropic (claude-sonnet-4-6). Each provider gets the cleaned image + a structured JSON schema; results are aggregated into pass/mixed/fail per asset. Provider isolation uses <code>asyncio.gather(return_exceptions=True)</code> (NOT TaskGroup &mdash; see lessons).</li>
+  <li><strong>Modify <span class="pill">optional</span>.</strong> Darkroom-style pyvips pipeline: rotate &rarr; wedge-crop &rarr; smart-crop (aspect) &rarr; brightness/contrast &rarr; saturation. Endpoint <code>POST /api/v1/modify/batch</code>, service <code>apply_adjustments()</code>. Operator can skip straight from Scan to Resize, OR upload raw photos directly to Modify (standalone mode &mdash; merges into the same <code>allAssets</code> pool as the queued post-Scan set). On success, the panel shows a green "Continue to Resize &rarr;" CTA.</li>
   <li><strong>Resize.</strong> Operator picks PRO (1024&times;731 7:5 cover-crop), Collage (1024 long-edge fit), Branded Collage (1024&times;540 composed marketing layout), or Custom dimensions. pyvips on the backend does the actual resize + JPEG quality iteration. PRO uses NDJSON streaming progress for batch operations.</li>
-  <li><strong>Save + Approve.</strong> One click saves project metadata (unblocking exports) and copies the approved assets into <code>approved/{email}/{dir}/</code> for History.</li>
+  <li><strong>Save + Approve.</strong> One click saves project metadata (unblocking exports) and copies the approved assets into <code>approved/{email}/{dir}/</code> for the photo library. Library rows have <code>expires_at = NULL</code> (stored indefinitely).</li>
 </ol>
 
 <h2 id="enhance">Enhance providers</h2>
 <p>
-The Enhance tab exposes a <strong>4-checkbox</strong> model selector. Provider literal: <code>"gemini" | "openai" | "grok" | "kontext"</code>. Routing in <code>_run_enhance</code> in <code>enhance_worker.py</code>. Defaults to gemini.
+The Enhance tab exposes a <strong>6-checkbox</strong> model selector with a "Select all" header toggle. Provider literal: <code>"gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve"</code>. Routing in <code>_run_enhance</code> in <code>enhance_worker.py</code>. Defaults to gemini.
 </p>
 <table>
   <tr><th>Provider</th><th>Model</th><th>Endpoint / SDK</th><th>Secret</th></tr>
   <tr>
     <td><code>gemini</code></td>
     <td><code>gemini-3.1-flash-image-preview</code></td>
-    <td><code>google-genai</code> via AI Studio backend (<code>api_key=</code>, not <code>vertexai=True</code>). Preview models live on AI Studio first.</td>
+    <td><code>google-genai</code> via AI Studio backend (<code>api_key=</code>, not <code>vertexai=True</code>). Preview models live on AI Studio first. <strong>Only accepts <code>thinking_level="High"</code></strong> &mdash; Medium/Low return 400 INVALID_ARGUMENT. Not a perf knob.</td>
     <td><code>cleanshot-gemini-key</code></td>
   </tr>
   <tr>
     <td><code>openai</code></td>
     <td><code>gpt-5</code> + image_generation tool</td>
-    <td><code>responses.create(..., tools=[{"type":"image_generation"}], tool_choice={"type":"image_generation"})</code>. Forced tool_choice ensures gpt-5 always generates.</td>
+    <td><code>responses.create(..., tools=[{"type":"image_generation"}], tool_choice={"type":"image_generation"})</code>. Forced tool_choice ensures gpt-5 always generates. Slowest provider (~75s); shares <code>/v1/responses</code> quota with scan-side <code>gpt-5.4</code>.</td>
     <td><code>cleanshot-openai-key</code></td>
   </tr>
   <tr>
@@ -355,14 +356,26 @@ The Enhance tab exposes a <strong>4-checkbox</strong> model selector. Provider l
     <td>RunComfy async proxy. Submit &rarr; poll &rarr; result. Body field <code>image_url</code> (singular), NOT <code>images</code>. Provider prefix collapsed: <code>blackforestlabs</code>.</td>
     <td><code>cleanshot-runcomfy-key</code></td>
   </tr>
+  <tr>
+    <td><code>ideogram</code></td>
+    <td><code>ideogram-3.0</code></td>
+    <td><code>POST https://api.ideogram.ai/v1/edit</code> (sync multipart). JSON has <code>data[0].url</code> already populated; GET it (no auth header) for bytes. Reuses <code>_tweak_with_ideogram</code> &mdash; passes the full enhance prompt instead of a short tweak instruction. Also surfaces as the per-variant cyan ✎ Edit + rose 🖌 Inpaint tools.</td>
+    <td><code>cleanshot-ideogram-key</code></td>
+  </tr>
+  <tr>
+    <td><code>reve</code></td>
+    <td><code>reve-edit-fast-latest</code></td>
+    <td><code>POST https://api.reve.com/v1/image/edit</code> (sync JSON). Bearer auth. Body: <code>edit_instruction</code> (2560-char cap), <code>reference_image</code> (base64), <code>version</code> pinned to <code>latest-fast</code> for RPM headroom. Reve "automatically enhances the instruction internally" &mdash; tolerates terse imperative prose better than long Gemini-tuned scene prose.</td>
+    <td><code>cleanshot-reve-key</code></td>
+  </tr>
 </table>
 
 <h4>Removed / repositioned</h4>
 <ul class="bullets">
-  <li><span class="pill danger">removed</span> <code>reve</code> &mdash; undocumented RPM ceiling, opaque pricing. Dropped 2026-05-20.</li>
+  <li><span class="pill danger">removed</span> <code>recraft</code> &mdash; wired end-to-end on 2026-05-26, then gutted same day after operator preferred Reve's output on quality. Secret <code>cleanshot-recraft-key</code> retained in Secret Manager pending full delete decision.</li>
   <li><span class="pill warn">repositioned</span> <code>flux</code> as generator &mdash; now the Erase tool only. See "Per-variant edit tools" below.</li>
-  <li><span class="pill warn">repositioned</span> <code>ideogram</code> &mdash; wired NOT as a primary generator but as the per-variant Edit + Inpaint tools (cyan ✎ and rose 🖌 icons on each completed enhance variant).</li>
-  <li><span class="pill danger">declined</span> Runway Gen-4 &mdash; redundant with Kontext for identity preservation, 2-3× cost, slower API.</li>
+  <li><span class="pill danger">declined</span> Runway Gen-4 &mdash; redundant with Kontext for identity preservation, 2-3&times; cost, slower API. Evaluated 2026-05-26.</li>
+  <li><span class="pill danger">declined</span> Seedream &mdash; operator tested 2026-05-26 and rejected on quality.</li>
 </ul>
 
 <h4>Cleanup worker</h4>
@@ -465,10 +478,10 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
 <h2 id="storage">Storage layout</h2>
 <table>
   <tr><th>Store</th><th>What lives there</th></tr>
-  <tr><td>Postgres (Cloud SQL)</td><td>sessions, assets, jobs, projects, approval_sets, support tickets, usage events, user profiles. asyncpg pool.</td></tr>
-  <tr><td>Valkey (Memorystore)</td><td>Rate-limiter scratch space (future); currently process-local limiters live on app.state.</td></tr>
+  <tr><td>Postgres (Cloud SQL)</td><td>sessions, assets, jobs, projects, approval_sets (<code>expires_at</code> nullable since 2026-05-26 &mdash; NULL = stored indefinitely), support tickets, usage events, user profiles. asyncpg pool.</td></tr>
+  <tr><td>Valkey (Memorystore)</td><td>Rate-limiter scratch space (future); currently process-local limiters live on <code>app.state</code>.</td></tr>
   <tr><td><code>cleanshot-originals-prod</code></td><td>Operator uploads (raw photos).</td></tr>
-  <tr><td><code>cleanshot-derivatives-prod</code></td><td>Enhance/Cleanup/Erase/Tweak outputs.<br>Curated history under <code>approved/{email}/{dir}/</code>.<br>PRO export previews under <code>session/{session_id}/pro/</code>.</td></tr>
+  <tr><td><code>cleanshot-derivatives-prod</code></td><td>Enhance/Cleanup/Erase/Tweak/Modify outputs.<br>Curated photo library under <code>approved/{email}/{dir}/</code> &mdash; <strong>kept indefinitely</strong> (GCS lifecycle rule cleared 2026-05-26; the operator decision was "photo library storage is infinite").<br>PRO export previews under <code>session/{session_id}/pro/</code>.</td></tr>
 </table>
 
 <h2 id="deploy">Deploy pipelines</h2>
@@ -492,11 +505,12 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
   <tr><td><code>cleanshot-xai-key</code></td><td><code>XAI_API_KEY</code></td><td>Grok</td></tr>
   <tr><td><code>cleanshot-runcomfy-key</code></td><td><code>RUNCOMFY_API_KEY</code></td><td>Kontext (Flux-1-Kontext-Max via RunComfy)</td></tr>
   <tr><td><code>cleanshot-bfl-key</code></td><td><code>BFL_API_KEY</code></td><td>Erase (Flux flux-tools/erase-v1) &mdash; erase-only now, not a generator</td></tr>
-  <tr><td><code>cleanshot-ideogram-key</code></td><td><code>IDEOGRAM_API_KEY</code></td><td>Per-variant Edit + Inpaint tools (Ideogram 3.0)</td></tr>
+  <tr><td><code>cleanshot-ideogram-key</code></td><td><code>IDEOGRAM_API_KEY</code></td><td>5th primary generator + per-variant Edit + Inpaint tools (Ideogram 3.0)</td></tr>
+  <tr><td><code>cleanshot-reve-key</code></td><td><code>REVE_API_KEY</code></td><td>6th primary generator (Reve, reinstated 2026-05-26 after Recraft was rejected on quality)</td></tr>
   <tr><td><code>cleanshot-tasks-oidc-sa</code></td><td><code>TASKS_OIDC_SA</code></td><td>Cloud Tasks worker callback OIDC token</td></tr>
   <tr><td><code>cleanshot-worker-url</code></td><td><code>WORKER_URL</code></td><td>Cloud Tasks worker callback URL</td></tr>
 </table>
-<p>Deprecated (safe to delete): <code>cleanshot-reve-key</code>.</p>
+<p>Deprecated (safe to delete from Secret Manager): <code>cleanshot-recraft-key</code> &mdash; Recraft removed 2026-05-26.</p>
 
 <h2 id="ratelimit">Rate limiting</h2>
 <p>
@@ -505,10 +519,11 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
 <table>
   <tr><th>Limiter</th><th>Window</th><th>Reason</th></tr>
   <tr><td><code>openai_image_rate_limiter</code></td><td>5 / 60s</td><td>Original Tier-1 <code>/v1/images/edits</code> ceiling. Still applies even though we moved to <code>gpt-5 + image_generation</code> tool path &mdash; internal tool call still hits the image endpoint.</td></tr>
-  <tr><td><code>grok_image_rate_limiter</code></td><td>3 / 30s</td><td>Defensive default; xAI doesn't publish a per-minute cap.</td></tr>
+  <tr><td><code>reve_image_rate_limiter</code></td><td>3 / 30s</td><td>Reve's docs claim no published RPM cap, but in practice bursts hit 429. Pulled down to 3/30s (steady-state ~6/min with a small burst of 3).</td></tr>
+  <tr><td><code>grok_image_rate_limiter</code></td><td>3 / 30s</td><td>Defensive default mirroring Reve; xAI doesn't publish a per-minute cap.</td></tr>
 </table>
 <div class="card warn">
-  Limiters are <strong>process-local</strong>. If <code>max-instances &gt; 1</code> and batches grow across pods they won't coordinate. Known-good fix is a Valkey-backed limiter. Kontext (RunComfy) + Ideogram have no limiters; add one if 429s appear.
+  Limiters are <strong>process-local</strong>. With <code>min-instances=5</code> the effective real ceiling is <code>limit &times; 5</code> under burst load &mdash; e.g. "5 per 60s OpenAI" actually behaves like "25 per 60s" when all 5 instances are warm. Don't tighten the local values to "compensate" &mdash; that wastes capacity on cold instances. Real fix is a Valkey-backed limiter (Open Work item below). Kontext (RunComfy) + Ideogram still have no limiters; add one if 429s appear.
 </div>
 
 <h2 id="lessons">Hard-won lessons</h2>
@@ -533,6 +548,8 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
   <div class="lesson">Ideogram is sync, not async-poll. POST returns JSON with <code>data[0].url</code> already populated; GET it (no auth header) for bytes. Short-lived presigned CDN URL &mdash; fetch immediately.</div>
   <div class="lesson">Branded collage proportions must match the company's existing template. Canvas 1024&times;540, hero 720&times;540 (4:3), thumbs 304&times;135 (4 stacked). Prior 640&times;580 hero + 384&times;145 thumbs side-cropped the studio banner. Eyeball against the blue Genie GS-1930 reference before changing.</div>
   <div class="lesson">AI-disclaimer watermark constant lives in TWO files that must stay in sync: <code>ResizePanel.tsx</code> (UI preview) and <code>image_processing.py</code> (pyvips render). Diverging values mean the preview lies.</div>
+  <div class="lesson"><strong>Secret Manager values get contaminated with the gcloud command text itself when rotated wrong.</strong> Bit <code>cleanshot-recraft-key</code> twice on 2026-05-26 &mdash; first stored value was <code>lication-policy=automati</code> (a flag fragment), second was <code>gcloud secrets create cleanshot-recraft-key --</code> literally. Symptoms differ by garbage content (Bearer-format 400 vs unauthorized 401). <strong>Always rotate with:</strong> <code>read -s -p "value: " K &amp;&amp; echo</code> then <code>printf "%s" "$K" | gcloud secrets versions add &lt;NAME&gt; --data-file=- --project=cleanshot-493512</code>; <code>unset K</code>; <code>history -d $((HISTCMD-1))</code>. Verify length with <code>wc -c</code> (expect 30&ndash;100 bytes for typical API keys; &gt;150 or printable command text means redo).</div>
+  <div class="lesson"><strong>Process-local rate limiters compound under <code>min-instances &gt; 1</code>.</strong> With <code>min-instances=5</code>, every limiter window is effectively <code>limit &times; 5</code> when all instances are warm. Either accept the looser real ceiling, or move to a Valkey-backed limiter. Tightening local values to "compensate" wastes capacity on cold instances.</div>
 </div>
 
 <h2 id="conventions">Conventions</h2>
@@ -546,24 +563,27 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
 
 <h2 id="openwork">Open work (prioritised)</h2>
 <ol class="bullets">
-  <li><strong>Per-model enhance prompts.</strong> Single biggest quality lever left. Current <code>_build_enhance_prompt</code> ships ~200 lines verbatim to every provider. Kontext especially is mismatched &mdash; BFL positions it for short imperative prompts. Plan: <code>_build_kontext_prompt</code> first, then <code>_build_openai_prompt</code> + eval harness.</li>
-  <li><strong>OpenAI <code>/v1/responses</code> rate pressure.</strong> Enhance + scan share the same endpoint quota. Tier-bump OR add a scan-side <code>AsyncRateLimiter</code>.</li>
-  <li><strong>Raise Cloud Tasks <code>max_dispatches_per_second</code></strong> from <code>0.1</code> to <code>1.0&ndash;2.0</code> for <code>cleanshot-image-gen</code>.</li>
-  <li><strong>Drop Gemini <code>thinking_level: High &rarr; Medium</code></strong> for enhance/cleanup. Saves reasoning time at marginal quality cost on image edits.</li>
+  <li><strong>Raise Cloud Tasks <code>max_dispatches_per_second</code></strong> from <code>0.1</code> to <code>1.5</code> for <code>cleanshot-image-gen</code>. <strong>SINGLE BIGGEST PERCEIVED-SPEED WIN.</strong> At <code>0.1/s</code>, a 10-image &times; 6-provider batch (60 jobs) takes 600s <em>just to dispatch</em>. One gcloud command: <code>gcloud tasks queues update cleanshot-image-gen --location=us-central1 --max-dispatches-per-second=1.5 --max-concurrent-dispatches=20 --project=cleanshot-493512</code>. After this, per-provider rate limiters become the binding ceiling, not the queue.</li>
+  <li><strong>Per-model enhance prompts.</strong> Single biggest <em>quality</em> lever left. Current <code>_build_enhance_prompt</code> ships ~200 lines verbatim to every provider. Kontext wants 1&ndash;3-sentence imperative prose; Reve has a 2560-char cap and auto-enhances internally. Plan: <code>_build_kontext_prompt</code> first, then <code>_build_reve_prompt</code>, then <code>_build_openai_prompt</code> + eval harness.</li>
+  <li><strong>OpenAI <code>/v1/responses</code> rate pressure.</strong> Enhance (gpt-5 + image_generation) and scan (gpt-5.4) share the same endpoint quota. Already caused one scan cascade failure. Tier-bump OR add a scan-side <code>AsyncRateLimiter</code>.</li>
+  <li><span style="color: var(--text-dim); text-decoration: line-through;">Drop Gemini <code>thinking_level: High &rarr; Medium</code></span> &mdash; <strong>DEAD LEVER.</strong> <code>gemini-3.1-flash-image-preview</code> only accepts <code>"High"</code>; Medium/Low return <code>400 INVALID_ARGUMENT</code>. Re-evaluate when an image-gen model with a real thinking-level spectrum ships to AI Studio.</li>
   <li><strong>Server-side downsize guard</strong> in <code>_load_image_bytes</code> against any regen path that bypasses the 1024 px upload cap.</li>
-  <li><strong>Valkey-backed rate limiters</strong> if <code>max-instances &gt; 1</code> and OpenAI batches grow.</li>
+  <li><strong>Valkey-backed rate limiters.</strong> <code>min-instances=5</code> makes the process-local limiters effectively <code>5&times;</code> looser under burst. Move to Valkey OR accept the looser real ceiling.</li>
+  <li><strong>Provider-output cache</strong> keyed on <code>(image_sha256, prompt, provider)</code> via Valkey. Re-runs with same toggles return instantly. Whole-batch hit rate realistically 30&ndash;60% on observed re-run patterns.</li>
+  <li><strong>OpenAI as opt-in not default-on.</strong> Slowest provider (~75s) + shares <code>/v1/responses</code> quota with scan. Default-on for a 75s provider penalises every batch.</li>
   <li><strong>Extract <code>_load_image_bytes</code></strong> to <code>services/gcs.download_image</code> &mdash; currently 4-way triplicated across workers.</li>
-  <li><strong>Ideogram rate limiter</strong> &mdash; no limiter currently. Add defensive limiter if 429s appear.</li>
+  <li><strong>Ideogram rate limiter</strong> &mdash; no limiter currently on either the primary generator or the per-variant tools. Add defensive limiter if 429s appear.</li>
 </ol>
 
 <h4>Considered + declined (don't re-litigate)</h4>
 <ul class="bullets">
-  <li><strong>Runway Gen-4</strong> &mdash; redundant with Kontext for identity preservation, 2-3&times; cost, slower API.</li>
-  <li><strong>Ideogram as 5th enhance generator</strong> &mdash; creative-drift risk. Wired as per-variant tools instead, where typography strength actually pays off.</li>
+  <li><strong>Recraft V3</strong> &mdash; wired end-to-end 2026-05-26, then gutted same day on quality. Operator preferred Reve's output. If reintroducing, write <code>_build_recraft_prompt</code> before judging quality &mdash; the original failure mode was Gemini-tuned prose hard-truncated at 990 bytes.</li>
+  <li><strong>Runway Gen-4</strong> &mdash; redundant with Kontext for identity preservation, 2-3&times; cost, slower API. Evaluated 2026-05-26.</li>
+  <li><strong>Seedream</strong> &mdash; operator tested 2026-05-26 and rejected on quality.</li>
 </ul>
 
 <footer>
-  CleanShot &middot; cleanshot-493512 / us-central1 &middot; engineering reference last updated 2026-05-26
+  CleanShot &middot; cleanshot-493512 / us-central1 &middot; engineering reference last updated 2026-05-26 (Reve restored, infinite library, perf bump, Modify tab)
 </footer>
 
 </div>

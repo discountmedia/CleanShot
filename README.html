@@ -190,7 +190,7 @@ CleanShot is an internal web app that takes the rough photos our sales team shoo
 Internal employees only. The sales team that lists used forklifts, scissor lifts, and telehandlers on marketplaces. Authentication is Microsoft SSO (single sign-on) tied to our Microsoft 365 tenant, so the people who use it are the same people who already have company email. No external customer access &mdash; this is a tool for our operations team, not a product we sell.
 </p>
 
-<h2>The operator's day, in four clicks</h2>
+<h2>The operator's day, in five clicks</h2>
 <div class="step-grid">
   <div class="step">
     <span class="num">1</span>
@@ -200,7 +200,7 @@ Internal employees only. The sales team that lists used forklifts, scissor lifts
   <div class="step">
     <span class="num">2</span>
     <h4>Enhance</h4>
-    <p>AI cleans up each photo &mdash; fixes lighting, removes background clutter, preserves real wear and dents. The operator picks the best version out of up to four AI takes per photo.</p>
+    <p>AI cleans up each photo &mdash; fixes lighting, removes background clutter, preserves real wear and dents. The operator picks the best version out of up to six AI takes per photo.</p>
   </div>
   <div class="step">
     <span class="num">3</span>
@@ -209,8 +209,13 @@ Internal employees only. The sales team that lists used forklifts, scissor lifts
   </div>
   <div class="step">
     <span class="num">4</span>
+    <h4>Modify <span class="pill">optional</span></h4>
+    <p>Darkroom-style brightness / contrast / saturation / crop / straighten. Instant, no AI. Skip if the AI got it right; tweak per-photo if it didn't.</p>
+  </div>
+  <div class="step">
+    <span class="num">5</span>
     <h4>Resize &amp; Publish</h4>
-    <p>One click crops to the size marketplaces want, optionally stamps an "AI-enhanced" disclaimer, and composes a branded multi-image collage. Download or save to history.</p>
+    <p>One click crops to the size marketplaces want, optionally stamps an "AI-enhanced" disclaimer, and composes a branded multi-image collage. Download or save to library.</p>
   </div>
 </div>
 
@@ -222,7 +227,7 @@ Internal employees only. The sales team that lists used forklifts, scissor lifts
   </p>
   <h3 style="margin-top:20px;">What's metered</h3>
   <p>
-    AI vendor costs are per-image. Each photo that runs through Enhance costs us roughly a few cents in AI compute (Gemini, OpenAI, Grok, or Flux-Kontext, depending on which model is used). Scanning is similarly per-image. Resizing and exporting cost effectively nothing &mdash; that's just image cropping on our own server. All vendor spend is tracked per-user in the admin dashboard so we can see exactly where the budget goes.
+    AI vendor costs are per-image. Each photo that runs through Enhance costs us roughly a few cents in AI compute (Gemini, OpenAI, Grok, Flux-Kontext, Ideogram, or Reve, depending on which model is used). Scanning is similarly per-image. Resizing, exporting, and the Modify (darkroom) tab cost effectively nothing &mdash; those are local image operations on our own server. All vendor spend is tracked per-user in the admin dashboard so we can see exactly where the budget goes.
   </p>
   <h3 style="margin-top:20px;">Roughly</h3>
   <p>
@@ -233,20 +238,21 @@ Internal employees only. The sales team that lists used forklifts, scissor lifts
 <h2>What's working today</h2>
 <ul class="checks">
   <li><strong>Microsoft SSO login</strong> &mdash; same credentials as company email; no separate password to manage.</li>
-  <li><strong>AI Enhance with 4 model options</strong> &mdash; Gemini, OpenAI, Grok, and Flux-Kontext. The operator can pick any subset and the system compares them side by side for each photo.</li>
+  <li><strong>AI Enhance with 6 model options</strong> &mdash; Gemini, OpenAI, Grok, Flux-Kontext, Ideogram, and Reve. The operator can pick any subset (or hit "Select all"); the system runs each chosen model in parallel and shows them side-by-side for the operator to pick the best.</li>
   <li><strong>AI Scan with 3-vendor consensus</strong> &mdash; Gemini, OpenAI, and Anthropic all review each photo independently. If two of three flag a problem, the system warns the operator before publishing.</li>
-  <li><strong>Per-variant fix tools</strong> &mdash; if one corner of one photo is wrong, the operator can paint over it (Erase / Inpaint) or type a sentence (Tweak / Edit) to fix just that part without redoing the whole photo. Four backend tools available: Gemini, Flux, and two Ideogram tools tuned for repairing brand decals and model numbers.</li>
+  <li><strong>Darkroom (Modify tab)</strong> &mdash; brightness, contrast, saturation, crop, and straighten controls between Scan and Resize. Non-AI; instant. Optional &mdash; an operator can skip straight to Resize, or use Modify standalone on raw uploads without running Enhance first.</li>
+  <li><strong>Per-variant fix tools</strong> &mdash; if one corner of one photo is wrong, the operator can paint over it (Erase / Inpaint) or type a sentence (Tweak / Edit) to fix just that part without redoing the whole photo. Four backend tools: Gemini, Flux, and two Ideogram tools tuned for repairing brand decals and model numbers.</li>
   <li><strong>Branded collage</strong> &mdash; composes our standard 1-hero-plus-4-thumbs marketing layout in one click. Operator picks equipment type (forklift, scissor lift, telehandler) and downloads a marketplace-ready collage. Matches the existing company template.</li>
   <li><strong>AI-disclaimer watermark</strong> &mdash; optional checkbox burns a tiny, semi-transparent line into the bottom-right corner of every exported image so customers know it's an AI-cleaned representation.</li>
-  <li><strong>Admin dashboard</strong> &mdash; usage stats per employee, support ticket inbox, project history with searchable downloads.</li>
-  <li><strong>Project history</strong> &mdash; every approved photo set is archived and re-downloadable for 60 days.</li>
+  <li><strong>Admin dashboard</strong> &mdash; usage stats per employee, support ticket inbox, photo library with searchable downloads.</li>
+  <li><strong>Photo library</strong> &mdash; every approved photo set is archived under the operator's account and kept indefinitely. Re-download any past listing's photos at any time.</li>
 </ul>
 
 <h2>What's coming next</h2>
 <ul class="bullets">
-  <li><strong>Per-AI-model prompt tuning.</strong> Right now every AI model gets the same instructions. Tuning each to its own strengths is the single biggest quality lever we have left.</li>
-  <li><strong>Faster batch dispatch.</strong> Internal queue tuning to push larger batches through more quickly when the listing team has a big intake day.</li>
-  <li><strong>Deeper usage analytics.</strong> Per-user cost breakdowns and quality trend dashboards.</li>
+  <li><strong>Per-AI-model prompt tuning.</strong> Each AI model is best at slightly different things. Tailoring the instructions per model is the single biggest quality lever left.</li>
+  <li><strong>Faster batch dispatch.</strong> A queue setting tweak (1 command) will let large intake days push through ~10&times; faster end-to-end.</li>
+  <li><strong>Deeper usage analytics.</strong> Per-user cost breakdowns and quality trend dashboards in the admin tab.</li>
 </ul>
 
 <h2>Operational notes</h2>
@@ -256,7 +262,7 @@ Internal employees only. The sales team that lists used forklifts, scissor lifts
   <tr><td>Auth</td><td>Microsoft SSO &mdash; company email account required</td></tr>
   <tr><td>Hosting</td><td>Web on Vercel &middot; API on Google Cloud Run &middot; Storage on Google Cloud Storage</td></tr>
   <tr><td>Uptime</td><td>Auto-scaling; no operator action needed on traffic spikes</td></tr>
-  <tr><td>Data retention</td><td>60 days for project history; raw uploads garbage-collected after that</td></tr>
+  <tr><td>Data retention</td><td>Photo library kept indefinitely &mdash; every approved set stays under the operator's account; nothing is auto-deleted. Raw uploads are still garbage-collected after a session ends.</td></tr>
   <tr><td>Status</td><td><span class="pill good">In production</span></td></tr>
 </table>
 
