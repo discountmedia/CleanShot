@@ -26,10 +26,35 @@ import { TabBar, type TabId } from "./TabBar";
 // Real Experience Score fix 2026-05-27.
 import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 
-const ScanPanel    = dynamic(() => import("@/components/scan/ScanPanel").then(m => ({ default: m.ScanPanel })),       { ssr: false });
-const ModifyPanel  = dynamic(() => import("@/components/modify/ModifyPanel").then(m => ({ default: m.ModifyPanel })), { ssr: false });
-const ResizePanel  = dynamic(() => import("@/components/resize/ResizePanel").then(m => ({ default: m.ResizePanel })), { ssr: false });
-const HistoryList  = dynamic(() => import("@/components/history/HistoryList").then(m => ({ default: m.HistoryList })), { ssr: false });
+// Each panel's loader is extracted so we can call it BOTH from the
+// dynamic() wrapper (when the panel is actually rendered) AND from
+// the TabBar prefetch hook (when the operator hovers/focuses the
+// tab button, before they've committed to clicking). Webpack caches
+// the import, so calling the loader twice is free — the first call
+// queues the chunk download, the second is a no-op once resolved.
+// Net effect: by the time the operator clicks a tab, the JS is
+// often already parsed, eliminating the brief flash between click
+// and panel-mount that the dynamic-import added.
+const loadScanPanel    = () => import("@/components/scan/ScanPanel").then(m => ({ default: m.ScanPanel }));
+const loadModifyPanel  = () => import("@/components/modify/ModifyPanel").then(m => ({ default: m.ModifyPanel }));
+const loadResizePanel  = () => import("@/components/resize/ResizePanel").then(m => ({ default: m.ResizePanel }));
+const loadHistoryList  = () => import("@/components/history/HistoryList").then(m => ({ default: m.HistoryList }));
+
+const ScanPanel    = dynamic(loadScanPanel,   { ssr: false });
+const ModifyPanel  = dynamic(loadModifyPanel, { ssr: false });
+const ResizePanel  = dynamic(loadResizePanel, { ssr: false });
+const HistoryList  = dynamic(loadHistoryList, { ssr: false });
+
+// TabBar hands tab id → prefetch loader. Enhance is intentionally
+// missing (it's eagerly imported, no chunk to prefetch). Calling
+// `loader()` schedules the chunk download with no other side effects;
+// safe to invoke on every hover.
+const TAB_PREFETCH: Partial<Record<TabId, () => Promise<unknown>>> = {
+  scan:    loadScanPanel,
+  modify:  loadModifyPanel,
+  resize:  loadResizePanel,
+  history: loadHistoryList,
+};
 
 import { createSession } from "@/lib/api";
 import type { ForkliftMeta, ResizeResult } from "@/lib/types";
@@ -275,7 +300,12 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       />
 
       {/* Tab bar */}
-      <TabBar tabs={tabs} active={activeTab} onChange={setActiveTab} />
+      <TabBar
+        tabs={tabs}
+        active={activeTab}
+        onChange={setActiveTab}
+        onPrefetch={(id) => { TAB_PREFETCH[id]?.(); }}
+      />
 
       {/* Body */}
       <main className="flex-1 px-6 py-6 space-y-6 max-w-screen-2xl w-full mx-auto">

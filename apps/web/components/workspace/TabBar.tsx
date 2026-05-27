@@ -15,9 +15,19 @@ interface TabBarProps {
   tabs: TabDef[];
   active: TabId;
   onChange: (id: TabId) => void;
+  /**
+   * Optional prefetch hook fired on hover / focus of a tab button.
+   * Workspace wires this to the dynamic-import loader functions for
+   * the code-split panels (Scan / Modify / Resize / History) so the
+   * chunk download races the operator's click — by the time they
+   * commit to the tab, the JS is already parsed and the switch
+   * feels instant instead of having a brief loading flash.
+   * No-op for tabs whose panels are eagerly imported (Enhance).
+   */
+  onPrefetch?: (id: TabId) => void;
 }
 
-export function TabBar({ tabs, active, onChange }: TabBarProps) {
+export function TabBar({ tabs, active, onChange, onPrefetch }: TabBarProps) {
   return (
     <nav className="border-b border-zinc-900 bg-black" role="tablist" aria-label="Workspace sections">
       <div className="flex items-end px-6 gap-10 overflow-x-auto">
@@ -29,6 +39,8 @@ export function TabBar({ tabs, active, onChange }: TabBarProps) {
               role="tab"
               aria-selected={isActive}
               onClick={() => onChange(tab.id)}
+              onMouseEnter={() => onPrefetch?.(tab.id)}
+              onFocus={() => onPrefetch?.(tab.id)}
               className={`
                 relative flex items-center gap-2 py-4 text-base font-bold uppercase tracking-[0.16em]
                 transition-colors whitespace-nowrap
