@@ -1481,15 +1481,16 @@ export function EnhancePanel({
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
-                  // paintForksRedYellowTips applies to fork-carrying
-                  // equipment (forklifts + telehandlers). Scissor lifts
-                  // have no forks, so hide the toggle for those. Backend
-                  // also defensively skips the bullet if the type slips
-                  // through with the toggle on.
+                  // paintForksRedYellowTips applies to every equipment
+                  // type EXCEPT scissor lift — forklifts, telehandlers,
+                  // reach trucks, order pickers, pallet jacks, and
+                  // walkie stackers all carry visible forks. Backend
+                  // mirrors this rule in enhance_worker.py's
+                  // paint_forks_on check; keep them in lock-step.
                   .filter((key) => {
                     if (key !== "paintForksRedYellowTips") return true;
                     const et = meta.equipmentType ?? "forklift";
-                    return et === "forklift" || et === "telehandler";
+                    return et !== "scissor_lift";
                   })
                   .map((key) => (
                     <ToggleSwitch

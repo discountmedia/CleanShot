@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 
 interface ClientRequest {
   sessionId: string;
-  equipmentType: "forklift" | "scissor_lift" | "telehandler";
+  equipmentType: "forklift" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
   assetIds: string[];
   aiDisclaimer?: boolean;
 }

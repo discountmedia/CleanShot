@@ -163,9 +163,13 @@ export function unifyAnomalies(
 // the RENTAL-FLEET BRANDING block must stay in lock-step.
 
 const EQUIPMENT_DISPLAY: Record<EquipmentType, string> = {
-  forklift:     "forklift",
-  scissor_lift: "scissor lift",
-  telehandler:  "telehandler",
+  forklift:       "forklift",
+  scissor_lift:   "scissor lift",
+  telehandler:    "telehandler",
+  reach_truck:    "reach truck",
+  order_picker:   "order picker",
+  pallet_jack:    "pallet jack",
+  walkie_stacker: "walkie stacker",
 };
 
 const EQUIPMENT_ANATOMY: Record<EquipmentType, string> = {
@@ -175,14 +179,26 @@ const EQUIPMENT_ANATOMY: Record<EquipmentType, string> = {
     "Same platform size and handrail pattern, scissor mechanism extension, base / chassis dimensions, drive wheels, and control box position.",
   telehandler:
     "Same boom length and section count, attachment (forks / bucket / lifting jib), outrigger configuration, cab shape, and wheel / tire type.",
+  reach_truck:
+    "Same mast height and section count, fork count and length, reach mechanism geometry (pantograph or moving-mast), operator cab / stand-up compartment shape, drive wheels, and load wheels.",
+  order_picker:
+    "Same platform size and railing pattern, mast height and section count, integrated forks or load support, base chassis dimensions, drive wheels, and operator control layout.",
+  pallet_jack:
+    "Same fork length and spread, tiller handle shape and length, front (steer) wheels, load wheels, and battery box position if electric.",
+  walkie_stacker:
+    "Same mast configuration, fork count and length, tiller handle position and shape, drive wheel, load wheels, and operator control layout.",
 };
 
 // Body-parts list substituted into "the entire body of the {eq},
 // including the {EQUIPMENT_BODY_PARTS}, has received a fresh coat".
 const EQUIPMENT_BODY_PARTS: Record<EquipmentType, string> = {
-  forklift:     "chassis, mast, and carriage",
-  scissor_lift: "chassis, scissor arms, and platform railing",
-  telehandler:  "chassis, boom, and cab",
+  forklift:       "chassis, mast, and carriage",
+  scissor_lift:   "chassis, scissor arms, and platform railing",
+  telehandler:    "chassis, boom, and cab",
+  reach_truck:    "chassis, mast, reach mechanism, and cab",
+  order_picker:   "chassis, mast, platform, and forks",
+  pallet_jack:    "forks, tiller, and wheel housing",
+  walkie_stacker: "chassis, mast, forks, and tiller",
 };
 
 /** Honesty-first multi-section spine. The earlier single-paragraph
@@ -198,9 +214,12 @@ function buildSpine(
   const eq    = EQUIPMENT_DISPLAY[equipmentType];
   const parts = EQUIPMENT_BODY_PARTS[equipmentType];
 
+  // All equipment types except scissor lift have visible forks. Mirrors
+  // the backend `paint_forks_on` rule in enhance_worker.py — keep these
+  // two conditions in lock-step (the comment block at the top of this
+  // file calls out the drift hazard).
   const paintForksApplies =
-    paintForksOn
-    && (equipmentType === "forklift" || equipmentType === "telehandler");
+    paintForksOn && equipmentType !== "scissor_lift";
 
   const sections: string[] = [];
 

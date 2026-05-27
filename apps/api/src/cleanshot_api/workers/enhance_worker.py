@@ -164,9 +164,13 @@ REVE_PROMPT_MAX_CHARS = 2560
 # operator's model gets a clear "preserve these specific parts" list per
 # unit category.
 EQUIPMENT_DISPLAY: dict[str, str] = {
-    "forklift":     "forklift",
-    "scissor_lift": "scissor lift",
-    "telehandler":  "telehandler",
+    "forklift":       "forklift",
+    "scissor_lift":   "scissor lift",
+    "telehandler":    "telehandler",
+    "reach_truck":    "reach truck",
+    "order_picker":   "order picker",
+    "pallet_jack":    "pallet jack",
+    "walkie_stacker": "walkie stacker",
 }
 
 EQUIPMENT_ANATOMY: dict[str, str] = {
@@ -184,15 +188,39 @@ EQUIPMENT_ANATOMY: dict[str, str] = {
         "lifting jib), outrigger configuration, cab shape, and wheel / "
         "tire type."
     ),
+    "reach_truck": (
+        "Same mast height and section count, fork count and length, reach "
+        "mechanism geometry (pantograph or moving-mast), operator cab / "
+        "stand-up compartment shape, drive wheels, and load wheels."
+    ),
+    "order_picker": (
+        "Same platform size and railing pattern, mast height and section "
+        "count, integrated forks or load support, base chassis dimensions, "
+        "drive wheels, and operator control layout."
+    ),
+    "pallet_jack": (
+        "Same fork length and spread, tiller handle shape and length, "
+        "front (steer) wheels, load wheels, and battery box position if "
+        "electric."
+    ),
+    "walkie_stacker": (
+        "Same mast configuration, fork count and length, tiller handle "
+        "position and shape, drive wheel, load wheels, and operator "
+        "control layout."
+    ),
 }
 
 # Body-parts list that gets substituted into "the entire body of the
 # {eq}, including the {EQUIPMENT_BODY_PARTS}, has received a fresh coat".
 # Keeps the refined prompt readable for non-forklift types.
 EQUIPMENT_BODY_PARTS: dict[str, str] = {
-    "forklift":     "chassis, mast, and carriage",
-    "scissor_lift": "chassis, scissor arms, and platform railing",
-    "telehandler":  "chassis, boom, and cab",
+    "forklift":       "chassis, mast, and carriage",
+    "scissor_lift":   "chassis, scissor arms, and platform railing",
+    "telehandler":    "chassis, boom, and cab",
+    "reach_truck":    "chassis, mast, reach mechanism, and cab",
+    "order_picker":   "chassis, mast, platform, and forks",
+    "pallet_jack":    "forks, tiller, and wheel housing",
+    "walkie_stacker": "chassis, mast, forks, and tiller",
 }
 
 
@@ -226,9 +254,14 @@ def _build_enhance_prompt(
         equipment_type, EQUIPMENT_BODY_PARTS["forklift"]
     )
 
+    # All equipment types except scissor lift carry visible forks
+    # (forklift / telehandler / reach truck / order picker / pallet
+    # jack / walkie stacker). Scissor lifts have a platform instead, so
+    # the "paint forks red w/ yellow tips" toggle is silently ignored
+    # for them.
     paint_forks_on = (
         toggles.paint_forks_red_yellow_tips
-        and equipment_type in ("forklift", "telehandler")
+        and equipment_type != "scissor_lift"
     )
 
     # ── Spine — balanced cheap-respray framing ───────────────────────────

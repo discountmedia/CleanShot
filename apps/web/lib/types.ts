@@ -13,19 +13,36 @@ export type ConsensusVerdict = "pass" | "fail" | "split";
 
 // ─── Forklift metadata (Enhance tab optional fields) ─────────────────────────
 
-/** Equipment categories the prompt builder branches on. */
-export type EquipmentType = "forklift" | "scissor_lift" | "telehandler";
+/** Equipment categories the prompt builder branches on. Pinned to the
+ *  backend `EquipmentType` Literal in
+ *  apps/api/src/cleanshot_api/workers/prompts.py. */
+export type EquipmentType =
+  | "forklift"
+  | "scissor_lift"
+  | "telehandler"
+  | "reach_truck"
+  | "order_picker"
+  | "pallet_jack"
+  | "walkie_stacker";
 
 export const EQUIPMENT_TYPES: readonly EquipmentType[] = [
   "forklift",
-  "scissor_lift",
+  "reach_truck",
   "telehandler",
+  "scissor_lift",
+  "order_picker",
+  "pallet_jack",
+  "walkie_stacker",
 ] as const;
 
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
-  forklift:     "Forklift",
-  scissor_lift: "Scissor lift",
-  telehandler:  "Telehandler",
+  forklift:       "Forklift",
+  reach_truck:    "Reach Truck",
+  telehandler:    "Telehandler",
+  scissor_lift:   "Scissor Lift",
+  order_picker:   "Order Picker",
+  pallet_jack:    "Pallet Jack",
+  walkie_stacker: "Walkie Stacker",
 };
 
 export interface ForkliftMeta {

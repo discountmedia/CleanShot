@@ -25,7 +25,7 @@ interface ClientRequest {
    * Drives the per-type anatomy block in _build_enhance_prompt. Optional
    * — backend defaults to "forklift" when omitted.
    */
-  equipmentType?: "forklift" | "scissor_lift" | "telehandler";
+  equipmentType?: "forklift" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
   customPrompt?: string;                  // when set, FastAPI bypasses toggles
   idempotencyKey: string;
 }

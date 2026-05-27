@@ -39,7 +39,15 @@ from __future__ import annotations
 from typing import Literal
 
 Provider = Literal["gemini", "openai", "grok", "kontext", "ideogram", "reve"]
-EquipmentType = Literal["forklift", "scissor_lift", "telehandler"]
+EquipmentType = Literal[
+    "forklift",
+    "scissor_lift",
+    "telehandler",
+    "reach_truck",
+    "order_picker",
+    "pallet_jack",
+    "walkie_stacker",
+]
 
 
 # ─── Gemini (gemini-3.1-flash-image-preview, Nano Banana 2) ──────────────────

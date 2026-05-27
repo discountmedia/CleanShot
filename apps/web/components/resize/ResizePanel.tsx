@@ -36,7 +36,13 @@ import {
   type ExportProPreviewItem,
 } from "../../lib/api";
 import { convertToJpeg } from "../../lib/compress";
-import type { ForkliftMeta, ResizeResult } from "../../lib/types";
+import {
+  EQUIPMENT_TYPES,
+  EQUIPMENT_TYPE_LABELS,
+  type EquipmentType,
+  type ForkliftMeta,
+  type ResizeResult,
+} from "../../lib/types";
 import { TipBanner } from "../workspace/TipBanner";
 
 const MAX_UPLOADS = 10;
@@ -240,7 +246,7 @@ export function ResizePanel({
   const [isExportingCollage, setIsExportingCollage] = useState(false);
   const [isCreatingCollage,  setIsCreatingCollage]  = useState(false);
   const [collageEquipmentType, setCollageEquipmentType] =
-    useState<"forklift" | "scissor_lift" | "telehandler" | null>(null);
+    useState<EquipmentType | null>(null);
 
   // Branded-collage result state. When set, the preview card renders
   // with the composed JPEG + Download + Save-to-History buttons so the
@@ -1220,17 +1226,13 @@ export function ResizePanel({
             What kind of equipment is this?
           </span>
           <div className="flex flex-wrap gap-2">
-            {([
-              { id: "forklift",     label: "Forklift" },
-              { id: "scissor_lift", label: "Scissor Lift" },
-              { id: "telehandler",  label: "Telehandler" },
-            ] as const).map((opt) => {
-              const selected = collageEquipmentType === opt.id;
+            {EQUIPMENT_TYPES.map((id) => {
+              const selected = collageEquipmentType === id;
               return (
                 <button
-                  key={opt.id}
+                  key={id}
                   type="button"
-                  onClick={() => setCollageEquipmentType(opt.id)}
+                  onClick={() => setCollageEquipmentType(id)}
                   aria-pressed={selected}
                   className={`text-base font-bold uppercase tracking-[0.14em] px-4 py-2.5 rounded-md border-2 transition-colors ${
                     selected
@@ -1238,7 +1240,7 @@ export function ResizePanel({
                       : "border-emerald-800 bg-zinc-900 text-emerald-100 hover:border-emerald-500"
                   }`}
                 >
-                  {opt.label}
+                  {EQUIPMENT_TYPE_LABELS[id]}
                 </button>
               );
             })}
