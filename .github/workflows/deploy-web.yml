@@ -1,5 +1,11 @@
 name: Deploy Web
 
+# 2026-05-27: Vercel CI pipeline was failing on "vercel-token not supplied"
+# for ~12 hours after the previous secrets rotated out / expired. Restored
+# VERCEL_TOKEN + VERCEL_ORG_ID + VERCEL_PROJECT_ID in repo Settings →
+# Secrets and variables → Actions. This trivial header edit re-triggers
+# the workflow as a smoke test that the new values authenticate correctly.
+
 on:
   push:
     branches: [main]
