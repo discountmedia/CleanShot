@@ -17,7 +17,7 @@ const USER_AVATARS: Record<string, string> = {
 };
 
 export function UserMenu() {
-  const { data: session } = useSession();
+  const { data: session, isPending } = useSession();
   const [signingOut, setSigningOut] = useState(false);
   const [menuOpen,   setMenuOpen]   = useState(false);
   const [profileAvatarUrl, setProfileAvatarUrl] = useState<string | null>(null);
@@ -36,6 +36,24 @@ export function UserMenu() {
       .catch(() => { /* keep silent — fall back to map / initials */ });
     return () => { cancelled = true; };
   }, [session?.user?.email]);
+
+  // While useSession is resolving (initial mount + cookie -> session
+  // hydration round-trip), render a skeleton matching the resolved
+  // UserMenu's footprint. Without this we'd return null → the header
+  // shifts horizontally when UserMenu pops in a few hundred ms later,
+  // which was the dominant remaining CLS contributor after the
+  // avatar-dims fix in 00cf91e. (Real Experience Score fix layer 2.)
+  if (isPending) {
+    return (
+      <div
+        className="flex items-center gap-3 px-4 py-2 rounded-lg bg-zinc-900 border-2 border-zinc-800"
+        aria-hidden="true"
+      >
+        <span className="w-9 h-9 rounded-full bg-zinc-800" />
+        <span className="hidden sm:block w-32 h-4 rounded bg-zinc-800" />
+      </div>
+    );
+  }
 
   if (!session?.user) return null;
 
