@@ -49,13 +49,20 @@ jobs:
       # Vercel's API with "this endpoint requires version 47.2.2 or
       # later". Running the CLI ourselves keeps us on @latest, drops
       # a third-party dependency, and removes the Node.js 20 forced
-      # by the wrapper (this step now runs on the setup-node step's
-      # Node 22 / Node 24).
+      # by the wrapper.
+      #
+      # IMPORTANT: NO `working-directory: apps/web` here. The Vercel
+      # project has Root Directory = "apps/web" configured in its
+      # dashboard settings, and the CLI applies that on top of the
+      # current working directory. If we cd into apps/web first, the
+      # CLI then tries apps/web/apps/web/package.json and ENOENTs.
+      # Running from the repo root lets the project's Root Directory
+      # setting drill into apps/web cleanly (same shape as the manual
+      # `npx vercel --prod` we did from c:\dev\CleanShot).
       #
       # VERCEL_ORG_ID + VERCEL_PROJECT_ID are read automatically from
       # the env block; only --token has to be passed explicitly.
       - name: Deploy to Vercel
-        working-directory: apps/web
         env:
           VERCEL_ORG_ID:     ${{ secrets.VERCEL_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
