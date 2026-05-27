@@ -3,6 +3,7 @@
 import '@/styles/globals.css'
 import type { Metadata } from 'next'
 import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 
 export const metadata: Metadata = {
   title: 'CleanShot',
@@ -29,6 +30,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
             Auto-disabled in non-production / non-Vercel environments
             so local dev / preview don't pollute the prod dataset. */}
         <Analytics />
+        {/* Vercel Speed Insights — Core Web Vitals (LCP, INP, CLS, FCP,
+            TTFB) reported per route. Same auto-disable behaviour outside
+            Vercel production as Analytics, so local dev doesn't ship
+            beacons. Dashboard: Vercel project → Speed Insights tab. */}
+        <SpeedInsights />
       </body>
     </html>
   )
