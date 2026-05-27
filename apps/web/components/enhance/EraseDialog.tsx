@@ -113,9 +113,10 @@ export function EraseDialog({
   const [resultUrl,     setResultUrl]     = useState<string | null>(null);
   const [resultAssetId, setResultAssetId] = useState<string | null>(null);
 
-  // ── Wipe state any time we reopen on a different source ──────────────
+// ── Wipe state any time we reopen on a different source ──────────────
   useEffect(() => {
     if (!open) return;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reset state on dialog reopen
     setStrokes([]);
     setInstruction("");
     setJobId(null);
