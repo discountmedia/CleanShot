@@ -22,12 +22,21 @@ import { ENHANCE_PROVIDER_DURATION_S } from "../../lib/pricing";
 interface ProviderRowProps {
   selected: Set<EnhanceProvider>;
   onToggle: (provider: EnhanceProvider) => void;
+  /**
+   * Bulk toggle for the whole provider row. When invoked, the caller is
+   * expected to flip between "all providers" and "single default
+   * provider" (it can never reduce to zero — same invariant as the
+   * per-tile toggle). Optional so existing callers that haven't wired
+   * it yet keep compiling.
+   */
+  onSelectAll?: () => void;
 }
 
-export function ProviderRow({ selected, onToggle }: ProviderRowProps) {
+export function ProviderRow({ selected, onToggle, onSelectAll }: ProviderRowProps) {
+  const allOn = selected.size === ENHANCE_PROVIDERS.length;
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-      <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/30 border-b border-zinc-900">
+      <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/30 border-b border-zinc-900 gap-3 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
           <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
             AI Providers
@@ -36,9 +45,25 @@ export function ProviderRow({ selected, onToggle }: ProviderRowProps) {
             multi-select
           </span>
         </div>
-        <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 tabular-nums">
-          {selected.size} selected
-        </span>
+        <div className="flex items-center gap-4 flex-wrap">
+          {onSelectAll && (
+            <label className="flex items-center gap-2 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allOn}
+                onChange={onSelectAll}
+                aria-label={allOn ? "Deselect all providers" : "Select all providers"}
+                className="w-4 h-4 accent-emerald-500 cursor-pointer"
+              />
+              <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200">
+                Select all
+              </span>
+            </label>
+          )}
+          <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 tabular-nums">
+            {selected.size} selected
+          </span>
+        </div>
       </header>
 
       <div className="px-5 py-4">

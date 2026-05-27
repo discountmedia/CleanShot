@@ -77,27 +77,17 @@ export interface EnhanceToggles {
   showroomFloor: boolean;
 }
 
-export const DEFAULT_TOGGLES: EnhanceToggles = {
-  newPaintJob: true,             // default ON — the single most common ask
-  removeRust: false,
-  restoreDecals: false,
-  removePeople: false,
-  removeBackgroundSignage: false,
-  paintForksRedYellowTips: true, // default ON — Discount Forklift signature treatment
-  shineTires: false,
-  improveLighting: false,
-  removeRentalBranding: true,    // default ON — most batches are ex-rental units
-  showroomFloor: false,          // off — operator opts in for actual studio shots
-};
-
 /**
- * All-off toggle set. Auto-applied after a batch reaches a fully terminal
- * state so the next run starts clean — the operator opts back into each
- * emphasis explicitly rather than accidentally repeating last batch's
- * settings. Distinct from DEFAULT_TOGGLES (which the manual "Reset"
- * button restores).
+ * Default toggle state. Operator decision 2026-05-26: every landing
+ * on the Enhance page (initial mount), every "Reset" click, and every
+ * auto-reset after a terminal batch all converge here — all-off,
+ * forcing the operator to explicitly opt in to every emphasis on each
+ * run. Previously the defaults baked in newPaintJob / paintForksTips /
+ * removeRentalBranding as "the most common asks," but those were
+ * silently repeating across batches and producing unwanted edits when
+ * the source photo didn't need them.
  */
-export const ALL_OFF_TOGGLES: EnhanceToggles = {
+export const DEFAULT_TOGGLES: EnhanceToggles = {
   newPaintJob: false,
   removeRust: false,
   restoreDecals: false,

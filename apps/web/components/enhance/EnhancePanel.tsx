@@ -28,7 +28,6 @@ import { v4 as uuidv4 } from "uuid";
 
 import { buildEnhanceFilename, convertToJpeg, formatBytes } from "../../lib/compress";
 import {
-  ALL_OFF_TOGGLES,
   DEFAULT_TOGGLES,
   TOGGLE_LABELS,
   TOGGLE_DESCRIPTIONS,
@@ -383,7 +382,7 @@ export function EnhancePanel({
   useEffect(() => {
     if (batchTerminal && !resetDoneForBatchRef.current) {
       resetDoneForBatchRef.current = true;
-      setToggles(ALL_OFF_TOGGLES);
+      setToggles(DEFAULT_TOGGLES);
       // We're the ones moving toggles here — don't count it as a
       // user-initiated dirty change.
       // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: the auto-reset IS the side-effect; gated by the one-shot ref so no loop.
@@ -457,6 +456,19 @@ export function EnhancePanel({
         next.add(p);
       }
       return next;
+    });
+  }, []);
+
+  // Header "Select all" checkbox. When all providers are already on,
+  // clicking it collapses back to just gemini (the default single-pick)
+  // — never to empty, per the same "must keep at least one" rule the
+  // per-tile toggle enforces.
+  const selectAllProviders = useCallback(() => {
+    setSelectedProviders((prev) => {
+      if (prev.size === ENHANCE_PROVIDERS.length) {
+        return new Set<EnhanceProvider>(["gemini"]);
+      }
+      return new Set<EnhanceProvider>(ENHANCE_PROVIDERS);
     });
   }, []);
 
@@ -1395,7 +1407,11 @@ export function EnhancePanel({
       )}
 
       {/* ── Provider chips ── */}
-      <ProviderRow selected={selectedProviders} onToggle={toggleProvider} />
+      <ProviderRow
+        selected={selectedProviders}
+        onToggle={toggleProvider}
+        onSelectAll={selectAllProviders}
+      />
 
       {/* ── Advanced (toggles + custom prompt) ── */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
