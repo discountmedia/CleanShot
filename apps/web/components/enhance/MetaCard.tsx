@@ -82,30 +82,6 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
               </p>
             </div>
 
-            <p className="text-base text-zinc-200 leading-relaxed">
-              When you do fill these in correctly, here&apos;s what they drive:
-            </p>
-            <ul className="space-y-2 text-base text-zinc-100 leading-relaxed list-disc pl-5">
-              <li>
-                <span className="text-white font-bold">Filenames.</span>{" "}
-                Each uploaded photo is renamed to{" "}
-                <span className="font-mono text-yellow-300 font-bold">
-                  Make_Model_Year_NN.jpg
-                </span>{" "}
-                so downstream tools can sort them.
-              </li>
-              <li>
-                <span className="text-white font-bold">Prompt tuning.</span>{" "}
-                The AI models use the equipment type and make to apply the
-                right brand colour, anatomy preservation, and OEM-decal
-                rules to each photo.
-              </li>
-              <li>
-                <span className="text-white font-bold">Resize Save Project.</span>{" "}
-                The same values pre-fill the Resize tab&apos;s Save Project
-                form — no double entry, no typos between tabs.
-              </li>
-            </ul>
           </div>
         </div>
       </header>
