@@ -1120,12 +1120,12 @@ export function ResizePanel({
         onClick={handleSave}
         disabled={!canSave}
         className={`
-          w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+          inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
           ${canSave
             ? isSaved
-              ? "bg-green-700 hover:bg-green-600 text-white"
-              : "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-            : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+              ? "border-green-700 bg-green-700 hover:bg-green-600 text-white"
+              : "border-green-500 bg-green-600 hover:bg-green-500 text-white"
+            : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
         `}
       >
         {isSaving
@@ -1184,10 +1184,10 @@ export function ResizePanel({
         onClick={handleExport}
         disabled={!canExport}
         className={`
-          w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+          inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
           ${canExport
-            ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-            : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+            ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
+            : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
         `}
       >
         {isExporting
@@ -1206,16 +1206,15 @@ export function ResizePanel({
           collage (1 hero + 4 thumb strip on the right, 1024×540, ≤99 KB
           JPEG). Equipment-type pick is required so the operator can't
           accidentally publish a collage labelled as the wrong category. */}
-      <section className="rounded-xl border-2 border-emerald-700 bg-emerald-950/20 p-5 space-y-4">
-        <div className="space-y-1.5">
-          <h3 className="text-lg font-bold text-emerald-100 uppercase tracking-[0.12em]">
+      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
+        <div className="space-y-1">
+          <h3 className="text-base font-bold text-white uppercase tracking-[0.12em]">
             Create branded collage
           </h3>
-          <p className="text-base text-emerald-50 leading-relaxed">
+          <p className="text-sm text-zinc-300 leading-relaxed">
             Composes your first 5 queued images into the marketing-layout
-            collage — one large hero shot on the left, four supporting
-            thumbnails stacked on the right. Output is 1024 px on the long
-            edge, ≤99 KB JPEG, ready for marketplace upload.
+            collage — one hero shot on the left, four thumbnails stacked on
+            the right. 1024 px long edge, ≤99 KB JPEG.
           </p>
         </div>
 
@@ -1272,10 +1271,10 @@ export function ResizePanel({
             isExportingCollage
           }
           className={`
-            w-full py-3 px-6 rounded-xl font-bold text-base uppercase tracking-[0.12em] transition-all
+            inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all
             ${collageEquipmentType && allAssets.length >= 5 && isSaved && !isCreatingCollage && !isExporting && !isExportingCollage
-              ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40"
-              : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+              ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
+              : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
           `}
         >
           {isCreatingCollage
@@ -1323,22 +1322,22 @@ export function ResizePanel({
             />
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex flex-wrap gap-3">
             <button
               onClick={handleDownloadCollage}
-              className="w-full py-3 px-5 rounded-xl font-bold text-base text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-lg shadow-blue-900/40"
+              className="inline-flex py-3 px-5 rounded-lg font-bold text-base text-white border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 transition-colors"
             >
               ⬇ Download collage
             </button>
             <button
               onClick={handleSaveCollageToHistory}
               disabled={collageSavingToHistory || collageSavedToHistory}
-              className={`w-full py-3 px-5 rounded-xl font-bold text-base transition-colors ${
+              className={`inline-flex py-3 px-5 rounded-lg font-bold text-base border-2 transition-colors ${
                 collageSavedToHistory
-                  ? "bg-green-700 text-white cursor-default"
+                  ? "border-green-700 bg-green-700 text-white cursor-default"
                   : collageSavingToHistory
-                    ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-                    : "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40"
+                    ? "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                    : "border-green-500 bg-green-600 hover:bg-green-500 text-white"
               }`}
             >
               {collageSavedToHistory
@@ -1367,10 +1366,10 @@ export function ResizePanel({
         onClick={handleExportCollage}
         disabled={!canExportCollage}
         className={`
-          w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+          inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
           ${canExportCollage
-            ? "bg-purple-600 hover:bg-purple-500 text-white shadow-lg shadow-purple-900/40"
-            : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+            ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
+            : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
         `}
         title="Collage preset: 1024px long edge, no crop, ≤99 KB JPEG. Use for pre-composed multi-image listing collages."
       >
