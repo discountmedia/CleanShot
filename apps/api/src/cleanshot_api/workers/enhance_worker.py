@@ -89,25 +89,25 @@ FLUX_POLL_INTERVALS_S: tuple[float, ...] = (
 FLUX_POLL_STEADY_INTERVAL_S = 2.0
 FLUX_POLL_MAX_ATTEMPTS = 50        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
 
-# BFL Flux Kontext Max image-edit via the RunComfy proxy. RunComfy
-# is async — submit returns a request_id; we poll
-# /v1/requests/{request_id}/status until "completed", then GET
-# /v1/requests/{request_id}/result for the rendered image URL. Like
-# Seedream, Kontext consumes its input image as a publicly fetchable
-# HTTPS URL rather than a base64 blob, so we mint a short-lived
-# signed GCS GET URL with services.gcs.mint_read_url and pass that
-# through. Auth is Bearer token on the same Authorization header for
-# every endpoint in the flow.
+# BFL Flux Kontext Max image-edit — called DIRECTLY against api.bfl.ai
+# (NOT the RunComfy proxy). Going direct buys two things the proxy
+# denied us, both of which silently defeated prompt tuning:
+#   1. prompt_upsampling=false → BFL uses our EXACT prompt instead of
+#      rewriting it through its own upsampler. Via RunComfy we couldn't
+#      set this, so a fully-rewritten color-lock prompt (verified in the
+#      submit log) produced byte-identical output to the prior prompt —
+#      BFL was collapsing both into the same generic intent.
+#   2. No proxy-side result cache keyed on image+seed.
+# Same async submit/poll/result contract as the Erase tool
+# (_erase_with_flux): POST returns { id, polling_url }; poll until
+# "Ready"; GET result.sample (presigned, no auth) for the bytes. Auth via
+# the x-key header / the BFL_API_KEY secret we already mount for Erase.
+# Input image is base64 (`input_image`), not a fetchable URL.
 #
 # Why Kontext specifically: BFL positions it as purpose-built for
 # identity-preserving edits — "change anything except the subject."
-# That matches CleanShot's brief better than general-purpose
-# image-edit models, which sometimes hallucinate model badges or
-# alter the unit's silhouette under heavy paint refresh prompts.
-KONTEXT_SUBMIT_URL = "https://model-api.runcomfy.net/v1/models/blackforestlabs/flux-1-kontext/max/edit"
-KONTEXT_STATUS_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/status"
-KONTEXT_RESULT_URL = "https://model-api.runcomfy.net/v1/requests/{request_id}/result"
-ENHANCE_MODEL_KONTEXT = "flux-1-kontext-max-edit"
+KONTEXT_SUBMIT_URL = "https://api.bfl.ai/v1/flux-kontext-max"
+ENHANCE_MODEL_KONTEXT = "flux-kontext-max"
 # Reasonable per-call prompt ceiling. Kontext's docs don't publish a
 # hard cap but most BFL models tolerate up to ~4k chars; staying
 # inside that bound matches what we send to the other providers.
@@ -1420,40 +1420,33 @@ async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
 
 async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
     """
-    Call BFL Flux Kontext Max via the RunComfy async proxy.
+    Call BFL Flux Kontext Max DIRECTLY (api.bfl.ai) — same async
+    submit/poll/result contract as _erase_with_flux:
 
-      1. mint_read_url(gcs_uri) → short-lived signed GCS GET URL
-      2. POST KONTEXT_SUBMIT_URL with { prompt, images: [signed_url] }
-         → { request_id }
-      3. GET KONTEXT_STATUS_URL.format(request_id=...) every
-         KONTEXT_POLL_INTERVALS_S until status == "completed"
-         (also handles "cancelled" / "failed" / "in_queue" /
-         "in_progress").
-      4. GET KONTEXT_RESULT_URL.format(request_id=...) → result.image
-         (single URL) or result.images[0] (array).
-      5. Fetch that URL for the rendered bytes.
+      1. download source bytes, base64-encode (no data: prefix)
+      2. POST KONTEXT_SUBMIT_URL with
+         { prompt, input_image, aspect_ratio, prompt_upsampling: false,
+           output_format, safety_tolerance, seed? } → { id, polling_url }
+      3. GET polling_url every KONTEXT_POLL_INTERVALS_S until "Ready"
+         (or a terminal Error / *Moderated / Task-not-found status)
+      4. GET result.sample (presigned, no auth) → image bytes
     """
     settings = get_settings()
-    if not settings.runcomfy_api_key:
+    if not settings.bfl_api_key:
         raise RuntimeError(
-            "Kontext provider requested but RUNCOMFY_API_KEY is not set. "
-            "Mount cleanshot-runcomfy-key:latest via Cloud Run --set-secrets "
+            "Kontext provider requested but BFL_API_KEY is not set. "
+            "Mount cleanshot-bfl-key:latest via Cloud Run --set-secrets "
             "and re-deploy."
         )
 
-    # Mint a signed GCS GET URL so RunComfy's servers can fetch the
-    # source image. mint_read_url is sync (runs in a thread to keep
-    # the event loop free; the call is fast in practice).
-    from cleanshot_api.services.gcs import mint_read_url
-    signed_get_url, _expires = await asyncio.to_thread(mint_read_url, gcs_uri)
+    image_bytes, _ct = await _load_image_bytes(gcs_uri)
 
-    # Pin the output to the input's own aspect ratio (snapped to RunComfy's
-    # enum) so Kontext doesn't reframe/outpaint. Read dims from a downsized
-    # copy — the resize preserves the ratio. Fall back to 4:3 on any read
-    # failure rather than letting RunComfy's 16:9 default through.
+    # Pin the output to the input's own aspect ratio so Kontext doesn't
+    # reframe/outpaint. Reuse the enum snap — every value it returns is a
+    # valid BFL aspect_ratio string inside BFL's 3:7..7:3 range. Fall back
+    # to 4:3 on any dim-read failure.
     aspect_ratio = "4:3"
     try:
-        image_bytes, _ct = await _load_image_bytes(gcs_uri)
         import pyvips
 
         _img = pyvips.Image.new_from_buffer(image_bytes, "")
@@ -1466,14 +1459,19 @@ async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
             exc_info=True,
         )
 
-    auth_headers = {
-        "Authorization": f"Bearer {settings.runcomfy_api_key}",
-        "Content-Type":  "application/json",
-    }
-    body = {
-        "prompt":       prompt[:KONTEXT_PROMPT_MAX_CHARS],
-        "image_url":    signed_get_url,
-        "aspect_ratio": aspect_ratio,
+    image_b64 = base64.b64encode(image_bytes).decode()
+
+    auth_headers = {"x-key": settings.bfl_api_key}
+    body: dict[str, Any] = {
+        "prompt":            prompt[:KONTEXT_PROMPT_MAX_CHARS],
+        "input_image":       image_b64,
+        "aspect_ratio":      aspect_ratio,
+        # CRITICAL: send our EXACT wording. With upsampling on (the proxy
+        # default) BFL rewrites the prompt and washes out every nuance —
+        # that's what made tuning a no-op through RunComfy.
+        "prompt_upsampling": False,
+        "output_format":     "png",
+        "safety_tolerance":  2,
     }
     # Tuning-phase determinism: when KONTEXT_SEED >= 0 every render reuses it
     # so the prompt is the only variable between outputs. -1 (default) omits
@@ -1481,35 +1479,39 @@ async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
     if settings.kontext_seed >= 0:
         body["seed"] = settings.kontext_seed
 
-    # TEMP tuning instrumentation — proves exactly what reaches RunComfy
-    # (which prompt variant, aspect_ratio, seed). Remove once Kontext is
+    # TEMP tuning instrumentation — proves exactly what reaches BFL (prompt
+    # variant, aspect_ratio, seed, upsampling). Remove once Kontext is
     # dialled in.
     logger.info(
-        "Kontext submit: aspect_ratio=%s seed=%s prompt_len=%d prompt_head=%r",
-        body.get("aspect_ratio"),
+        "Kontext submit (BFL direct): aspect_ratio=%s seed=%s upsampling=%s "
+        "prompt_len=%d prompt_head=%r",
+        body["aspect_ratio"],
         body.get("seed", "<omitted>"),
+        body["prompt_upsampling"],
         len(body["prompt"]),
         body["prompt"][:180],
     )
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # ── 1. Submit ──────────────────────────────────────────────
-        submit = await client.post(KONTEXT_SUBMIT_URL, headers=auth_headers, json=body)
+        submit = await client.post(
+            KONTEXT_SUBMIT_URL,
+            headers={**auth_headers, "Content-Type": "application/json"},
+            json=body,
+        )
         if submit.status_code >= 400:
             raise ValueError(
-                f"RunComfy/Kontext submit failed ({submit.status_code}): "
+                f"BFL Kontext submit failed ({submit.status_code}): "
                 f"{submit.text[:300]}"
             )
         submit_data = submit.json()
-        request_id = submit_data.get("request_id") or submit_data.get("id")
-        if not request_id:
+        polling_url = submit_data.get("polling_url")
+        if not polling_url:
             raise ValueError(
-                f"RunComfy/Kontext submit returned no request_id: {submit_data}"
+                f"BFL Kontext submit returned no polling_url: {submit_data}"
             )
 
-        # ── 2. Poll ────────────────────────────────────────────────
-        status_url = KONTEXT_STATUS_URL.format(request_id=request_id)
-        terminal_status = None
+        # ── 2. Poll until Ready / terminal ─────────────────────────
         for attempt in range(KONTEXT_POLL_MAX_ATTEMPTS):
             interval = (
                 KONTEXT_POLL_INTERVALS_S[attempt]
@@ -1517,67 +1519,52 @@ async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
                 else KONTEXT_POLL_STEADY_INTERVAL_S
             )
             await asyncio.sleep(interval)
-            poll = await client.get(
-                status_url,
-                headers={"Authorization": auth_headers["Authorization"]},
-            )
+            poll = await client.get(polling_url, headers=auth_headers)
             if poll.status_code >= 400:
                 raise ValueError(
-                    f"RunComfy/Kontext poll failed ({poll.status_code}): "
+                    f"BFL Kontext poll failed ({poll.status_code}): "
                     f"{poll.text[:300]}"
                 )
             poll_data = poll.json()
-            status_val = (poll_data.get("status") or "").lower()
+            status = poll_data.get("status")
 
-            if status_val == "completed":
-                terminal_status = "completed"
-                break
-            if status_val in ("cancelled", "failed", "error"):
-                detail = poll_data.get("error") or poll_data.get("message") or "no detail"
-                raise ValueError(
-                    f"RunComfy/Kontext terminal status '{status_val}': {detail}"
+            if status == "Ready":
+                result = poll_data.get("result") or {}
+                sample_url = result.get("sample")
+                if not sample_url:
+                    raise ValueError(
+                        f"BFL Kontext Ready without result.sample URL: {poll_data}"
+                    )
+                # presigned, no auth — fetch immediately (short-lived)
+                img_resp = await client.get(sample_url)
+                img_resp.raise_for_status()
+                return img_resp.content
+
+            if status in (
+                "Error",
+                "Content Moderated",
+                "Request Moderated",
+                "Task not found",
+            ):
+                detail = (
+                    poll_data.get("result")
+                    or poll_data.get("error")
+                    or "no detail"
                 )
-            # Otherwise still "in_queue" / "in_progress" — keep polling.
+                raise ValueError(
+                    f"BFL Kontext returned terminal status '{status}': {detail}"
+                )
+            # Otherwise still Pending / Queued — keep polling.
 
-        if terminal_status != "completed":
-            budget_s = (
-                sum(KONTEXT_POLL_INTERVALS_S)
-                + max(0, KONTEXT_POLL_MAX_ATTEMPTS - len(KONTEXT_POLL_INTERVALS_S))
-                  * KONTEXT_POLL_STEADY_INTERVAL_S
-            )
-            raise TimeoutError(
-                f"RunComfy/Kontext did not complete within {budget_s:.0f}s "
-                f"({KONTEXT_POLL_MAX_ATTEMPTS} polls)"
-            )
-
-        # ── 3. Fetch result ───────────────────────────────────────
-        result_url = KONTEXT_RESULT_URL.format(request_id=request_id)
-        result_resp = await client.get(
-            result_url,
-            headers={"Authorization": auth_headers["Authorization"]},
+        budget_s = (
+            sum(KONTEXT_POLL_INTERVALS_S)
+            + max(0, KONTEXT_POLL_MAX_ATTEMPTS - len(KONTEXT_POLL_INTERVALS_S))
+              * KONTEXT_POLL_STEADY_INTERVAL_S
         )
-        if result_resp.status_code >= 400:
-            raise ValueError(
-                f"RunComfy/Kontext result fetch failed "
-                f"({result_resp.status_code}): {result_resp.text[:300]}"
-            )
-        result_data = result_resp.json() or {}
-        # RunComfy nests the actual output under `output` per their schema.
-        output = result_data.get("output") or result_data
-        image_url = output.get("image")
-        if not image_url:
-            images_arr = output.get("images") or []
-            image_url = images_arr[0] if images_arr else None
-        if not image_url:
-            raise ValueError(
-                f"RunComfy/Kontext result missing image/images URL: {result_data}"
-            )
-
-        # ── 4. Download the rendered image ────────────────────────
-        async with httpx.AsyncClient(timeout=60.0) as fetcher:
-            img_resp = await fetcher.get(image_url)
-        img_resp.raise_for_status()
-        return img_resp.content
+        raise TimeoutError(
+            f"BFL Kontext did not finish within {budget_s:.0f}s "
+            f"({KONTEXT_POLL_MAX_ATTEMPTS} polls)"
+        )
 
 
 async def _run_enhance(
@@ -1655,8 +1642,8 @@ async def _run_enhance(
             )
         elif payload.provider == "kontext":
             provider_model = ENHANCE_MODEL_KONTEXT
-            # No published RunComfy per-minute cap — start without a
-            # limiter and add one if we observe 429s in production.
+            # BFL direct (api.bfl.ai) — no limiter yet; add one if we see
+            # 429s in production. Shares the BFL_API_KEY with the Erase tool.
             output_bytes = await _enhance_with_kontext(
                 payload.input_gcs_uri, prompt
             )
