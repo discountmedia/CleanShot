@@ -53,8 +53,11 @@ export const USER_RESTRICTIONS: Record<string, UserRestriction> = {
   "stephen@discountforklift.us": {
     model: "kontext",
     enhanceOnly: true,
-    disableToggles: true,
-    customPromptOnly: true,
+    // Kontext uses the new "equipment + toggles, no typed prompt" design:
+    // toggles are interactive (they drive _build_kontext_prompt clauses) and
+    // the custom-prompt box is no longer the forced/primary input.
+    disableToggles: false,
+    customPromptOnly: false,
     tracking: true,
   },
 };

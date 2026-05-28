@@ -1476,9 +1476,10 @@ export function EnhancePanel({
 
         {advancedOpen && (
           <div className="border-t border-zinc-900 p-5 space-y-5">
-            {/* Feature toggles — hidden entirely for restricted users
-                (their access config disables toggles; custom prompt is
-                their only emphasis input). */}
+            {/* Feature toggles — hidden only for restricted users whose
+                config disables them (the custom-prompt-only models: grok /
+                gemini / openai). Kontext (stephen) keeps toggles: they drive
+                _build_kontext_prompt's clauses under the new design. */}
             {!restriction?.disableToggles && (
             <div
               aria-disabled={customPromptActive || undefined}
@@ -1544,6 +1545,12 @@ export function EnhancePanel({
             </div>
             )}
 
+            {/* Custom prompt — hidden for restricted users on the new
+                "equipment + toggles, no typed prompt" design (e.g. Kontext /
+                stephen). Kept for unrestricted power users and for
+                customPromptOnly users whose ONLY emphasis input it is
+                (brian / asia / aj). */}
+            {(!restriction || restriction.customPromptOnly) && (
             <div className="border-t border-zinc-900 pt-5 space-y-3">
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
                 <button
@@ -1606,6 +1613,7 @@ export function EnhancePanel({
                 </>
               )}
             </div>
+            )}
           </div>
         )}
       </section>
