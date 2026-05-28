@@ -831,14 +831,15 @@ export function ResizePanel({
               fileInputRef.current?.click();
             }
           }}
-          className={`
-            m-4 p-6 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-center
+          /* Standardized drop-zone style — matches the Scan tab
+             reference (border-2 border-dashed rounded-xl p-8, blue
+             hover) so every tab's uploader looks + sizes identically. */
+          className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
             ${isDragging
-              ? "border-blue-500 bg-blue-950/30"
+              ? "border-blue-500 bg-blue-950/20"
               : uploads.length >= MAX_UPLOADS
-                ? "border-zinc-800 bg-zinc-900/40 cursor-not-allowed opacity-60"
-                : "border-zinc-700 bg-zinc-900/40 hover:border-zinc-500"}
-          `}
+                ? "border-zinc-700 opacity-50 cursor-not-allowed"
+                : "border-zinc-600 hover:border-blue-500 hover:bg-blue-950/20"}`}
           aria-disabled={uploads.length >= MAX_UPLOADS}
         >
           <input
