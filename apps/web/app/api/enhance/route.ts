@@ -9,6 +9,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import { forwardError, getFastApiEnv, jsonHeaders } from "@/lib/bff";
+import { getSessionEmail } from "@/lib/auth";
+import { getRestriction } from "@/lib/access-control";
 
 export const maxDuration = 15;
 export const dynamic = "force-dynamic";
@@ -40,14 +42,26 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as ClientRequest;
 
+  // ── Server-side access enforcement ──────────────────────────────────
+  // If the signed-in user is access-restricted, FORCE the provider to
+  // their locked model regardless of what the client sent. This is the
+  // authoritative gate — the EnhancePanel UI lock is cosmetic and could
+  // be bypassed by a hand-crafted request. Also force toggles off (their
+  // config disables them). No-ops when unrestricted / auth disabled
+  // (getSessionEmail → null → getRestriction → null).
+  const email = await getSessionEmail(request.headers).catch(() => null);
+  const restriction = getRestriction(email);
+  const provider = restriction ? restriction.model : (body.provider ?? "gemini");
+  const toggles = restriction?.disableToggles ? {} : body.toggles;
+
   const res = await fetch(`${env.base}/api/v1/enhance`, {
     method: "POST",
     headers: jsonHeaders(env.key),
     body: JSON.stringify({
       session_id:      body.sessionId,
       asset_id:        body.assetId,
-      toggles:         body.toggles,            // already camelCase; Pydantic aliases handle it
-      provider:        body.provider ?? "gemini",
+      toggles:         toggles,                 // already camelCase; Pydantic aliases handle it
+      provider:        provider,
       ...(body.equipmentType ? { equipment_type: body.equipmentType } : {}),
       // Only forward custom_prompt when non-empty; omitting lets FastAPI
       // use its `None` default and the worker falls through to toggles.
