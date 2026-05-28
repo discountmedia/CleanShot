@@ -483,44 +483,11 @@ export function ModifyPanel({
         </p>
       </header>
 
-      {/* ── Optional / Skip / Clear callout ─────────────────────────────
-          Loud and at the top so the operator immediately sees they don't
-          HAVE to use this tab. Skip jumps straight to Resize; Clear All
-          wipes every piece of Modify-tab state (local + cross-tab). */}
-      <section className="rounded-xl border-2 border-yellow-600 bg-yellow-950/30 px-5 py-4 flex items-start justify-between gap-4 flex-wrap">
-        <div className="flex items-start gap-3 min-w-0 flex-1">
-          <span className="text-2xl shrink-0" aria-hidden="true">⏭️</span>
-          <div className="min-w-0">
-            <p className="text-base font-bold uppercase tracking-[0.14em] text-yellow-100">
-              Modify is optional — feel free to skip
-            </p>
-            <p className="text-sm text-yellow-50 mt-1 leading-relaxed">
-              If your photos already look good after Scan (or you uploaded
-              straight to Resize), you can go straight to the Resize tab.
-              This tab is here for when you want to tweak brightness,
-              contrast, crop, or straightening before exporting.
-            </p>
-          </div>
-        </div>
-        <div className="flex gap-2 shrink-0 flex-wrap">
-          {onSkipToResize && (
-            <button
-              type="button"
-              onClick={onSkipToResize}
-              className="text-base font-bold uppercase tracking-[0.12em] px-5 py-3 rounded-lg border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 text-white transition-colors shadow-lg shadow-blue-900/40"
-            >
-              Skip to Resize →
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={handleClearEverything}
-            className="text-base font-bold uppercase tracking-[0.12em] px-5 py-3 rounded-lg border-2 border-red-500 bg-red-600 hover:bg-red-500 text-white transition-colors shadow-lg shadow-red-900/40"
-          >
-            Clear All
-          </button>
-        </div>
-      </section>
+      {/* Gold "Modify is optional" callout removed 2026-05-27 — the blue
+          TipBanner below already explains the tab is optional, and the
+          Skip / Clear All actions now live in the standardized bottom
+          button row (green Proceed · blue Skip · red Clear All). Keeping
+          one blue tooltip per tab, per the UI consistency pass. */}
 
       <TipBanner
         title="How Modify works"
@@ -955,14 +922,17 @@ export function ModifyPanel({
                 </div>
               )}
 
+              {/* Apply — the action that renders the adjustments. Inline
+                  width (no more w-full per the button-style pass). Green
+                  because it's the "do the work / proceed" action. */}
               <button
                 type="button"
                 onClick={handleApply}
                 disabled={isAllNeutral || isApplying || allAssets.length === 0 || anyUploadInFlight}
-                className={`w-full py-3 px-6 rounded-xl font-bold text-base uppercase tracking-[0.12em] transition-all ${
+                className={`inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all ${
                   !isAllNeutral && !isApplying && allAssets.length > 0 && !anyUploadInFlight
-                    ? "bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-900/40"
-                    : "bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                    ? "border-green-500 bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/40"
+                    : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"
                 }`}
               >
                 {isApplying
@@ -975,6 +945,45 @@ export function ModifyPanel({
               </button>
             </div>
           </section>
+
+          {/* ── Standardized bottom action row ──────────────────────────
+              Green Proceed · Blue Skip · Red Clear All, per the app-wide
+              button colour system. Proceed applies any pending
+              adjustments first (if non-neutral) then moves to Resize;
+              Skip jumps to Resize without applying; Clear All wipes the
+              Modify queue + cross-tab pipeline state. */}
+          <div className="flex items-center gap-3 flex-wrap pt-2">
+            {onSkipToResize && (
+              <button
+                type="button"
+                onClick={async () => {
+                  if (!isAllNeutral && allAssets.length > 0 && !anyUploadInFlight) {
+                    await handleApply();
+                  }
+                  onSkipToResize();
+                }}
+                className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-green-500 bg-green-600 hover:bg-green-500 text-white transition-colors"
+              >
+                Proceed to Resize →
+              </button>
+            )}
+            {onSkipToResize && (
+              <button
+                type="button"
+                onClick={onSkipToResize}
+                className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+              >
+                Skip Modify →
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleClearEverything}
+              className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-red-500 bg-red-600 hover:bg-red-500 text-white transition-colors"
+            >
+              Clear All
+            </button>
+          </div>
         </>
       )}
     </div>
