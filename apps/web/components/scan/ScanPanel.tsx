@@ -680,7 +680,42 @@ export function ScanPanel({
 
       {/* ── Scan trigger ── */}
       {scanStates.length === 0 && (
-        <div className="text-center space-y-4 py-8">
+        <div className="space-y-4 py-8">
+          {/* Pre-scan preview — show the images forwarded from the
+              Enhance tab as thumbnails BEFORE the operator clicks Scan,
+              so they can confirm the batch on tab load instead of having
+              to scan first to see what's queued. Standalone uploads
+              already render their own thumbnails in the upload zone
+              above. */}
+          {enhancedAssets.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-300">
+                From the Enhance tab — {enhancedAssets.length} image{enhancedAssets.length !== 1 ? "s" : ""}
+              </p>
+              <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                {enhancedAssets.map((a) => (
+                  <div
+                    key={a.assetId}
+                    className="relative rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900 aspect-square"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={a.thumbnailUrl}
+                      alt={a.filename}
+                      width={200}
+                      height={200}
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
+                      <p className="text-[10px] text-zinc-200 truncate">{a.filename}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="text-center space-y-4">
           <div className="text-zinc-500 space-y-1">
             <p className="text-sm">
               {allAssets.length > 0
@@ -723,6 +758,7 @@ export function ScanPanel({
               ? "Wait for uploads…"
               : `Scan ${allAssets.length} Image${allAssets.length !== 1 ? "s" : ""}`}
           </button>
+          </div>
         </div>
       )}
 
