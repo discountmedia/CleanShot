@@ -34,8 +34,6 @@ interface SourceCompareCardProps {
   variants: Partial<Record<EnhanceProvider, SourceVariant>>;
   chosen: EnhanceProvider | null;
   held: boolean;
-  /** Workspace-scoped auto-advance state. Drives the "→ sending to Scan" pill. */
-  autoAdvance: boolean;
   /** True once this source has been forwarded to Scan. Hides the card from the active set. */
   sent: boolean;
   /** Monotonic-ish ms tick used for the per-variant progress estimate. */
@@ -59,7 +57,6 @@ export function SourceCompareCard({
   variants,
   chosen,
   held,
-  autoAdvance,
   sent,
   nowMs,
   onChoose,
@@ -94,7 +91,6 @@ export function SourceCompareCard({
     (v) => v.variant.job?.status === "failed" || v.variant.job?.status === "cancelled",
   );
 
-  const willAutoSend = autoAdvance && !held && chosen !== null && allDone && !sent;
   const showWorking = !allDone && totalCount > 0;
   const showPickPrompt = allDone && chosen === null && !held;
 
@@ -127,11 +123,6 @@ export function SourceCompareCard({
               ✓ Sent
             </span>
           )}
-          {willAutoSend && (
-            <span className="text-xs uppercase tracking-[0.16em] font-bold text-green-200 bg-green-950/40 border border-green-700 px-2.5 py-1 rounded">
-              → sending to Scan
-            </span>
-          )}
           {showWorking && (
             <span className="text-xs uppercase tracking-[0.16em] font-bold text-blue-200 bg-blue-950/40 border border-blue-700 px-2.5 py-1 rounded">
               working
@@ -148,8 +139,8 @@ export function SourceCompareCard({
             onClick={onToggleHold}
             title={
               held
-                ? "Holding — won't auto-advance"
-                : "Hold this image (don't auto-send to Scan)"
+                ? "Held — excluded from the bulk Send to Scan"
+                : "Hold this image (exclude it from the bulk Send to Scan)"
             }
             aria-pressed={held}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded border-2 text-sm font-bold uppercase tracking-[0.14em] transition-colors ${

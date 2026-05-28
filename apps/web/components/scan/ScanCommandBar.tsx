@@ -29,8 +29,6 @@ interface ScanCommandBarProps {
    * tab differs.
    */
   onApproveBulkModify?: () => void;
-
-  autoAdvance:   boolean;
 }
 
 export function ScanCommandBar({
@@ -43,7 +41,6 @@ export function ScanCommandBar({
   eligibleCount,
   onApproveBulk,
   onApproveBulkModify,
-  autoAdvance,
 }: ScanCommandBarProps) {
   const canSend = eligibleCount > 0;
 
@@ -76,25 +73,19 @@ export function ScanCommandBar({
         </div>
 
         <div className="ml-auto flex items-center gap-3 flex-wrap">
-          {autoAdvance && (
-            <span className="text-[11px] text-zinc-500 italic">
-              Auto-advance is on — passes auto-send to Resize
-            </span>
-          )}
-
-          {/* Optional intermediate path — same eligible set, lands in
-              Modify instead of Resize. Rendered as a secondary (blue)
-              CTA so the operator visually reads it as a side branch
-              of the primary "→ Resize" flow. */}
+          {/* Approve → Modify = BLUE secondary path (approve, but route
+              through the Modify darkroom first). Approve → Resize below
+              is the GREEN primary proceed. Both follow the app-wide
+              button colour system. */}
           {onApproveBulkModify && (
             <button
               type="button"
               onClick={onApproveBulkModify}
               disabled={!canSend}
               title="Approve all eligible cards and send them to the Modify tab for darkroom adjustments before Resize"
-              className={`text-xs uppercase tracking-[0.18em] font-semibold px-4 py-2 rounded border transition-colors ${
+              className={`text-xs uppercase tracking-[0.18em] font-semibold px-4 py-2 rounded border-2 transition-colors ${
                 canSend
-                  ? "border-blue-500 bg-blue-950/40 hover:bg-blue-900/60 text-blue-100"
+                  ? "border-blue-500 bg-blue-600 hover:bg-blue-500 text-white"
                   : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
               }`}
             >
@@ -106,9 +97,9 @@ export function ScanCommandBar({
             type="button"
             onClick={onApproveBulk}
             disabled={!canSend}
-            className={`text-xs uppercase tracking-[0.18em] font-semibold px-4 py-2 rounded border transition-colors ${
+            className={`text-xs uppercase tracking-[0.18em] font-semibold px-4 py-2 rounded border-2 transition-colors ${
               canSend
-                ? "border-red-500 bg-red-600 hover:bg-red-500 text-white"
+                ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
                 : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
             }`}
           >

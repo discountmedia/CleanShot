@@ -17,7 +17,6 @@ interface CommandBarProps {
   /** Count of source images the operator explicitly Hold'd. */
   heldCount: number;
 
-  autoAdvance: boolean;
   /**
    * Primary CTA — fires onSendAll when the operator wants to forward the
    * `readyCount` set to Scan in one go. Disabled when nothing's ready.
@@ -37,7 +36,6 @@ export function CommandBar({
   workingCount,
   undecidedCount,
   heldCount,
-  autoAdvance,
   onSendAll,
   onSkipScan,
 }: CommandBarProps) {
@@ -77,11 +75,8 @@ export function CommandBar({
         </div>
 
         <div className="ml-auto flex items-center gap-3">
-          {autoAdvance && (
-            <span className="text-sm text-zinc-300 italic">
-              Auto-advance is on — picks send to Scan as they&apos;re made
-            </span>
-          )}
+          {/* Skip Scan → Resize = BLUE (skip next step) per the app-wide
+              button colour system. */}
           {onSkipScan && (
             <button
               type="button"
@@ -90,20 +85,21 @@ export function CommandBar({
               title="Skip the Scan step and send picked winners straight to the Resize tab"
               className={`${ctaBase} ${
                 canSend
-                  ? "border-blue-500 bg-blue-950/40 hover:bg-blue-900/60 text-blue-100"
+                  ? "border-blue-500 bg-blue-600 hover:bg-blue-500 text-white"
                   : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
               }`}
             >
               Skip Scan → Send {readyCount} to Resize
             </button>
           )}
+          {/* Send to Scan = GREEN (proceed to next step). */}
           <button
             type="button"
             onClick={onSendAll}
             disabled={!canSend}
             className={`${ctaBase} ${
               canSend
-                ? "border-red-500 bg-red-600 hover:bg-red-500 text-white"
+                ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
                 : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
             }`}
           >

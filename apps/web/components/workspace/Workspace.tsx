@@ -122,13 +122,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     });
   }, [activeTab]);
 
-  // Auto-advance toggle — defaults OFF (per product owner: power-user
-  // shortcut, not the first-run experience). Lives in Workspace so the
-  // header chip and EnhancePanel's auto-send effect share one source of
-  // truth. Intentionally session-scoped: not persisted to localStorage,
-  // so a page reload returns to the "explicit hand-off" default.
-  const [autoAdvance, setAutoAdvance] = useState(false);
-
   // Mirror of `files.length` inside EnhancePanel. Lifted so the
   // BatchContextStrip (which lives above the tab body, in Workspace) can
   // show the current batch size without having to live inside EnhancePanel.
@@ -295,8 +288,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       <Header
         bypassed={bypassed}
         isAdmin={isAdmin}
-        autoAdvance={autoAdvance}
-        onAutoAdvance={setAutoAdvance}
       />
 
       {/* Tab bar */}
@@ -327,7 +318,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onSendToScan={handleSendToScan}
                 onSendToResize={handleEnhanceToResize}
                 onClearPipeline={handleClearPipeline}
-                autoAdvance={autoAdvance}
                 onFileCountChange={setEnhanceFileCount}
               />
             )}
@@ -345,7 +335,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onClearPipeline={handleClearPipeline}
                 onSendToResize={handleSendToResize}
                 onSendToModify={handleSendToModify}
-                autoAdvance={autoAdvance}
                 equipmentType={meta.equipmentType ?? "forklift"}
               />
             )}

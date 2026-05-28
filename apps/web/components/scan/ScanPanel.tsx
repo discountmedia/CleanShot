@@ -108,13 +108,6 @@ export interface ScanPanelProps {
    */
   onSendToModify?: (items: PipelineAsset[]) => void;
   /**
-   * Workspace-scoped auto-advance toggle. When ON, any newly-complete
-   * scan with `verdict === "pass" && avgConfidence >= threshold` is
-   * auto-approved + auto-forwarded to Resize. Mixed and fail verdicts
-   * never auto-advance regardless of threshold.
-   */
-  autoAdvance:     boolean;
-  /**
    * Equipment category from the lifted workspace meta. Threaded into
    * RegenPanel so the regen prompt's per-type guardrails match the
    * one Enhance used for the original generation.
@@ -128,7 +121,6 @@ export function ScanPanel({
   onClearPipeline,
   onSendToResize,
   onSendToModify,
-  autoAdvance,
   equipmentType,
 }: ScanPanelProps) {
   // ─── Core scan state ────────────────────────────────────────────────────
@@ -426,18 +418,6 @@ export function ScanPanel({
     });
   }, [scanStates, approved, rejected]);
 
-  // Pass-only subset for auto-advance. Even with threshold gone, silent
-  // background auto-approval should never ship a fail or mixed verdict
-  // — operators need to see those before they go.
-  const autoAdvanceEligible = useMemo(() => {
-    return scanStates.filter((s) => {
-      if (approved.has(s.assetId) || rejected.has(s.assetId)) return false;
-      if (s.providerResults.length === 0) return false;
-      const c = computeConsensus(s.providerResults);
-      return c !== null && c.verdict === "pass";
-    });
-  }, [scanStates, approved, rejected]);
-
   // Command-bar verdict tallies — exclude already-decided cards so the
   // numbers always reflect work remaining.
   const verdictTallies = useMemo(() => {
@@ -532,23 +512,6 @@ export function ScanPanel({
     },
     [sessionId],
   );
-
-  // ─── Auto-advance — auto-approve eligible passes ────────────────────────
-  // Forwarding to Resize + marking approved in lock-step IS the side-effect
-  // here; marking approved is what prevents the re-derive loop because the
-  // autoAdvanceEligible memo filters by approved. Note auto-advance uses
-  // the pass-only set, NOT the broader eligibleForBulk that the manual CTA
-  // ships — silent background approval should never auto-ship a fail.
-  useEffect(() => {
-    if (!autoAdvance || autoAdvanceEligible.length === 0) return;
-    onSendToResize(autoAdvanceEligible.map(buildResizeItem));
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional, see comment above.
-    setApproved((prev) => {
-      const next = new Set(prev);
-      for (const s of autoAdvanceEligible) next.add(s.assetId);
-      return next;
-    });
-  }, [autoAdvance, autoAdvanceEligible, onSendToResize, buildResizeItem]);
 
   // ─── Reset scan ─────────────────────────────────────────────────────────
 
@@ -860,7 +823,6 @@ export function ScanPanel({
           eligibleCount={eligibleForBulk.length}
           onApproveBulk={handleApproveBulk}
           onApproveBulkModify={onSendToModify ? handleApproveBulkModify : undefined}
-          autoAdvance={autoAdvance}
         />
       )}
     </div>

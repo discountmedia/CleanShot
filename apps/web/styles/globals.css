@@ -32,6 +32,24 @@
   outline-offset: 2px;
 }
 
+/* ── Hyperlinks / inline CTAs ────────────────────────────────────────────
+   Canonical link style for the whole app: bold + one consistent bright
+   colour (sky-400). This is a base-layer default — any link that needs a
+   different colour can still override with a Tailwind text-* utility
+   (utilities out-specificity base rules). The goal is that a link with NO
+   explicit colour class always lands on the same obvious accent instead of
+   inheriting body text colour and disappearing. See STYLE_GUIDE.md. */
+@layer base {
+  a {
+    font-weight: 700;
+    color: #38bdf8; /* sky-400 */
+  }
+  a:hover {
+    color: #7dd3fc; /* sky-300 */
+    text-decoration: underline;
+  }
+}
+
 /* Indeterminate progress bar — used by ScanPanel's per-provider progress cards.
    The bar element is w-1/3; this slides it left-to-right and back, giving a
    subtle "in flight" pulse without claiming to know real percentage progress. */

@@ -15,7 +15,7 @@
 // State changes vs. previous version:
 //   • selectedJobIds is gone — replaced by derivation from chosenByFile
 //   • chosenByFile: Map<fileId, Provider> (operator's winner picks)
-//   • heldFiles:    Set<fileId> (per-card opt-out from auto-advance)
+//   • heldFiles:    Set<fileId> (per-card opt-out from the bulk Send to Scan)
 //   • jobStateMap:  Map<jobId, JobRecord> (hoisted from JobStatusRow so
 //                   variant thumbs share polling state)
 //
@@ -224,8 +224,6 @@ export interface EnhancePanelProps {
   onSendToScan: (items: CompletedEnhanceItem[]) => void;
   onSendToResize: (items: CompletedEnhanceItem[]) => void;
   onClearPipeline: () => void;
-  /** Workspace-scoped auto-advance toggle. */
-  autoAdvance: boolean;
   /** Lets Workspace render the BatchContextStrip image count. */
   onFileCountChange: (count: number) => void;
 }
@@ -237,7 +235,6 @@ export function EnhancePanel({
   onSendToScan,
   onSendToResize,
   onClearPipeline,
-  autoAdvance,
   onFileCountChange,
 }: EnhancePanelProps) {
   const inputId = useId();
@@ -297,7 +294,7 @@ export function EnhancePanel({
   const [jobStateMap, setJobStateMap] = useState<Map<string, JobRecord>>(new Map());
 
   // Operator's winner pick per source file, and the per-file Hold opt-out
-  // from auto-advance. These replace the old `selectedJobIds`.
+  // from the bulk Send to Scan. These replace the old `selectedJobIds`.
   const [chosenByFile, setChosenByFile] = useState<Map<string, EnhanceProvider>>(new Map());
   const [heldFiles, setHeldFiles] = useState<Set<string>>(new Set());
 
@@ -1108,21 +1105,6 @@ export function EnhancePanel({
     return out;
   }, [files, heldFiles, chosenByFile, enhanceJobs, completed, sentJobIds]);
 
-  // Auto-advance — when ON and there's something ready, ship it. We capture
-  // the jobIds into sentJobIds in the same tick so the effect doesn't loop.
-  // readyToSend identity changes with each completion — that's fine; once
-  // its items are folded into sentJobIds the memo re-derives to [].
-  useEffect(() => {
-    if (!autoAdvance || readyToSend.length === 0) return;
-    onSendToScan(readyToSend);
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: forwarding to Scan + marking sent in lock-step is the whole side-effect; marking sent is what prevents the re-derive loop.
-    setSentJobIds((prev) => {
-      const next = new Set(prev);
-      for (const it of readyToSend) next.add(it.jobId);
-      return next;
-    });
-  }, [autoAdvance, readyToSend, onSendToScan]);
-
   // Manual "Send N to Scan →" CTA handler used by CommandBar.
   const handleSendAll = useCallback(() => {
     if (readyToSend.length === 0) return;
@@ -1673,7 +1655,6 @@ export function EnhancePanel({
                   variants={variants}
                   chosen={chosen}
                   held={heldFiles.has(f.id)}
-                  autoAdvance={autoAdvance}
                   sent={isSent}
                   nowMs={nowMs}
                   onChoose={(provider) => chooseWinner(f.id, provider)}
@@ -1711,7 +1692,6 @@ export function EnhancePanel({
           workingCount={commandCounts.working}
           undecidedCount={commandCounts.undecided}
           heldCount={commandCounts.held}
-          autoAdvance={autoAdvance}
           onSendAll={handleSendAll}
           onSkipScan={handleSkipScan}
         />
