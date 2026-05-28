@@ -72,8 +72,8 @@ export function ProviderRow({ selected, onToggle, onSelectAll }: ProviderRowProp
             batch finishes only when the slowest one completes and
             the per-source spend scales linearly with the count.
             Small yellow print, italic so it reads as a hint. */}
-        <p className="text-xs italic text-yellow-300/80 mb-3 leading-relaxed">
-          Heads up — the more providers you tick, the longer each batch takes (it has to wait for the slowest one to finish) and the more it costs (each provider charges per image). Each additional provider adds a small amount to the per-source spend.
+        <p className="text-sm italic text-yellow-300/80 mb-3 leading-relaxed">
+          Heads up — the more providers you tick, the longer each batch takes.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
           {ENHANCE_PROVIDERS.map((p) => {
