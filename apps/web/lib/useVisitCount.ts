@@ -41,11 +41,11 @@ export function useVisitCount(): number {
 
 /**
  * Tooltip accordion default-expansion policy:
- *   visits 1-3  → expanded  (still learning the tool)
- *   visit  4+   → collapsed (knows their way around)
+ *   visits 1-4  → expanded  (still learning the tool)
+ *   visit  5+   → collapsed (knows their way around)
  * count === 0 (SSR / pre-resolve) defaults to expanded — the safe,
  * no-flash-for-new-users choice.
  */
 export function shouldDefaultExpand(visitCount: number): boolean {
-  return visitCount === 0 || visitCount <= 3;
+  return visitCount === 0 || visitCount <= 4;
 }

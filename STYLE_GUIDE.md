@@ -126,8 +126,8 @@ Fonts: `--font-sans: Inter`, `--font-mono: JetBrains Mono` (tokens in `globals.c
 `apps/web/components/workspace/TipBanner.tsx`. Collapsible by default (`collapsible` prop, defaults true). The title row is a toggle button with a chevron; body + steps collapse.
 
 **Default open/closed is visit-count driven** via `apps/web/lib/useVisitCount.ts`:
-- Visits 1–3 → expanded (operator still learning)
-- Visit 4+ → collapsed (operator knows the tool)
+- Visits 1–4 → expanded (operator still learning)
+- Visit 5+ → collapsed (operator knows the tool)
 - Counter is `localStorage["cleanshot_visit_count"]`, +1 per page load (module-guarded so multiple banners don't multi-count)
 
 Use `tone="info"` (blue, default) for "what this tab does"; `tone="warn"` (amber) only for genuine gotchas. **One blue tooltip per tab** — don't stack multiple callouts (the gold "optional" box on Modify was removed for this reason).
