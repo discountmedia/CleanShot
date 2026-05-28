@@ -47,6 +47,31 @@ const createAuth = () =>
   betterAuth({
     database: getPool(),
 
+    // Origins allowed to initiate auth requests. Better Auth rejects
+    // sign-in / session POSTs whose Origin isn't in this list as a CSRF
+    // guard. Default (when unset) is just BETTER_AUTH_URL — so the
+    // moment we serve the app from a SECOND domain
+    // (discountforklift.ai, added 2026-05-27 as a co-equal domain
+    // alongside the Vercel one) requests from that origin would 403
+    // without listing it here.
+    //
+    // Wildcards: a leading "*." entry trusts all subdomains. We list
+    // apex + www explicitly so a bare discountforklift.ai and
+    // www.discountforklift.ai both work.
+    //
+    // IMPORTANT companion steps when adding a domain here (both are
+    // dashboard-side, not code — see the domain-add playbook):
+    //   1. Register https://<domain>/api/auth/callback/microsoft as a
+    //      Redirect URI in the Entra app, or Microsoft 400s the OAuth
+    //      round-trip with AADSTS50011 (redirect-uri mismatch).
+    //   2. Add the domain in the Vercel project + point DNS at it.
+    trustedOrigins: [
+      "https://discountforklift.ai",
+      "https://www.discountforklift.ai",
+      "https://clean-shot-web.vercel.app",
+      "http://localhost:3000",
+    ],
+
     // Prefix all Better Auth tables with `ba_` to (a) avoid `user` being a
     // Postgres reserved word that needs quoting in every query and (b) make
     // it obvious in psql which tables belong to the auth layer vs. CleanShot.
