@@ -769,29 +769,29 @@ export function ResizePanel({
       {/* ── Spec card ── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-5">
         <div className="space-y-2.5">
-          <h3 className="text-xl font-extrabold text-white uppercase tracking-[0.14em]">PRO Export Spec</h3>
+          <h3 className="text-lg font-semibold text-zinc-100">PRO Export Spec</h3>
           <p className="text-base text-blue-100 leading-relaxed">
             <strong className="text-blue-200 font-bold">Use for:</strong> standard listing photos of a single forklift.
             Every image gets a uniform 7:5 crop with the machine framed and centred — what most marketplaces expect.
           </p>
           <ul className="text-base text-zinc-100 space-y-1.5 leading-relaxed" role="list">
-            <li>• <strong className="text-white font-bold">1024 × 731 px</strong> — 7:5 aspect ratio</li>
-            <li>• <strong className="text-white font-bold">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
-            <li>• <strong className="text-white font-bold">≤ 99 KB JPEG</strong> — quality iterated until target</li>
+            <li>• <strong className="font-semibold text-yellow-300">1024 × 731 px</strong> — 7:5 aspect ratio</li>
+            <li>• <strong className="font-semibold text-yellow-300">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
+            <li>• <strong className="font-semibold text-yellow-300">≤ 99 KB JPEG</strong> — quality iterated until target</li>
             <li>• Batch returns as a single ZIP; single asset returns as JPEG</li>
           </ul>
         </div>
         <div className="space-y-2.5 pt-4 border-t border-zinc-800">
-          <h3 className="text-xl font-extrabold text-white uppercase tracking-[0.14em]">Collage Export Spec</h3>
+          <h3 className="text-lg font-semibold text-zinc-100">Collage Export Spec</h3>
           <p className="text-base text-purple-100 leading-relaxed">
             <strong className="text-purple-200 font-bold">Use for:</strong> pre-composed multi-image collages where you&apos;ve
             already arranged the photos and just need the finished layout downsized — no cropping, original
             aspect ratio preserved.
           </p>
           <ul className="text-base text-zinc-100 space-y-1.5 leading-relaxed" role="list">
-            <li>• <strong className="text-white font-bold">1024 px long edge</strong> — original aspect ratio preserved</li>
-            <li>• <strong className="text-white font-bold">No crop</strong> — fits to long edge; output is whatever the input&apos;s shape calls for</li>
-            <li>• <strong className="text-white font-bold">≤ 99 KB JPEG</strong> — same quality-iteration loop as PRO</li>
+            <li>• <strong className="font-semibold text-yellow-300">1024 px long edge</strong> — original aspect ratio preserved</li>
+            <li>• <strong className="font-semibold text-yellow-300">No crop</strong> — fits to long edge; output is whatever the input&apos;s shape calls for</li>
+            <li>• <strong className="font-semibold text-yellow-300">≤ 99 KB JPEG</strong> — same quality-iteration loop as PRO</li>
           </ul>
         </div>
       </div>
@@ -1226,10 +1226,14 @@ export function ResizePanel({
             on the right group instantly instead of scanning all
             seven labels. */}
         <div className="space-y-2">
-          <span className="text-sm uppercase tracking-[0.16em] font-bold text-emerald-100">
+          <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
             What kind of equipment is this?
           </span>
-          <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          {/* Toggle-card style matching the Enhance equipment picker +
+              the Advanced emphasis toggles (blue selected / dark
+              unselected, radio-dot). Warehouse-forks vs aerial clusters
+              stay separated by the wider gap-x-6. */}
+          <div className="flex flex-wrap items-stretch gap-x-6 gap-y-2">
             {EQUIPMENT_GROUPS.map((group) => (
               <div
                 key={group.label ?? group.members.join("-")}
@@ -1245,13 +1249,18 @@ export function ResizePanel({
                       type="button"
                       onClick={() => setCollageEquipmentType(id)}
                       aria-pressed={selected}
-                      className={`text-base font-bold uppercase tracking-[0.14em] px-4 py-2.5 rounded-md border-2 transition-colors ${
+                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-colors ${
                         selected
-                          ? "border-emerald-400 bg-emerald-600 text-white"
-                          : "border-emerald-800 bg-zinc-900 text-emerald-100 hover:border-emerald-500"
+                          ? "bg-blue-950 border-blue-500 text-white"
+                          : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
                       }`}
                     >
-                      {EQUIPMENT_TYPE_LABELS[id]}
+                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selected ? "border-blue-400" : "border-zinc-600"}`}>
+                        {selected && <span className="w-2 h-2 rounded-full bg-blue-400" />}
+                      </span>
+                      <span className="text-sm uppercase tracking-[0.12em] font-bold">
+                        {EQUIPMENT_TYPE_LABELS[id]}
+                      </span>
                     </button>
                   );
                 })}

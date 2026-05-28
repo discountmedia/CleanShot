@@ -111,26 +111,25 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
       </header>
 
       <div className="px-5 py-4 flex items-end gap-4 flex-wrap">
-        {/* Equipment type — sits before Make so the operator sees they
-            can swap categories. Compact chip row to match the Enhance
-            tab's ProviderRow vocabulary. Driven from EQUIPMENT_GROUPS
-            so each cluster (Warehouse forks vs Aerial) renders as its
-            own segmented control with a clear visual gap between
-            them — without the group structure the seven options were
-            running together as one indistinguishable strip. */}
+        {/* Equipment type — toggle-card style matching the Advanced
+            emphasis toggles (blue selected / dark unselected, radio-dot
+            indicator). Driven from EQUIPMENT_GROUPS so the warehouse-
+            forks cluster and the aerial cluster stay separated by a
+            visible gap. Single-select, so a radio dot rather than a
+            pill switch. */}
         <div className="flex flex-col gap-1.5">
           <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
             Equipment
           </span>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="flex flex-wrap items-stretch gap-x-4 gap-y-2">
             {EQUIPMENT_GROUPS.map((group) => (
               <div
                 key={group.label ?? group.members.join("-")}
-                className="inline-flex rounded-md border border-zinc-700 overflow-hidden"
+                className="flex flex-wrap gap-2"
                 role="group"
                 aria-label={group.label}
               >
-                {group.members.map((t, i) => {
+                {group.members.map((t) => {
                   const selected = t === equipmentType;
                   return (
                     <button
@@ -138,13 +137,18 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
                       type="button"
                       onClick={() => update("equipmentType", t)}
                       aria-pressed={selected}
-                      className={`text-sm uppercase tracking-[0.14em] font-semibold px-4 py-2.5 transition-colors ${
+                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-colors ${
                         selected
-                          ? "bg-red-950/40 text-red-300"
-                          : "bg-zinc-900 text-zinc-300 hover:text-white"
-                      } ${i > 0 ? "border-l border-zinc-700" : ""}`}
+                          ? "bg-blue-950 border-blue-500 text-white"
+                          : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
+                      }`}
                     >
-                      {EQUIPMENT_TYPE_LABELS[t]}
+                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selected ? "border-blue-400" : "border-zinc-600"}`}>
+                        {selected && <span className="w-2 h-2 rounded-full bg-blue-400" />}
+                      </span>
+                      <span className="text-sm uppercase tracking-[0.12em] font-bold">
+                        {EQUIPMENT_TYPE_LABELS[t]}
+                      </span>
                     </button>
                   );
                 })}

@@ -1457,7 +1457,7 @@ export function EnhancePanel({
                   Reset
                 </button>
               </div>
-              <p className="text-sm text-zinc-200 mb-4 leading-relaxed">
+              <p className="text-lg text-zinc-200 mb-4 leading-relaxed">
                 Every enhance run already does the standard makeover (paint
                 refresh, decal restoration, rust cleanup, tire shine, lighting
                 correction). The toggles below add{" "}

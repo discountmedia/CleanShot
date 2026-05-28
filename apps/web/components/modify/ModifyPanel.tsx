@@ -471,18 +471,11 @@ export function ModifyPanel({
   }
 
   // ── Render ────────────────────────────────────────────────────────────
+  // "Modify" page heading + subtitle removed 2026-05-27 — the blue
+  // TipBanner accordion below already explains what the tab does, so the
+  // standalone heading was redundant and visually awkward.
   return (
     <div className="space-y-4">
-      <header className="space-y-1">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">
-          Modify
-        </h1>
-        <p className="text-base text-zinc-300">
-          Optional darkroom + standalone tool — adjust, crop, or straighten
-          before the final Resize step.
-        </p>
-      </header>
-
       {/* Gold "Modify is optional" callout removed 2026-05-27 — the blue
           TipBanner below already explains the tab is optional, and the
           Skip / Clear All actions now live in the standardized bottom
