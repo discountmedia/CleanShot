@@ -48,6 +48,17 @@
     color: #7dd3fc; /* sky-300 */
     text-decoration: underline;
   }
+
+  /* Reserve the vertical scrollbar's gutter at all times so content
+     doesn't shift horizontally when a short page (no scrollbar) grows
+     into a tall one (scrollbar appears) — the "cards jump left when the
+     scrollbar shows up" problem. Reserving the gutter keeps the
+     centred layout fixed whether or not the scrollbar is present.
+     Degrades gracefully on browsers without scrollbar-gutter support
+     (behaves as it does today — minor jump, not broken). */
+  html {
+    scrollbar-gutter: stable;
+  }
 }
 
 /* Indeterminate progress bar — used by ScanPanel's per-provider progress cards.
