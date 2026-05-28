@@ -570,9 +570,6 @@ def _build_kontext_prompt(
     when the treatment changes, update all three.
     """
     eq_display = EQUIPMENT_DISPLAY.get(equipment_type, "forklift")
-    eq_parts = EQUIPMENT_BODY_PARTS.get(
-        equipment_type, EQUIPMENT_BODY_PARTS["forklift"]
-    )
     paint_forks_on = (
         toggles.paint_forks_red_yellow_tips
         and equipment_type != "scissor_lift"
@@ -580,12 +577,16 @@ def _build_kontext_prompt(
 
     # Base instruction — always applied. Imperative, single-purpose lines.
     lines: list[str] = [
-        f"Give this used {eq_display} a cheap but clean shop respray in its "
-        f"exact original factory colours. Repaint the {eq_parts}: cover "
-        f"surface scuffs, chips, scratches, faded paint, light rust, and "
-        f"dirt with fresh even paint, but keep dents, deep gouges, broken "
-        f"parts, and severe rust-through holes clearly visible — this is a "
-        f"used unit, not a restoration, so it must not look factory-new.",
+        f"Refresh this used {eq_display}'s existing paint WITHOUT changing "
+        f"any colour. Every part keeps the exact colour it already has — do "
+        f"not recolour the body, the overhead guard, the mast, or any "
+        f"panel, and do not introduce any colour that is not already on the "
+        f"unit. Clean off dirt and dust and make faded, scuffed, chipped, "
+        f"or lightly-rusted areas look freshly touched up by blending them "
+        f"into the SAME colour as the surrounding panel. Keep dents, deep "
+        f"gouges, broken parts, and severe rust-through clearly visible — "
+        f"this is a used unit, not a restoration, so it must not look "
+        f"factory-new.",
         "Apply glossy wet-look tire shine to the tire SIDEWALLS only; leave "
         "the tread dull, dusty, and worn.",
         f"Keep everything else identical: the make, model, badges, OEM "
