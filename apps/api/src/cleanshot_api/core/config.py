@@ -90,6 +90,13 @@ class Settings(BaseSettings):
     # by HTTPS URL (we mint a short-lived signed GCS GET URL). Mounted
     # from GCP Secret Manager (cleanshot-runcomfy-key) on Cloud Run.
     runcomfy_api_key: str = Field("", alias="RUNCOMFY_API_KEY")
+    # Kontext tuning knob: when >= 0, every RunComfy/Kontext render reuses
+    # this seed so a prompt change is the only variable between two outputs
+    # (needed for the model-tuning phase). Default -1 omits the seed →
+    # random per call, the right behaviour for production regenerate variety.
+    # Transient if set via `gcloud run services update`; bake into
+    # deploy-api.yml to persist across deploys (hard-won lesson #1).
+    kontext_seed: int = Field(-1, alias="KONTEXT_SEED")
     # Google AI Studio API key — used for the enhance pipeline's Gemini
     # calls so we can access preview image-gen models (e.g.
     # gemini-3.1-flash-image-preview) that aren't yet published in this

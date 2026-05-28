@@ -126,6 +126,45 @@ KONTEXT_POLL_INTERVALS_S: tuple[float, ...] = (
 KONTEXT_POLL_STEADY_INTERVAL_S = 1.0
 KONTEXT_POLL_MAX_ATTEMPTS = 90
 
+# RunComfy/Kontext accepts aspect_ratio ONLY as one of these fixed enum
+# strings — NOT an arbitrary "W:H". Verified against RunComfy's published
+# flux-1-kontext edit schema (2026-05-28). Passing the input photo's own
+# ratio (snapped to the nearest enum) keeps Kontext from reframing or
+# outpainting the scene; omitting it lets RunComfy apply its 16:9 default,
+# which widescreen-crops a typical ~4:3 forklift photo.
+KONTEXT_ASPECT_RATIOS: tuple[tuple[str, float], ...] = (
+    ("21:9", 21 / 9),
+    ("16:9", 16 / 9),
+    ("3:2", 3 / 2),
+    ("4:3", 4 / 3),
+    ("1:1", 1.0),
+    ("3:4", 3 / 4),
+    ("2:3", 2 / 3),
+    ("9:16", 9 / 16),
+    ("9:21", 9 / 21),
+)
+
+
+def _nearest_kontext_aspect_ratio(width: int, height: int) -> str:
+    """Snap a pixel W×H to the closest RunComfy/Kontext aspect-ratio enum.
+
+    Distance is measured in log space so the match is symmetric for
+    portrait/landscape inverses (e.g. 2:1 is as far from 1:1 as 1:2 is).
+    """
+    import math
+
+    if width <= 0 or height <= 0:
+        return "4:3"
+    target = math.log(width / height)
+    best_label = "4:3"
+    best_dist = float("inf")
+    for label, value in KONTEXT_ASPECT_RATIOS:
+        dist = abs(math.log(value) - target)
+        if dist < best_dist:
+            best_label, best_dist = label, dist
+    return best_label
+
+
 # Grok / xAI image editing — synchronous JSON request to /v1/images/edits.
 # Auth via Bearer header. Source image is sent as a base64 data URI
 # inside the `image` object (NOT the OpenAI-compatible multipart/edit
@@ -501,6 +540,101 @@ def _build_enhance_prompt(
     )
 
     return "\n\n".join(sections)
+
+
+def _build_kontext_prompt(
+    toggles: EnhanceToggles,
+    equipment_type: str = "forklift",
+) -> str:
+    """Build a Kontext-specific enhance prompt.
+
+    Flux Kontext is an identity-preserving EDIT model — it responds to
+    short, imperative "change X, keep Y" instructions and degrades badly on
+    the long, multi-section declarative prose that _build_enhance_prompt
+    feeds Gemini (the "whole machine turns red" failure mode). This builds a
+    terse base instruction (always: cheap respray + sidewall tire-shine +
+    keep identity/scene) and appends ONE short clause per active ACTION
+    toggle.
+
+    The pure-emphasis toggles (new_paint_job / remove_rust / shine_tires /
+    restore_decals) are intentionally NOT given their own clauses — the base
+    already covers paint, rust, tire-shine and decal preservation, and
+    re-stating them just dilutes the edit for Kontext.
+
+    During the model-tuning phase test users run with all toggles OFF, so
+    they receive only the clean base — exactly the baseline we want to
+    measure. See [[project-model-tuning-phase]].
+
+    DRIFT-WARNING: shares treatment intent with _build_enhance_prompt
+    (Gemini) and the Scan-tab regen prompt in apps/web/lib/scan-helpers.ts —
+    when the treatment changes, update all three.
+    """
+    eq_display = EQUIPMENT_DISPLAY.get(equipment_type, "forklift")
+    eq_parts = EQUIPMENT_BODY_PARTS.get(
+        equipment_type, EQUIPMENT_BODY_PARTS["forklift"]
+    )
+    paint_forks_on = (
+        toggles.paint_forks_red_yellow_tips
+        and equipment_type != "scissor_lift"
+    )
+
+    # Base instruction — always applied. Imperative, single-purpose lines.
+    lines: list[str] = [
+        f"Give this used {eq_display} a cheap but clean shop respray in its "
+        f"exact original factory colours. Repaint the {eq_parts}: cover "
+        f"surface scuffs, chips, scratches, faded paint, light rust, and "
+        f"dirt with fresh even paint, but keep dents, deep gouges, broken "
+        f"parts, and severe rust-through holes clearly visible — this is a "
+        f"used unit, not a restoration, so it must not look factory-new.",
+        "Apply glossy wet-look tire shine to the tire SIDEWALLS only; leave "
+        "the tread dull, dusty, and worn.",
+        f"Keep everything else identical: the make, model, badges, OEM "
+        f"decals, capacity plates and serial numbers (same spelling and "
+        f"placement), the {eq_display}'s shape and each part's colour, the "
+        f"camera angle, and the full background. Do not add lamps, mirrors, "
+        f"beacons, or any hardware, and do not crop, zoom, rotate, or "
+        f"re-frame the shot.",
+    ]
+
+    if paint_forks_on:
+        lines.append(
+            "Paint only the two fork blades Discount Forklift red with "
+            "safety-yellow tips — red on the shank and roughly the first "
+            "80% of each blade, yellow on the outer ~15 cm tip. Leave the "
+            "carriage, mast, and the black load-back-rest cage unpainted."
+        )
+    if toggles.remove_people:
+        lines.append(
+            "Remove every person, operator, and hand from the frame, "
+            "filling the vacated space with the background behind them."
+        )
+    if toggles.remove_background_signage:
+        lines.append(
+            "Remove background signs, posters, logos, and wall text "
+            "(replace each with the plain surface behind it), but keep all "
+            f"signage on the {eq_display} itself."
+        )
+    if toggles.remove_rental_branding:
+        lines.append(
+            "Remove third-party rental-fleet decals, wraps, and asset-tag "
+            "numbers (Sunbelt, United Rentals, Herc, etc.), matching the "
+            "panel underneath with no ghost outline. Keep all OEM "
+            "manufacturer decals and do not invent any replacement logos."
+        )
+    if toggles.showroom_floor:
+        lines.append(
+            "If the shot is in a studio or showroom, replace the floor with "
+            "a clean uniform mid-gray (#808080) lightly-polished seamless "
+            "studio floor, keeping the unit's own contact shadow; if it is "
+            "an outdoor yard, warehouse, or lot, leave the ground as-is."
+        )
+    if toggles.improve_lighting:
+        lines.append(
+            "Balance the exposure and lighting while keeping the scene and "
+            "location intact."
+        )
+
+    return "\n".join(lines)
 
 
 # Cap long-edge of the input image before sending to any vendor. Final
@@ -1312,14 +1446,39 @@ async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
     from cleanshot_api.services.gcs import mint_read_url
     signed_get_url, _expires = await asyncio.to_thread(mint_read_url, gcs_uri)
 
+    # Pin the output to the input's own aspect ratio (snapped to RunComfy's
+    # enum) so Kontext doesn't reframe/outpaint. Read dims from a downsized
+    # copy — the resize preserves the ratio. Fall back to 4:3 on any read
+    # failure rather than letting RunComfy's 16:9 default through.
+    aspect_ratio = "4:3"
+    try:
+        image_bytes, _ct = await _load_image_bytes(gcs_uri)
+        import pyvips
+
+        _img = pyvips.Image.new_from_buffer(image_bytes, "")
+        aspect_ratio = _nearest_kontext_aspect_ratio(_img.width, _img.height)
+    except Exception:
+        logger.warning(
+            "Kontext: could not read input dims for %s; defaulting "
+            "aspect_ratio=4:3",
+            gcs_uri,
+            exc_info=True,
+        )
+
     auth_headers = {
         "Authorization": f"Bearer {settings.runcomfy_api_key}",
         "Content-Type":  "application/json",
     }
     body = {
-        "prompt":    prompt[:KONTEXT_PROMPT_MAX_CHARS],
-        "image_url": signed_get_url,
+        "prompt":       prompt[:KONTEXT_PROMPT_MAX_CHARS],
+        "image_url":    signed_get_url,
+        "aspect_ratio": aspect_ratio,
     }
+    # Tuning-phase determinism: when KONTEXT_SEED >= 0 every render reuses it
+    # so the prompt is the only variable between outputs. -1 (default) omits
+    # it → random per call. See Settings.kontext_seed.
+    if settings.kontext_seed >= 0:
+        body["seed"] = settings.kontext_seed
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         # ── 1. Submit ──────────────────────────────────────────────
@@ -1439,6 +1598,13 @@ async def _run_enhance(
         # ignored. Otherwise the toggle-derived prompt is used.
         if payload.custom_prompt:
             prompt = payload.custom_prompt
+        elif payload.provider == "kontext":
+            # Kontext is an identity-preserving edit model — give it the
+            # terse imperative prompt, not the long Gemini scene prose.
+            prompt = _build_kontext_prompt(
+                payload.toggles,
+                equipment_type=payload.equipment_type,
+            )
         else:
             prompt = _build_enhance_prompt(
                 payload.toggles,
