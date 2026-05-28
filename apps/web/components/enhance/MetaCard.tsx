@@ -1,3 +1,4 @@
+"use client";
 // apps/web/components/enhance/MetaCard.tsx
 // Equipment metadata input.
 //
@@ -6,6 +7,8 @@
 // Capacity / Fuel Type live in the always-expanded "+ More details"
 // disclosure. The meta object is owned by Workspace and also pre-fills
 // the Resize tab's Save Project form.
+
+import { useState } from "react";
 
 import {
   EQUIPMENT_GROUPS,
@@ -38,6 +41,12 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
   const update = <K extends keyof ForkliftMeta>(key: K, value: ForkliftMeta[K]) =>
     onChange({ ...meta, [key]: value });
 
+  // Equipment-details accuracy callout is a collapsible accordion. Unlike
+  // the visit-count-driven TipBanners, this one ALWAYS defaults expanded
+  // (per operator request) — the accuracy warning is important enough to
+  // show every load. Operator can still collapse it manually.
+  const [detailsOpen, setDetailsOpen] = useState(true);
+
   const makeValue = (meta.make ?? "");
   const makeValid = makeValue.trim().length > 0;
   const equipmentType: EquipmentType = meta.equipmentType ?? "forklift";
@@ -57,12 +66,26 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
           >
             <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
-          <div className="space-y-3 min-w-0">
-            <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">
-              Equipment details — accuracy matters
-            </h3>
+          <div className="space-y-3 min-w-0 flex-1">
+            {/* Collapsible accordion — always defaults open. */}
+            <button
+              type="button"
+              onClick={() => setDetailsOpen((v) => !v)}
+              aria-expanded={detailsOpen}
+              className="w-full flex items-center justify-between gap-3 text-left"
+            >
+              <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">
+                Equipment details — accuracy matters
+              </h3>
+              <span className={`shrink-0 transition-transform ${detailsOpen ? "rotate-180" : ""}`}>
+                <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+            </button>
 
             {/* Headline rule — bright red callout so nobody misses it. */}
+            {detailsOpen && (
             <div className="rounded-lg border-2 border-red-600 bg-red-950/40 px-4 py-3">
               <p className="text-base text-red-100 leading-relaxed font-bold">
                 Fill in as many of these fields as you can — but ONLY with
@@ -81,6 +104,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
                 guess.
               </p>
             </div>
+            )}
 
           </div>
         </div>
