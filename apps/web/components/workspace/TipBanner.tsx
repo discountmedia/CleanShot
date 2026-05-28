@@ -7,10 +7,17 @@
 // Two visual tones:
 //   • info  — blue (default). Use for general "here's what this tab is."
 //   • warn  — amber. Use when there's a gotcha worth flagging.
+//
+// Collapsible accordion (2026-05-27): when `collapsible` (default true),
+// the banner is a click-to-toggle accordion. Its DEFAULT open/closed
+// state is driven by the app-wide visit count — expanded for visits 1-3
+// (operator still learning), collapsed for visit 4+ (operator knows the
+// tool). The operator can always toggle it manually regardless.
 
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
+import { useVisitCount, shouldDefaultExpand } from "@/lib/useVisitCount";
 
 interface TipBannerProps {
   title:    string;
@@ -19,6 +26,13 @@ interface TipBannerProps {
   steps?:   ReactNode[];
   /** Optional dismiss handler — when set, an ✕ button is shown top-right. */
   onDismiss?: () => void;
+  /**
+   * When true (default), the banner is a collapsible accordion whose
+   * default open state follows the visit-count policy. Pass false to
+   * force it always-open with no toggle (rare — only for banners that
+   * must stay visible).
+   */
+  collapsible?: boolean;
   children: ReactNode;
 }
 
@@ -50,81 +64,108 @@ export function TipBanner({
   tone = "info",
   steps,
   onDismiss,
+  collapsible = true,
   children,
 }: TipBannerProps) {
   const t = TONE[tone];
 
-  // Defer the numbered step list one paint after mount so the initial
-  // visible content is just the icon + title + short prose body — a
-  // smaller LCP candidate that paints sooner. The steps list (often
-  // 4-6 items, can be the biggest visual block on the tab) snaps in
-  // a frame later. Effectively a free LCP improvement that doesn't
-  // change the final visible state. Real Experience Score fix
-  // 2026-05-27.
-  const [showSteps, setShowSteps] = useState(false);
-  useEffect(() => {
-    setShowSteps(true);
-  }, []);
+  const visitCount = useVisitCount();
+  // Initial expansion: non-collapsible banners are always open; collapsible
+  // ones follow the visit-count policy (expanded 1-3, collapsed 4+).
+  const [expanded, setExpanded] = useState<boolean>(
+    () => !collapsible || shouldDefaultExpand(visitCount),
+  );
+
+  const Icon = (
+    <span
+      className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 ${t.iconBg}`}
+      aria-hidden="true"
+    >
+      <svg
+        className={`w-5 h-5 ${t.icon}`}
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={2}
+      >
+        {tone === "warn" ? (
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
+          />
+        ) : (
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+          />
+        )}
+      </svg>
+    </span>
+  );
+
+  const titleEl = (
+    <h3 className={`text-base font-semibold uppercase tracking-[0.12em] ${t.title}`}>
+      {title}
+    </h3>
+  );
 
   return (
     <section
-      className={`rounded-xl border ${t.border} ${t.bg} px-5 py-4 flex items-start gap-4`}
+      className={`rounded-xl border ${t.border} ${t.bg} px-5 py-4`}
       role="note"
       aria-label={title}
     >
-      <span
-        className={`w-9 h-9 rounded-full border flex items-center justify-center shrink-0 ${t.iconBg}`}
-        aria-hidden="true"
-      >
-        <svg
-          className={`w-5 h-5 ${t.icon}`}
-          fill="none"
-          viewBox="0 0 24 24"
-          stroke="currentColor"
-          strokeWidth={2}
-        >
-          {tone === "warn" ? (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
-            />
-          ) : (
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
-            />
-          )}
-        </svg>
-      </span>
+      <div className="flex items-start gap-4">
+        {Icon}
 
-      <div className="flex-1 min-w-0 space-y-2">
-        <h3 className={`text-base font-semibold uppercase tracking-[0.12em] ${t.title}`}>
-          {title}
-        </h3>
-        <div className="text-sm text-zinc-200 leading-relaxed space-y-2">
-          {children}
+        <div className="flex-1 min-w-0">
+          {collapsible ? (
+            <button
+              type="button"
+              onClick={() => setExpanded((v) => !v)}
+              aria-expanded={expanded}
+              className="w-full flex items-center justify-between gap-3 text-left group"
+            >
+              {titleEl}
+              <span className={`shrink-0 transition-transform ${expanded ? "rotate-180" : ""}`}>
+                <svg className={`w-4 h-4 ${t.icon}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+                </svg>
+              </span>
+            </button>
+          ) : (
+            titleEl
+          )}
+
+          {expanded && (
+            <div className="space-y-2 mt-2">
+              <div className="text-sm text-zinc-200 leading-relaxed space-y-2">
+                {children}
+              </div>
+              {steps && steps.length > 0 && (
+                <ol className="space-y-1.5 text-sm text-zinc-200 leading-relaxed list-decimal pl-5 pt-1 marker:text-zinc-400 marker:font-semibold">
+                  {steps.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ol>
+              )}
+            </div>
+          )}
         </div>
-        {showSteps && steps && steps.length > 0 && (
-          <ol className="space-y-1.5 text-sm text-zinc-200 leading-relaxed list-decimal pl-5 pt-1 marker:text-zinc-400 marker:font-semibold">
-            {steps.map((s, i) => (
-              <li key={i}>{s}</li>
-            ))}
-          </ol>
+
+        {onDismiss && (
+          <button
+            type="button"
+            onClick={onDismiss}
+            aria-label="Dismiss tip"
+            className="text-zinc-500 hover:text-zinc-200 text-lg leading-none px-1 shrink-0"
+          >
+            ×
+          </button>
         )}
       </div>
-
-      {onDismiss && (
-        <button
-          type="button"
-          onClick={onDismiss}
-          aria-label="Dismiss tip"
-          className="text-zinc-500 hover:text-zinc-200 text-lg leading-none px-1"
-        >
-          ×
-        </button>
-      )}
     </section>
   );
 }

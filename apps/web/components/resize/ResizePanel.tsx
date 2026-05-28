@@ -188,7 +188,7 @@ function TextField({
         disabled={disabled}
         className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition disabled:opacity-50"
       />
-      {hint && <span className="text-base text-yellow-200 font-semibold leading-relaxed">{hint}</span>}
+      {hint && <span className="text-base text-yellow-300 font-semibold leading-relaxed">{hint}</span>}
     </label>
   );
 }
@@ -769,7 +769,7 @@ export function ResizePanel({
       {/* ── Spec card ── */}
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl p-5 space-y-5">
         <div className="space-y-2.5">
-          <h3 className="text-xl font-extrabold text-sky-400 uppercase tracking-[0.14em]">PRO Export Spec</h3>
+          <h3 className="text-xl font-extrabold text-white uppercase tracking-[0.14em]">PRO Export Spec</h3>
           <p className="text-base text-blue-100 leading-relaxed">
             <strong className="text-blue-200 font-bold">Use for:</strong> standard listing photos of a single forklift.
             Every image gets a uniform 7:5 crop with the machine framed and centred — what most marketplaces expect.
@@ -782,7 +782,7 @@ export function ResizePanel({
           </ul>
         </div>
         <div className="space-y-2.5 pt-4 border-t border-zinc-800">
-          <h3 className="text-xl font-extrabold text-fuchsia-400 uppercase tracking-[0.14em]">Collage Export Spec</h3>
+          <h3 className="text-xl font-extrabold text-white uppercase tracking-[0.14em]">Collage Export Spec</h3>
           <p className="text-base text-purple-100 leading-relaxed">
             <strong className="text-purple-200 font-bold">Use for:</strong> pre-composed multi-image collages where you&apos;ve
             already arranged the photos and just need the finished layout downsized — no cropping, original
@@ -1164,7 +1164,7 @@ export function ResizePanel({
             Burns a tiny, semi-transparent line of text into the bottom-right
             corner of every exported JPEG:
           </p>
-          <p className="text-sm text-yellow-200 italic font-mono mt-1.5 leading-snug">
+          <p className="text-sm text-yellow-300 italic font-mono mt-1.5 leading-snug">
             &ldquo;{AI_DISCLAIMER_WATERMARK}&rdquo;
           </p>
           <p className="text-sm text-zinc-300 mt-1.5 leading-relaxed">
