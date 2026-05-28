@@ -1457,16 +1457,15 @@ export function EnhancePanel({
                   Reset
                 </button>
               </div>
-              <p className="text-lg text-zinc-200 mb-4 leading-relaxed">
-                Every enhance run already does the standard makeover (paint
-                refresh, decal restoration, rust cleanup, tire shine, lighting
-                correction). The toggles below add{" "}
+              <p className="text-lg text-zinc-200 mb-1.5 leading-relaxed">
+                The toggles below add{" "}
                 <span className="font-semibold text-yellow-300">extra emphasis</span>{" "}
                 on a specific area, or kick in a{" "}
                 <span className="font-semibold text-yellow-300">specific action</span>{" "}
-                (like painting the forks red, or removing rental decals). Leave
-                them off if the standard treatment is already doing what you
-                want — these are nudges, not requirements.
+                like painting the forks red, or removing rental decals.
+              </p>
+              <p className="text-base text-yellow-300 italic mb-4 leading-relaxed">
+                (Using the toggles may give unexpected results)
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
