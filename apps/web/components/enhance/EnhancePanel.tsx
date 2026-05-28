@@ -48,6 +48,7 @@ import {
   ENHANCE_PROVIDER_LABELS,
   type EnhanceProvider,
 } from "../../lib/types-enhance";
+import type { UserRestriction } from "../../lib/access-control";
 
 import { MetaCard } from "./MetaCard";
 import { ProviderRow } from "./ProviderRow";
@@ -226,6 +227,14 @@ export interface EnhancePanelProps {
   onClearPipeline: () => void;
   /** Lets Workspace render the BatchContextStrip image count. */
   onFileCountChange: (count: number) => void;
+  /**
+   * Per-user access restriction (null = unrestricted). When set, the
+   * model picker collapses to the single locked model, feature toggles
+   * are hidden, the custom prompt auto-expands as the primary input,
+   * and the metadata fields hide (equipment type stays). UI gating only
+   * — the model lock is also enforced server-side in /api/enhance.
+   */
+  restriction?: UserRestriction | null;
 }
 
 export function EnhancePanel({
@@ -236,6 +245,7 @@ export function EnhancePanel({
   onSendToResize,
   onClearPipeline,
   onFileCountChange,
+  restriction = null,
 }: EnhancePanelProps) {
   const inputId = useId();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -264,11 +274,14 @@ export function EnhancePanel({
   const [isRunning, setIsRunning] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
+  // Restricted users are locked to exactly one model; everyone else
+  // starts on gemini and can multi-select.
   const [selectedProviders, setSelectedProviders] = useState<Set<EnhanceProvider>>(
-    () => new Set<EnhanceProvider>(["gemini"]),
+    () => new Set<EnhanceProvider>([restriction?.model ?? "gemini"]),
   );
 
-  const [customPromptOpen, setCustomPromptOpen] = useState(false);
+  // Custom prompt auto-expands for restricted (custom-prompt-only) users.
+  const [customPromptOpen, setCustomPromptOpen] = useState(restriction?.customPromptOnly ?? false);
   const [customPrompt, setCustomPrompt] = useState("");
 
   // Both default OPEN: operators wanted the full Make/Model/Year row and
@@ -282,6 +295,9 @@ export function EnhancePanel({
 
   const makeValid = Boolean(meta.make?.trim());
   const customPromptActive = customPrompt.trim().length > 0;
+  // Restricted (custom-prompt-only) users have no Make field, so the
+  // enhance gate becomes "has a custom prompt" instead of "has Make".
+  const metaGate = restriction?.customPromptOnly ? customPromptActive : makeValid;
 
   // Completed-jobs map and "have we already sent this to Scan?" set —
   // preserved from the prior implementation. Keyed by jobId so each
@@ -674,8 +690,12 @@ export function EnhancePanel({
   const handleEnhanceAll = async () => {
     const pending = files.filter((f) => f.status === "pending");
     if (pending.length === 0) return;
-    if (!makeValid) {
-      setGlobalError("Enter the forklift Make before enhancing.");
+    if (!metaGate) {
+      setGlobalError(
+        restriction?.customPromptOnly
+          ? "Enter a custom prompt before enhancing."
+          : "Enter the forklift Make before enhancing.",
+      );
       return;
     }
 
@@ -748,8 +768,12 @@ export function EnhancePanel({
   const handleReEnhance = useCallback(async () => {
     const eligible = files.filter((f) => f.status === "done" && f.assetId);
     if (eligible.length === 0) return;
-    if (!makeValid) {
-      setGlobalError("Enter the forklift Make before enhancing.");
+    if (!metaGate) {
+      setGlobalError(
+        restriction?.customPromptOnly
+          ? "Enter a custom prompt before enhancing."
+          : "Enter the forklift Make before enhancing.",
+      );
       return;
     }
     setGlobalError(null);
@@ -811,6 +835,8 @@ export function EnhancePanel({
   }, [
     files,
     makeValid,
+    metaGate,
+    restriction,
     selectedProviders,
     sessionId,
     toggles,
@@ -1377,6 +1403,7 @@ export function EnhancePanel({
         onChange={setMeta}
         expanded={metaExpanded}
         onExpand={setMetaExpanded}
+        restriction={restriction}
       />
       {makeValid && files.length > 0 && (
         <p className="-mt-2 text-[11px] text-zinc-500 font-mono px-1">
@@ -1395,12 +1422,28 @@ export function EnhancePanel({
         </p>
       )}
 
-      {/* ── Provider chips ── */}
-      <ProviderRow
-        selected={selectedProviders}
-        onToggle={toggleProvider}
-        onSelectAll={selectAllProviders}
-      />
+      {/* ── Provider chips (or locked-model indicator) ── */}
+      {restriction ? (
+        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
+              AI Model
+            </span>
+            <span className="text-sm uppercase tracking-[0.14em] font-bold px-3 py-1.5 rounded-lg border-2 border-blue-500 bg-blue-950 text-white">
+              {ENHANCE_PROVIDER_LABELS[restriction.model]}
+            </span>
+            <span className="text-sm text-zinc-400 italic">
+              Locked to your account
+            </span>
+          </div>
+        </section>
+      ) : (
+        <ProviderRow
+          selected={selectedProviders}
+          onToggle={toggleProvider}
+          onSelectAll={selectAllProviders}
+        />
+      )}
 
       {/* ── Advanced (toggles + custom prompt) ── */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
@@ -1433,6 +1476,10 @@ export function EnhancePanel({
 
         {advancedOpen && (
           <div className="border-t border-zinc-900 p-5 space-y-5">
+            {/* Feature toggles — hidden entirely for restricted users
+                (their access config disables toggles; custom prompt is
+                their only emphasis input). */}
+            {!restriction?.disableToggles && (
             <div
               aria-disabled={customPromptActive || undefined}
               className={customPromptActive ? "opacity-40 pointer-events-none" : ""}
@@ -1495,6 +1542,7 @@ export function EnhancePanel({
                   ))}
               </div>
             </div>
+            )}
 
             <div className="border-t border-zinc-900 pt-5 space-y-3">
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
@@ -1577,32 +1625,37 @@ export function EnhancePanel({
         const canReEnhance =
           togglesDirty && batchTerminal && reEnhanceCount > 0;
         const buttonActive =
-          (pendingCount > 0 || canReEnhance) && makeValid && !isRunning;
+          (pendingCount > 0 || canReEnhance) && metaGate && !isRunning;
         const onClick = pendingCount > 0 ? handleEnhanceAll : handleReEnhance;
         const pluralPending = pendingCount !== 1 ? "s" : "";
         const pluralReRun = reEnhanceCount !== 1 ? "s" : "";
+        // When metaGate is unmet, the prompt differs by user type:
+        // restricted users need a custom prompt; everyone else needs Make.
+        const gatePrompt = restriction?.customPromptOnly
+          ? "Enter a custom prompt to continue"
+          : "Enter forklift Make to continue";
         return (
           <button
             onClick={onClick}
             disabled={!buttonActive}
             className={`
-              w-full py-3 px-6 rounded-xl font-semibold text-sm transition-all
+              inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all
               ${buttonActive
-                ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-                : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+                ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
+                : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
             `}
           >
             {isRunning
               ? "Converting, uploading & enhancing…"
               : pendingCount > 0
-                ? !makeValid
-                  ? "Enter forklift Make to continue"
+                ? !metaGate
+                  ? gatePrompt
                   : customPromptActive
                     ? `Enhance ${pendingCount} Image${pluralPending} (custom prompt)`
                     : `Enhance ${pendingCount} Image${pluralPending}`
                 : canReEnhance
-                  ? !makeValid
-                    ? "Enter forklift Make to continue"
+                  ? !metaGate
+                    ? gatePrompt
                     : customPromptActive
                       ? `Re-enhance ${reEnhanceCount} Image${pluralReRun} (custom prompt)`
                       : `Re-enhance ${reEnhanceCount} Image${pluralReRun} with new toggles`

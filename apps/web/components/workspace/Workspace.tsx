@@ -57,6 +57,7 @@ const TAB_PREFETCH: Partial<Record<TabId, () => Promise<unknown>>> = {
 };
 
 import { createSession } from "@/lib/api";
+import { getRestriction } from "@/lib/access-control";
 import type { ForkliftMeta, ResizeResult } from "@/lib/types";
 
 // Cross-panel asset shape. Each panel emits these as its output.
@@ -99,6 +100,14 @@ interface WorkspaceProps {
 }
 
 export function Workspace({ userEmail, bypassed = false, isAdmin = false }: WorkspaceProps) {
+  // Per-user access restriction (null = unrestricted). Active only when
+  // the email is in lib/access-control's table — i.e. only when SSO is
+  // on and the user is one of the locked-down accounts. Drives tab
+  // gating here + the locked-model / disabled-toggles / custom-prompt-
+  // only UI inside EnhancePanel. UI gating is cosmetic; the real model
+  // lock is enforced server-side in /api/enhance.
+  const restriction = getRestriction(userEmail);
+
   const [activeTab, setActiveTab] = useState<TabId>("enhance");
 
   // Tracks which tabs have been activated at least once. Used to gate
@@ -172,13 +181,25 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     };
   }, []);
 
-  const tabs = [
+  const allTabs = [
     { id: "enhance" as const, label: "Enhance" },
     { id: "scan"    as const, label: "Scan",    count: enhancedAssets.length || undefined },
     { id: "modify"  as const, label: "Modify",  count: resizeAssets.length || undefined },
     { id: "resize"  as const, label: "Resize",  count: resizeAssets.length || undefined },
     { id: "history" as const, label: "Your Photo Library" },
   ];
+  // Restricted users see only the Enhance tab.
+  const tabs = restriction?.enhanceOnly
+    ? allTabs.filter((t) => t.id === "enhance")
+    : allTabs;
+
+  // Safety net: if a restricted user somehow lands on a non-Enhance tab
+  // (stale state, deep link), force them back to Enhance.
+  useEffect(() => {
+    if (restriction?.enhanceOnly && activeTab !== "enhance") {
+      setActiveTab("enhance");
+    }
+  }, [restriction?.enhanceOnly, activeTab]);
 
   // Explicit user action: "Send to Scan" (per-row) or "Send all to Scan tab"
   // (batch). Auto-handoff was removed at the user's request — enhance completion
@@ -319,6 +340,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onSendToResize={handleEnhanceToResize}
                 onClearPipeline={handleClearPipeline}
                 onFileCountChange={setEnhanceFileCount}
+                restriction={restriction}
               />
             )}
           </PanelSlot>

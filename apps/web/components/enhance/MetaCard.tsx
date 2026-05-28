@@ -22,6 +22,12 @@ interface MetaCardProps {
   onChange: (meta: Partial<ForkliftMeta>) => void;
   expanded: boolean;
   onExpand: (v: boolean) => void;
+  /**
+   * When the operator is access-restricted, hide the Make field + the
+   * "+ More details" metadata fields. The equipment-type selector
+   * stays (it still drives anatomy guardrails). null = unrestricted.
+   */
+  restriction?: { customPromptOnly: boolean } | null;
 }
 
 const EXTRA_FIELDS: Array<{
@@ -37,9 +43,14 @@ const EXTRA_FIELDS: Array<{
   { key: "fuelType", label: "Fuel Type", placeholder: "e.g. LPG",       hint: "LPG, diesel, electric, gasoline." },
 ];
 
-export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) {
+export function MetaCard({ meta, onChange, expanded, onExpand, restriction = null }: MetaCardProps) {
   const update = <K extends keyof ForkliftMeta>(key: K, value: ForkliftMeta[K]) =>
     onChange({ ...meta, [key]: value });
+
+  // Restricted (custom-prompt-only) users don't see the Make field or
+  // the extra metadata — their prompt is verbatim, so make/model/etc.
+  // wouldn't feed the build anyway.
+  const hideMeta = restriction?.customPromptOnly ?? false;
 
   // Equipment-details accuracy callout is a collapsible accordion. Unlike
   // the visit-count-driven TipBanners, this one ALWAYS defaults expanded
@@ -157,6 +168,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
           </div>
         </div>
 
+        {!hideMeta && (
         <div className="flex-1 min-w-50">
           <label
             htmlFor="meta-make"
@@ -179,7 +191,9 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
             }`}
           />
         </div>
+        )}
 
+        {!hideMeta && (
         <button
           type="button"
           onClick={() => onExpand(!expanded)}
@@ -188,15 +202,18 @@ export function MetaCard({ meta, onChange, expanded, onExpand }: MetaCardProps) 
         >
           {expanded ? "− Hide details" : "+ More details"}
         </button>
+        )}
 
+        {!hideMeta && (
         <span
           className={`text-sm ml-auto mb-2 ${makeValid ? "text-green-400" : "text-amber-300"}`}
         >
           {makeValid ? "✓ Ready to enhance" : "Enter the Make to continue"}
         </span>
+        )}
       </div>
 
-      {expanded && (
+      {!hideMeta && expanded && (
         <div className="border-t border-zinc-900 px-5 py-5 grid grid-cols-2 md:grid-cols-5 gap-4">
           {EXTRA_FIELDS.map(({ key, label, placeholder, hint }) => (
             <label key={key} className="flex flex-col gap-1.5">
