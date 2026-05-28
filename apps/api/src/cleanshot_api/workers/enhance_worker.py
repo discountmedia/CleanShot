@@ -1481,6 +1481,17 @@ async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
     if settings.kontext_seed >= 0:
         body["seed"] = settings.kontext_seed
 
+    # TEMP tuning instrumentation — proves exactly what reaches RunComfy
+    # (which prompt variant, aspect_ratio, seed). Remove once Kontext is
+    # dialled in.
+    logger.info(
+        "Kontext submit: aspect_ratio=%s seed=%s prompt_len=%d prompt_head=%r",
+        body.get("aspect_ratio"),
+        body.get("seed", "<omitted>"),
+        len(body["prompt"]),
+        body["prompt"][:180],
+    )
+
     async with httpx.AsyncClient(timeout=30.0) as client:
         # ── 1. Submit ──────────────────────────────────────────────
         submit = await client.post(KONTEXT_SUBMIT_URL, headers=auth_headers, json=body)
