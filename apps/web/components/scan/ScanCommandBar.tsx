@@ -5,9 +5,7 @@
 // consensus verdict or confidence.
 //
 // Operator's escape hatches: per-card Reject (✕) keeps a card out of
-// the bulk action; per-card Approve forwards just that one. Auto-advance
-// (when on) still uses the pass-only safety filter so silent background
-// approval never auto-ships a fail.
+// the bulk action; per-card Approve forwards just that one.
 
 interface ScanCommandBarProps {
   passCount:     number;
