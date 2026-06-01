@@ -51,7 +51,6 @@ import {
 import type { UserRestriction } from "../../lib/access-control";
 
 import { MetaCard } from "./MetaCard";
-import { ProviderRow } from "./ProviderRow";
 import { CommandBar } from "./CommandBar";
 import {
   SourceCompareCard,
@@ -1422,28 +1421,12 @@ export function EnhancePanel({
         </p>
       )}
 
-      {/* ── Provider chips (or locked-model indicator) ── */}
-      {restriction ? (
-        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-4">
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
-              AI Model
-            </span>
-            <span className="text-sm uppercase tracking-[0.14em] font-bold px-3 py-1.5 rounded-lg border-2 border-blue-500 bg-blue-950 text-white">
-              {ENHANCE_PROVIDER_LABELS[restriction.model]}
-            </span>
-            <span className="text-sm text-zinc-400 italic">
-              Locked to your account
-            </span>
-          </div>
-        </section>
-      ) : (
-        <ProviderRow
-          selected={selectedProviders}
-          onToggle={toggleProvider}
-          onSelectAll={selectAllProviders}
-        />
-      )}
+      {/* Provider picker scrapped 2026-06-01 — Enhance now always uses
+          Gemini (single one-size-fits-all model). BFF /api/enhance
+          hardcodes the provider so anything the client still has in
+          state is ignored. Per-variant tools (Tweak / Edit / Erase /
+          Inpaint) cover the "strangeness" cases the multi-provider
+          selector used to handle. */}
 
       {/* ── Advanced (toggles + custom prompt) ── */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">

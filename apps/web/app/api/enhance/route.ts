@@ -5,15 +5,21 @@
 // through /api/projects/save (export endpoints require it); we accept it
 // here for caller convenience but only forward the bits the worker
 // actually uses (provider, toggles, equipmentType, customPrompt).
+//
+// Provider is HARDCODED to "gemini" — CleanShot scrapped per-model
+// selection in favor of a single one-size-fits-all model (2026-06-01).
+// Any provider field the client sends is ignored; the per-variant tools
+// (Tweak / Edit / Erase / Inpaint, on their own routes) handle the
+// "strangeness" cases that used to motivate picking a different model.
 
 import { type NextRequest, NextResponse } from "next/server";
 
 import { forwardError, getFastApiEnv, jsonHeaders } from "@/lib/bff";
-import { getSessionEmail } from "@/lib/auth";
-import { getRestriction } from "@/lib/access-control";
 
 export const maxDuration = 15;
 export const dynamic = "force-dynamic";
+
+const PROVIDER = "gemini" as const;
 
 interface ClientRequest {
   sessionId: string;
@@ -22,7 +28,6 @@ interface ClientRequest {
   /** Accepted for caller convenience; we don't forward it. Project meta
    *  lands via /api/projects/save instead. */
   forkliftMeta?: Record<string, string>;
-  provider?: "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve";
   /**
    * Drives the per-type anatomy block in _build_enhance_prompt. Optional
    * — backend defaults to "forklift" when omitted.
@@ -42,26 +47,14 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json()) as ClientRequest;
 
-  // ── Server-side access enforcement ──────────────────────────────────
-  // If the signed-in user is access-restricted, FORCE the provider to
-  // their locked model regardless of what the client sent. This is the
-  // authoritative gate — the EnhancePanel UI lock is cosmetic and could
-  // be bypassed by a hand-crafted request. Also force toggles off (their
-  // config disables them). No-ops when unrestricted / auth disabled
-  // (getSessionEmail → null → getRestriction → null).
-  const email = await getSessionEmail(request.headers).catch(() => null);
-  const restriction = getRestriction(email);
-  const provider = restriction ? restriction.model : (body.provider ?? "gemini");
-  const toggles = restriction?.disableToggles ? {} : body.toggles;
-
   const res = await fetch(`${env.base}/api/v1/enhance`, {
     method: "POST",
     headers: jsonHeaders(env.key),
     body: JSON.stringify({
       session_id:      body.sessionId,
       asset_id:        body.assetId,
-      toggles:         toggles,                 // already camelCase; Pydantic aliases handle it
-      provider:        provider,
+      toggles:         body.toggles,            // already camelCase; Pydantic aliases handle it
+      provider:        PROVIDER,
       ...(body.equipmentType ? { equipment_type: body.equipmentType } : {}),
       // Only forward custom_prompt when non-empty; omitting lets FastAPI
       // use its `None` default and the worker falls through to toggles.

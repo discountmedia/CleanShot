@@ -1,15 +1,14 @@
 // apps/web/lib/access-control.ts
-// Per-user access restrictions for the Enhance tab, keyed by the
-// authenticated Microsoft SSO email. Single source of truth — imported
-// by both the client (UI gating) and the server (BFF enforcement +
-// audit logging), so the UI and the real gate can never drift.
+// Per-user access restrictions — DEFANGED 2026-06-01.
 //
-// Restrictions are ONLY active when AUTH_ENABLED=true. With auth off,
-// the workspace runs as "dev@local", which isn't in the table below, so
-// getRestriction() returns null and nothing is restricted.
-//
-// To add a restricted user: add one entry here + redeploy. (Config-file
-// driven by design — no admin-panel toggle this round.)
+// CleanShot scrapped per-model selection in favor of a single
+// one-size-fits-all model (Gemini). With no per-user model locks left,
+// USER_RESTRICTIONS is now empty and getRestriction() always returns
+// null. The interface + function are preserved so existing callers
+// (Workspace / EnhancePanel / MetaCard / /api/enhance) keep compiling
+// without churn — they all already handle the null case as the
+// unrestricted path. Re-introduce entries here if a future per-user
+// gate is needed.
 
 import type { EnhanceProvider } from "./types-enhance";
 
@@ -26,48 +25,8 @@ export interface UserRestriction {
   tracking: boolean;
 }
 
-// Emails are lowercased keys — getRestriction lowercases its input to
-// match (Better Auth normalises session emails to lowercase too).
-export const USER_RESTRICTIONS: Record<string, UserRestriction> = {
-  "brian@discountforklift.us": {
-    model: "grok",
-    enhanceOnly: true,
-    disableToggles: true,
-    customPromptOnly: true,
-    tracking: true,
-  },
-  "asia@discountforklift.us": {
-    model: "gemini",
-    enhanceOnly: true,
-    disableToggles: true,
-    customPromptOnly: true,
-    tracking: true,
-  },
-  "aj@discountforklift.us": {
-    model: "openai",
-    enhanceOnly: true,
-    disableToggles: true,
-    customPromptOnly: true,
-    tracking: true,
-  },
-  "stephen@discountforklift.us": {
-    model: "kontext",
-    enhanceOnly: true,
-    // Kontext uses the new "equipment + toggles, no typed prompt" design:
-    // toggles are interactive (they drive _build_kontext_prompt clauses) and
-    // the custom-prompt box is no longer the forced/primary input.
-    disableToggles: false,
-    customPromptOnly: false,
-    tracking: true,
-  },
-};
+export const USER_RESTRICTIONS: Record<string, UserRestriction> = {};
 
-/**
- * Returns the restriction for an email, or null if the user is
- * unrestricted (not in the table) or no email is present. Lowercases
- * the input so casing in the session / config never causes a miss.
- */
-export function getRestriction(email: string | null | undefined): UserRestriction | null {
-  if (!email) return null;
-  return USER_RESTRICTIONS[email.toLowerCase()] ?? null;
+export function getRestriction(_email: string | null | undefined): UserRestriction | null {
+  return null;
 }
