@@ -65,7 +65,7 @@ import { TipBanner } from "../workspace/TipBanner";
 // Embedded mode hides the TipBanner + standalone uploader.
 import { ModifyPanel } from "../modify/ModifyPanel";
 
-const MAX_UPLOADS = 10;
+const MAX_UPLOADS = 15;
 
 // ─── Pending-upload thumbnail (used in the drop-zone grid) ─────────────────
 
