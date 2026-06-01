@@ -212,12 +212,18 @@ export function ResizePanel({
   meta,
   userEmail,
 }: ResizePanelProps) {
-  // ── Drag-to-reorder state for the "From Enhance / Scan" grid ──────────
-  // HTML5 drag-and-drop API (no extra deps). dragIndex = the tile being
-  // dragged; dragOverIndex = the tile currently being hovered over (for
-  // the dashed-border drop hint). Both clear on dragend/drop.
-  const [dragIndex,     setDragIndex]     = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  // ── Drag-to-reorder state ────────────────────────────────────────────
+  // HTML5 drag-and-drop API (no extra deps). Two separate (index,
+  // overIndex) pairs because the panel has two independent grids:
+  // the curated "From Enhance / Scan" set (enhancedAssets, parent-owned)
+  // and the standalone uploads (uploads, local state). Each grid reorders
+  // on its own; cross-grid drags are intentionally not supported (the
+  // export concatenates [...enhancedAssets, ...uploaded-done], so the
+  // two groups stay distinct).
+  const [dragIndex,           setDragIndex]           = useState<number | null>(null);
+  const [dragOverIndex,       setDragOverIndex]       = useState<number | null>(null);
+  const [uploadDragIndex,     setUploadDragIndex]     = useState<number | null>(null);
+  const [uploadDragOverIndex, setUploadDragOverIndex] = useState<number | null>(null);
   // Initialise the form from the values the operator already entered on
   // the Enhance tab + their signed-in email. Once the form mounts the
   // local state takes over — edits stay local until Save Project. If
@@ -873,22 +879,72 @@ export function ResizePanel({
           </p>
         </div>
 
-        {/* Thumbnail grid for in-flight + completed standalone uploads */}
+        {/* Thumbnail grid for in-flight + completed standalone uploads.
+            Tiles with status="done" are drag-to-reorder; in-flight ones
+            (uploading / error) aren't (no point reordering until the
+            upload lands). Cross-grid drags into the curated grid above
+            aren't supported. */}
         {uploads.length > 0 && (
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 p-4 pt-0">
-            {uploads.map((u) => (
+            {uploads.map((u, idx) => {
+              const canReorder    = u.status === "done";
+              const isDragging    = uploadDragIndex     === idx;
+              const isOver        = uploadDragOverIndex === idx && uploadDragIndex !== idx;
+              return (
               <div
                 key={u.id}
+                draggable={canReorder}
+                onDragStart={(e) => {
+                  if (!canReorder) return;
+                  setUploadDragIndex(idx);
+                  e.dataTransfer.effectAllowed = "move";
+                  // Firefox refuses to fire dragover/drop without payload.
+                  e.dataTransfer.setData("text/plain", String(idx));
+                }}
+                onDragOver={(e) => {
+                  if (!canReorder || uploadDragIndex === null) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (uploadDragIndex !== idx) setUploadDragOverIndex(idx);
+                }}
+                onDragLeave={() => {
+                  if (uploadDragOverIndex === idx) setUploadDragOverIndex(null);
+                }}
+                onDragEnd={() => {
+                  setUploadDragIndex(null);
+                  setUploadDragOverIndex(null);
+                }}
+                onDrop={(e) => {
+                  if (!canReorder || uploadDragIndex === null) return;
+                  e.preventDefault();
+                  setUploadDragOverIndex(null);
+                  setUploadDragIndex(null);
+                  if (uploadDragIndex === idx) return;
+                  setUploads((prev) => {
+                    const next = [...prev];
+                    const [moved] = next.splice(uploadDragIndex, 1);
+                    next.splice(idx, 0, moved);
+                    return next;
+                  });
+                }}
                 className={`
-                  relative rounded-lg overflow-hidden border bg-zinc-900
-                  ${u.status === "error" ? "border-red-700" : "border-zinc-800"}
+                  relative rounded-lg overflow-hidden border-2 bg-zinc-900 transition-colors
+                  ${canReorder ? "cursor-move" : ""}
+                  ${isOver
+                    ? "border-blue-500"
+                    : isDragging
+                      ? "border-zinc-600 opacity-50"
+                      : u.status === "error"
+                        ? "border-red-700"
+                        : "border-zinc-800"}
                 `}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={u.previewUrl}
                   alt={u.filename}
-                  className="w-full aspect-square object-cover"
+                  draggable={false}
+                  className="w-full aspect-square object-cover pointer-events-none"
                 />
                 {u.status !== "done" && (
                   <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-2 gap-1">
@@ -915,6 +971,14 @@ export function ResizePanel({
                     </svg>
                   </div>
                 )}
+                {/* Position badge — only on done tiles (the export order
+                    only includes status==="done" uploads, so an in-flight
+                    tile has no settled position to show). */}
+                {canReorder && (
+                  <span className="absolute top-1 left-7 text-[11px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-black/80 border border-zinc-700 text-yellow-300 tabular-nums">
+                    {idx + 1}
+                  </span>
+                )}
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeUpload(u.id); }}
@@ -929,7 +993,8 @@ export function ResizePanel({
                   <p className="text-[9px] text-zinc-500">{formatBytes(u.size)}</p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </section>
