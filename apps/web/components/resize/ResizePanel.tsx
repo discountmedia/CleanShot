@@ -88,6 +88,15 @@ export interface ResizePanelProps {
    */
   enhancedAssets: Array<{ assetId: string; filename: string; thumbnailUrl: string; provider?: string }>;
   /**
+   * Drag-to-reorder callback for the "From Enhance / Scan" grid. Receives
+   * the new asset-ID order; Workspace looks each ID up in resizeAssets and
+   * rebuilds the array in that order so PipelineAsset extras (outputUrl,
+   * etc.) survive the reshuffle. Optional — when omitted, tiles aren't
+   * draggable. Order matters because exports honour it (e.g. branded
+   * collage uses index 0 as hero, 1-4 as the thumb strip).
+   */
+  onReorderAssets?: (assetIdsInOrder: string[]) => void;
+  /**
    * Kept for prop compatibility with Workspace. The current PRO flow returns a
    * single ZIP blob and does not produce per-asset ResizeResult rows, so this
    * isn't rendered. Wire it up when a future preview-grid UX needs per-image
@@ -199,9 +208,16 @@ export function ResizePanel({
   sessionId,
   enhancedAssets,
   onClearPipeline,
+  onReorderAssets,
   meta,
   userEmail,
 }: ResizePanelProps) {
+  // ── Drag-to-reorder state for the "From Enhance / Scan" grid ──────────
+  // HTML5 drag-and-drop API (no extra deps). dragIndex = the tile being
+  // dragged; dragOverIndex = the tile currently being hovered over (for
+  // the dashed-border drop hint). Both clear on dragend/drop.
+  const [dragIndex,     setDragIndex]     = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   // Initialise the form from the values the operator already entered on
   // the Enhance tab + their signed-in email. Once the form mounts the
   // local state takes over — edits stay local until Save Project. If
@@ -935,6 +951,9 @@ export function ResizePanel({
                 These images came from the other tabs via the &quot;Send to
                 Resize&quot; buttons. They&apos;ll be included in the next
                 export below.
+                {onReorderAssets && (
+                  <> <span className="font-semibold text-yellow-300">Drag any tile to reorder</span> — image #1 becomes the hero in branded collages.</>
+                )}
               </span>
             </div>
             <span className="text-sm uppercase tracking-[0.18em] font-mono text-zinc-300 tabular-nums shrink-0">
@@ -942,17 +961,69 @@ export function ResizePanel({
             </span>
           </header>
           <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-5 gap-2 p-4">
-            {enhancedAssets.map((a) => (
+            {enhancedAssets.map((a, idx) => {
+              const isDragging = dragIndex === idx;
+              const isOver     = dragOverIndex === idx && dragIndex !== idx;
+              const canReorder = !!onReorderAssets;
+              return (
               <div
                 key={a.assetId}
-                className="relative rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900"
+                draggable={canReorder}
+                onDragStart={(e) => {
+                  if (!canReorder) return;
+                  setDragIndex(idx);
+                  e.dataTransfer.effectAllowed = "move";
+                  // Firefox refuses to fire dragover/drop without payload.
+                  e.dataTransfer.setData("text/plain", String(idx));
+                }}
+                onDragOver={(e) => {
+                  if (!canReorder || dragIndex === null) return;
+                  e.preventDefault();
+                  e.dataTransfer.dropEffect = "move";
+                  if (dragIndex !== idx) setDragOverIndex(idx);
+                }}
+                onDragLeave={() => {
+                  if (dragOverIndex === idx) setDragOverIndex(null);
+                }}
+                onDragEnd={() => {
+                  setDragIndex(null);
+                  setDragOverIndex(null);
+                }}
+                onDrop={(e) => {
+                  if (!canReorder || dragIndex === null) return;
+                  e.preventDefault();
+                  setDragOverIndex(null);
+                  setDragIndex(null);
+                  if (dragIndex === idx) return;
+                  const next = [...enhancedAssets];
+                  const [moved] = next.splice(dragIndex, 1);
+                  next.splice(idx, 0, moved);
+                  onReorderAssets!(next.map((x) => x.assetId));
+                }}
+                className={`relative rounded-lg overflow-hidden border-2 bg-zinc-900 transition-colors ${
+                  canReorder ? "cursor-move" : ""
+                } ${
+                  isOver
+                    ? "border-blue-500"
+                    : isDragging
+                      ? "border-zinc-600 opacity-50"
+                      : "border-zinc-800"
+                }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={a.thumbnailUrl}
                   alt={a.filename}
-                  className="w-full aspect-square object-cover"
+                  draggable={false}
+                  className="w-full aspect-square object-cover pointer-events-none"
                 />
+                {/* Position badge — shows the operator the current export
+                    order at a glance (idx 0 = hero in branded collages). */}
+                {canReorder && (
+                  <span className="absolute top-1 left-1 text-[11px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-black/80 border border-zinc-700 text-yellow-300 tabular-nums">
+                    {idx + 1}
+                  </span>
+                )}
                 {a.provider && (
                   <span className="absolute top-1 right-1 text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-black/70 text-zinc-200">
                     {a.provider}
@@ -964,7 +1035,8 @@ export function ResizePanel({
                   </p>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         </section>
       )}

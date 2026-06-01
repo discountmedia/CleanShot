@@ -368,6 +368,18 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 resizeResults={resizeResults}
                 onResizeComplete={setResizeResults}
                 onClearPipeline={handleClearPipeline}
+                // Drag-to-reorder on the Resize tab — rebuild resizeAssets
+                // in the new order using the existing PipelineAsset objects
+                // (lookup by assetId preserves outputUrl + every other
+                // field that ResizePanel's narrowed view doesn't carry).
+                onReorderAssets={(assetIdsInOrder) => {
+                  setResizeAssets((prev) => {
+                    const lookup = new Map(prev.map((a) => [a.assetId, a]));
+                    return assetIdsInOrder
+                      .map((id) => lookup.get(id))
+                      .filter((a): a is PipelineAsset => a !== undefined);
+                  });
+                }}
                 meta={meta}
                 userEmail={userEmail}
               />
