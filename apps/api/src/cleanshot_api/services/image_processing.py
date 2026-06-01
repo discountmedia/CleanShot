@@ -254,25 +254,47 @@ def _fit_with_letterbox(
     input_bytes: bytes,
     cell_w: int,
     cell_h: int,
+    cover_bias: float = 0.0,
 ) -> "pyvips.Image":
     """
-    Decode `input_bytes`, fit it (longest-edge, NO crop) inside the
-    cell as large as possible while preserving aspect, then embed
-    centered into a black cell-sized canvas. Black bars fill any
-    leftover space. Used as the per-cell resize for the branded
-    collage THUMB cells per operator's MANDATORY spec — every thumb
-    shows the FULL source frame, sized as large as fits, with black
-    pillarbox/letterbox bars to fill the rest of the cell.
+    Decode `input_bytes`, fit it inside the cell, embed centered into a
+    black cell-sized canvas, and return.
+
+    `cover_bias` slides between pure FIT (0.0, the original behaviour —
+    the whole source is visible and any aspect mismatch becomes black
+    letterbox/pillarbox bars) and pure COVER (1.0 — the image is scaled
+    until both dimensions fill the cell and the long-edge excess is
+    smart-cropped, leaving NO bars).
+
+    Intermediate values blend the two: e.g. 0.85 makes the image about
+    85% of the way to cover, leaving thin black bars on the leftover
+    edge. Used by the thumb cells of the branded collage (cell 304×135,
+    source typically 4:3) so 62-px-thick side bars shrink to ~9 px while
+    the operator's "thumb shows the full unit" intent is mostly kept.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
     if img.bands == 4:
         img = img.extract_band(0, n=3)
     img = img.copy(interpretation="srgb")
 
-    # Fit: pick the SMALLER ratio so the image is contained in both
-    # dimensions (no crop). Cover-fit would use max(); we want min().
-    scale = min(cell_w / img.width, cell_h / img.height)
+    # FIT uses the smaller axis ratio (no crop, may produce bars).
+    # COVER uses the larger (no bars, must crop). Lerp between them.
+    fit_scale   = min(cell_w / img.width, cell_h / img.height)
+    cover_scale = max(cell_w / img.width, cell_h / img.height)
+    bias        = max(0.0, min(1.0, cover_bias))
+    scale       = fit_scale + (cover_scale - fit_scale) * bias
+
     img = img.resize(scale, kernel="lanczos3")
+
+    # After a partial-cover resize the image MAY be wider/taller than
+    # the cell in one axis — smart-crop the excess so the long edge fits.
+    # No-op when bias=0 (the fit-scale guarantees img <= cell on both).
+    if img.width > cell_w or img.height > cell_h:
+        img = img.smartcrop(
+            min(img.width, cell_w),
+            min(img.height, cell_h),
+            interesting="centre",
+        )
 
     canvas = pyvips.Image.black(cell_w, cell_h, bands=3).copy(
         interpretation="srgb",
@@ -321,10 +343,16 @@ def compose_branded_collage(
     canvas = canvas.insert(hero, 0, 0)
 
     # Thumbnail strip on the right — top to bottom. Same letterbox
-    # treatment as the hero so every thumb also shows the FULL source
-    # frame with black bars filling the leftover space.
+    # treatment as the hero, but biased ~85% toward cover-crop so the
+    # side bars stay VERY THIN (~9 px each side on a 4:3 source in a
+    # 304×135 cell) instead of the 62-px slabs that pure fit produced.
+    # Operator request 2026-06-01 — bars are still present (the smart-
+    # crop only nibbles a sliver off the long edge), just dramatically
+    # less visually heavy.
     for i, raw in enumerate(thumb_bytes):
-        thumb = _fit_with_letterbox(raw, _COLLAGE_THUMB_W, _COLLAGE_THUMB_H)
+        thumb = _fit_with_letterbox(
+            raw, _COLLAGE_THUMB_W, _COLLAGE_THUMB_H, cover_bias=0.85,
+        )
         canvas = canvas.insert(thumb, _COLLAGE_HERO_W, i * _COLLAGE_THUMB_H)
 
     if ai_disclaimer:
