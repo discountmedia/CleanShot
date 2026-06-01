@@ -3,7 +3,7 @@
 // Tab navigation row beneath the header.
 // Active tab gets a red underline + red text — matches the inventory-dashboard pattern.
 
-export type TabId = "enhance" | "scan" | "modify" | "resize" | "history";
+export type TabId = "enhance" | "scan" | "resize" | "history";
 
 export interface TabDef {
   id: TabId;
@@ -18,7 +18,7 @@ interface TabBarProps {
   /**
    * Optional prefetch hook fired on hover / focus of a tab button.
    * Workspace wires this to the dynamic-import loader functions for
-   * the code-split panels (Scan / Modify / Resize / History) so the
+   * the code-split panels (Scan / Resize / History) so the
    * chunk download races the operator's click — by the time they
    * commit to the tab, the JS is already parsed and the switch
    * feels instant instead of having a brief loading flash.

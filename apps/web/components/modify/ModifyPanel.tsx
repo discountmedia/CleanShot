@@ -98,6 +98,15 @@ export interface ModifyPanelProps {
   onClearPipeline?: () => void;
   /** Jump straight to the Resize tab without applying any adjustments. */
   onSkipToResize?: () => void;
+  /**
+   * Embedded mode (2026-06-01) — when true, hides the TipBanner, the
+   * standalone-upload drop zone, and the "nothing queued" empty state.
+   * Used by EnhancePanel to render this panel below the completed
+   * variants grid: the operator already has assets in `resizeAssets`,
+   * doesn't need a tooltip explaining the tab (there's no tab), and
+   * doesn't need to drop raw photos here (they've just enhanced them).
+   */
+  embedded?: boolean;
 }
 
 // Slider → factor math. Same math both client (CSS preview) and server
@@ -111,6 +120,7 @@ export function ModifyPanel({
   onModifyApplied,
   onClearPipeline,
   onSkipToResize,
+  embedded = false,
 }: ModifyPanelProps) {
   // ── Mode tab state ────────────────────────────────────────────────────
   const [mode, setMode] = useState<ModifyMode>("adjust");
@@ -482,6 +492,7 @@ export function ModifyPanel({
           button row (green Proceed · blue Skip · red Clear All). Keeping
           one blue tooltip per tab, per the UI consistency pass. */}
 
+      {!embedded && (
       <TipBanner
         title="How Modify works"
         steps={[
@@ -496,8 +507,10 @@ export function ModifyPanel({
           pass. The modified versions replace what&apos;s queued for Resize.
         </p>
       </TipBanner>
+      )}
 
-      {/* ── Standalone upload drop zone ──────────────────────────────── */}
+      {/* ── Standalone upload drop zone (hidden when embedded inside Enhance) ── */}
+      {!embedded && (
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
         <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/40 border-b border-zinc-900 gap-3">
           <div className="flex flex-col gap-1 min-w-0">
@@ -612,9 +625,11 @@ export function ModifyPanel({
           </div>
         )}
       </section>
+      )}
 
-      {/* Empty state when nothing queued + no uploads */}
-      {allAssets.length === 0 && (
+      {/* Empty state — only when the standalone uploader is visible (i.e. not
+          embedded in Enhance, where assets are always present by definition). */}
+      {!embedded && allAssets.length === 0 && (
         <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/30 px-6 py-12 text-center">
           <p className="text-base text-zinc-300 font-semibold">
             Nothing queued for modify yet.

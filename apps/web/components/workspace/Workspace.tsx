@@ -36,22 +36,20 @@ import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 // often already parsed, eliminating the brief flash between click
 // and panel-mount that the dynamic-import added.
 const loadScanPanel    = () => import("@/components/scan/ScanPanel").then(m => ({ default: m.ScanPanel }));
-const loadModifyPanel  = () => import("@/components/modify/ModifyPanel").then(m => ({ default: m.ModifyPanel }));
 const loadResizePanel  = () => import("@/components/resize/ResizePanel").then(m => ({ default: m.ResizePanel }));
 const loadHistoryList  = () => import("@/components/history/HistoryList").then(m => ({ default: m.HistoryList }));
 
 const ScanPanel    = dynamic(loadScanPanel,   { ssr: false });
-const ModifyPanel  = dynamic(loadModifyPanel, { ssr: false });
 const ResizePanel  = dynamic(loadResizePanel, { ssr: false });
 const HistoryList  = dynamic(loadHistoryList, { ssr: false });
 
 // TabBar hands tab id → prefetch loader. Enhance is intentionally
 // missing (it's eagerly imported, no chunk to prefetch). Calling
 // `loader()` schedules the chunk download with no other side effects;
-// safe to invoke on every hover.
+// safe to invoke on every hover. Modify tab was removed 2026-06-01 —
+// darkroom now lives inside Enhance below the variants grid.
 const TAB_PREFETCH: Partial<Record<TabId, () => Promise<unknown>>> = {
   scan:    loadScanPanel,
-  modify:  loadModifyPanel,
   resize:  loadResizePanel,
   history: loadHistoryList,
 };
@@ -184,7 +182,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   const allTabs = [
     { id: "enhance" as const, label: "Enhance" },
     { id: "scan"    as const, label: "Scan",    count: enhancedAssets.length || undefined },
-    { id: "modify"  as const, label: "Modify",  count: resizeAssets.length || undefined },
     { id: "resize"  as const, label: "Resize",  count: resizeAssets.length || undefined },
     { id: "history" as const, label: "Your Photo Library" },
   ];
@@ -257,26 +254,18 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     setActiveTab("resize");
   };
 
-  // Same target pool as handleSendToResize (Modify reads resizeAssets
-  // too), but flips the active tab to Modify instead. Operator picks
-  // this when they want to darkroom-tweak the approved scans before
-  // final crop+export. After they Apply in Modify the modified bytes
-  // replace these items in-place and they continue to Resize.
+  // Modify tab was removed 2026-06-01 — darkroom now lives inside Enhance
+  // below the variants grid. This callback is kept (still wired into
+  // ScanPanel as `onSendToModify`) but redirected: items land in
+  // resizeAssets and the operator goes straight to Resize. Eventually
+  // ScanPanel's "Send to Modify" button should be renamed/removed, but
+  // routing it here keeps the existing prop contract working without a
+  // multi-file refactor.
   const handleSendToModify = (items: PipelineAsset[]) => {
     setResizeAssets((prev) => {
       return items.length > 0 ? [...prev, ...items] : prev;
     });
-    setActiveTab("modify");
-  };
-
-  // Modify-tab Apply callback. The Modify panel takes the same
-  // resizeAssets pool as the Resize tab and replaces each item with
-  // the server-rendered modified version. Phase 1 is batch-only —
-  // every asset gets the same brightness/contrast/saturation. We
-  // overwrite resizeAssets wholesale (same length, same order) so
-  // the Resize tab picks up the modified versions automatically.
-  const handleModifyApplied = (next: PipelineAsset[]) => {
-    setResizeAssets(next);
+    setActiveTab("resize");
   };
 
   // Shortcut path: send straight from Enhance to Resize, skipping the
@@ -362,18 +351,8 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
             )}
           </PanelSlot>
 
-          <PanelSlot active={activeTab === "modify"}>
-            {sessionId && visitedTabs.has("modify") && (
-              <ModifyPanel
-                key={pipelineGeneration}
-                sessionId={sessionId}
-                resizeAssets={resizeAssets}
-                onModifyApplied={handleModifyApplied}
-                onClearPipeline={handleClearPipeline}
-                onSkipToResize={() => setActiveTab("resize")}
-              />
-            )}
-          </PanelSlot>
+          {/* Modify tab removed 2026-06-01 — darkroom relocated inside
+              EnhancePanel below the variants grid. */}
 
           <PanelSlot active={activeTab === "resize"}>
             {sessionId && visitedTabs.has("resize") && (

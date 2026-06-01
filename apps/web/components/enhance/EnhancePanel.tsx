@@ -59,6 +59,10 @@ import {
 import { EraseDialog, type EraseDialogResult } from "./EraseDialog";
 import { TweakDialog, type TweakDialogResult } from "./TweakDialog";
 import { TipBanner } from "../workspace/TipBanner";
+// Modify-tab darkroom controls relocated to live INSIDE Enhance below the
+// variants grid (2026-06-01) — the Modify tab itself is being deleted.
+// Embedded mode hides the TipBanner + standalone uploader.
+import { ModifyPanel } from "../modify/ModifyPanel";
 
 const MAX_UPLOADS = 10;
 
@@ -1712,6 +1716,48 @@ export function EnhancePanel({
             })}
           </div>
         </div>
+      )}
+
+      {/* ── Darkroom (Adjustments / Crop / Straighten) ──
+          Appears once at least one variant has finished. Was the standalone
+          Modify tab until 2026-06-01; relocated here so darkroom controls
+          are available "after images are generated." Replaces variants
+          in-place, keyed by Map insertion order. Embedded mode hides the
+          TipBanner + standalone uploader. */}
+      {completed.size > 0 && (
+        <ModifyPanel
+          embedded={true}
+          sessionId={sessionId}
+          resizeAssets={Array.from(completed.values()).map((item) => ({
+            assetId:      item.outputAssetId,
+            filename:     item.filename,
+            thumbnailUrl: item.outputUrl,
+            outputUrl:    item.outputUrl,
+            provider:     item.provider,
+          }))}
+          onModifyApplied={(next) => {
+            // ModifyPanel returns the modified assets in the same order it
+            // received them, so we replay the completed Map's key order
+            // (Maps iterate insertion-order in JS) and patch each entry's
+            // outputAssetId/outputUrl with the freshly-rendered version.
+            setCompleted((prev) => {
+              const jobIds = Array.from(prev.keys());
+              const updated = new Map(prev);
+              next.forEach((modified, idx) => {
+                const jobId = jobIds[idx];
+                if (!jobId) return;
+                const cur = updated.get(jobId);
+                if (!cur) return;
+                updated.set(jobId, {
+                  ...cur,
+                  outputAssetId: modified.assetId,
+                  outputUrl:     modified.outputUrl ?? modified.thumbnailUrl,
+                });
+              });
+              return updated;
+            });
+          }}
+        />
       )}
 
       {/* ── Model attribution ── */}
