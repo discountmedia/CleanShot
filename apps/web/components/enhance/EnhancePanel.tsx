@@ -51,6 +51,7 @@ import {
 import type { UserRestriction } from "../../lib/access-control";
 
 import { MetaCard } from "./MetaCard";
+import { ProviderRow } from "./ProviderRow";
 import { CommandBar } from "./CommandBar";
 import {
   SourceCompareCard,
@@ -1425,12 +1426,16 @@ export function EnhancePanel({
         </p>
       )}
 
-      {/* Provider picker scrapped 2026-06-01 — Enhance now always uses
-          Gemini (single one-size-fits-all model). BFF /api/enhance
-          hardcodes the provider so anything the client still has in
-          state is ignored. Per-variant tools (Tweak / Edit / Erase /
-          Inpaint) cover the "strangeness" cases the multi-provider
-          selector used to handle. */}
+      {/* ── AI provider picker (multi-select) ──
+          Per-user model locking is gone (access-control USER_RESTRICTIONS
+          is empty) but the multi-provider picker is back: operators pick
+          any subset of models and get one variant per selected provider
+          per source image. */}
+      <ProviderRow
+        selected={selectedProviders}
+        onToggle={toggleProvider}
+        onSelectAll={selectAllProviders}
+      />
 
       {/* ── Advanced (toggles + custom prompt) ── */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
