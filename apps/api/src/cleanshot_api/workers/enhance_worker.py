@@ -320,53 +320,57 @@ def _build_enhance_prompt(
     # criteria at the end: too-new AND unchanged both fail.
     sections: list[str] = []
 
+    # NEW MASTER PROMPT (2026-06-03) — operator-supplied forklift respray
+    # spine, swapped in for the model-tuning test. The {eq_display} /
+    # {eq_parts} interpolation is retained so non-forklift equipment still
+    # reads correctly; the toggle add-ons + GUARDRAILS section below are
+    # untouched.
     sections.append(
-        f"A photorealistic depiction of a USED {eq_display} that has just "
-        f"received a CHEAP shop-grade spray paint job. This is a real "
-        f"shop respray — quick, inexpensive, and effective at making a "
-        f"used unit listing-ready. It is NOT a restoration and NOT a "
-        f"factory finish, but the fresh paint clearly improves the unit's "
-        f"appearance."
+        f"A photorealistic image of a heavily used {eq_display} that has "
+        f"just received a quick, inexpensive shop-grade respray."
     )
 
     sections.append(
-        "WHAT THE FRESH PAINT COVERS (these are gone in the output):\n"
-        "• Surface paint chips, scuffs, scratches, and faded patches — "
-        "covered by the new paint.\n"
-        "• Light surface rust and oxidation — covered.\n"
-        "• Dirt, grime, dust, and surface staining — cleaned off before "
-        "the paint pass.\n"
-        "• Dull, worn-out colour — restored to the saturated original "
-        "factory colour."
+        f"This is a real commercial shop repaint — fast, cheap, and done to "
+        f"make the unit look listing-ready. It is explicitly NOT a "
+        f"professional restoration and NOT a factory-fresh finish. The goal "
+        f"is \"cheap but clean.\""
     )
 
     sections.append(
-        "WHAT THE FRESH PAINT DOES NOT COVER (these stay clearly "
-        "visible in the output):\n"
-        "• Dents, panel deformation, and bent hardware.\n"
-        "• Deep gouges THROUGH the metal (not surface scratches — actual "
-        "metal damage).\n"
-        "• Missing parts, broken hardware, cracked components.\n"
-        "• Severe rust-through holes and large rust pitting craters that "
-        "have eaten into the panel.\n"
-        "• Replaced / mismatched panels, aftermarket non-OEM parts — "
-        "leave them as-is, do not unify them."
+        "WHAT THE NEW PAINT COVERS:\n"
+        "- All surface paint chips, scuffs, scratches, and faded areas\n"
+        "- Light surface rust and oxidation\n"
+        "- Dirt, grime, dust, and surface stains (cleaned before painting)\n"
+        "- Dull, weathered original paint — now restored to saturated "
+        "original factory colors"
     )
 
     sections.append(
-        f"PAINT JOB CHARACTER: a quick coat from a shop spray gun in the "
-        f"precise original factory colour scheme. It looks CHEAP-but-"
-        f"CLEAN — even coverage in most places, slight orange-peel "
-        f"texture on close inspection, maybe minor overspray edges in "
-        f"tight corners. Apply this respray to the {eq_parts}. Match the "
-        f"original panel-to-colour mapping exactly; do not change which "
-        f"panel is which colour."
+        "WHAT THE NEW PAINT DOES NOT COVER (these must remain clearly "
+        "visible):\n"
+        "- Dents, panel deformations, and bent hardware\n"
+        "- Deep gouges that go into the metal\n"
+        "- Missing parts, broken or cracked components\n"
+        "- Severe rust-through holes and large rust pitting craters\n"
+        "- Mismatched or replaced aftermarket panels (keep them visually "
+        "distinct)"
     )
 
     sections.append(
-        "OEM make, model, and capacity decals are masked off and "
-        "preserved in their EXACT original placement and spelling, "
-        "showing only realistic wear."
+        f"PAINT JOB QUALITY:\n"
+        f"Apply a realistic shop spray gun respray in the exact original "
+        f"factory color scheme. Even coverage on most surfaces with slight "
+        f"orange-peel texture visible on close inspection, minor overspray "
+        f"in tight corners, and subtle edge buildup. It should look like a "
+        f"competent but budget-conscious shop job, not premium bodywork. "
+        f"Apply this respray to the {eq_parts}."
+    )
+
+    sections.append(
+        "Preserve and mask off all OEM make, model, capacity, and safety "
+        "decals in their exact original positions with realistic existing "
+        "wear."
     )
 
     if paint_forks_on:
@@ -387,33 +391,27 @@ def _build_enhance_prompt(
         )
 
     sections.append(
-        "TIRES: keep the SAME tires — do not replace them, and existing "
-        "tread wear, cuts, gouges, and aging cracks on the tread itself "
-        "stay visible. But the SIDEWALLS have been treated with a "
-        "generous coat of glossy tire shine — the sidewalls read as "
-        "wet-look, deep black, noticeably glossy and contrasted against "
-        "the dry, dusty, untreated tread. Apply tire shine ONLY to the "
-        "sidewall, never the tread."
+        "TIRES:\n"
+        "Keep the exact same tires from the source image. Maintain all "
+        "tread wear, cuts, gouges, and aging cracks on the tread surface. "
+        "However, generously apply glossy tire shine ONLY to the sidewalls, "
+        "making them deep black, wet-look, and highly reflective. Tread "
+        "must remain dry, dusty, and matte."
     )
 
     sections.append(
-        f"SCENE: maintain the identical camera angle, perspective, and "
-        f"background environment from the source image. The background "
-        f"setting remains entirely unchanged."
+        "SCENE & COMPOSITION:\n"
+        "Maintain the exact same camera angle, perspective, framing, "
+        "lighting direction, and background environment as the source "
+        "image. Do not change, crop, rotate, or replace the background "
+        "under any circumstances."
     )
 
     sections.append(
-        f"DUAL FAILURE CRITERIA:\n"
-        f"• If the final image looks brand-new, factory-fresh, restored, "
-        f"or like the unit was never used, you have failed (too "
-        f"perfect).\n"
-        f"• If the final image looks unchanged from the source — same "
-        f"scuffs, same chips, same dull paint, same dusty tires — you "
-        f"have ALSO failed (no respray applied).\n"
-        f"The right answer is: clearly a used {eq_display}, clearly "
-        f"freshly resprayed in a cheap-but-clean shop paint job, with "
-        f"glossy tire-shined sidewalls; only structural damage and "
-        f"severe rust-through still visible."
+        f"The ideal result is a clearly used {eq_display} that has obviously "
+        f"received a fresh but inexpensive shop respray — improved "
+        f"appearance while still looking like a working, previously abused "
+        f"machine with glossy tire sidewalls."
     )
 
     # ── Toggle-driven additions ────────────────────────────────────────
@@ -575,26 +573,49 @@ def _build_kontext_prompt(
         and equipment_type != "scissor_lift"
     )
 
-    # Base instruction — always applied. Imperative, single-purpose lines.
+    # NEW MASTER PROMPT (2026-06-03) — operator-supplied Kontext-specific
+    # respray base, swapped in for the model-tuning test. Kept terser than
+    # the Gemini spine (Kontext degrades on long prose). {eq_display}
+    # interpolation retained; toggle clauses below are untouched.
     lines: list[str] = [
-        f"Refresh this used {eq_display}'s existing paint WITHOUT changing "
-        f"any colour. Every part keeps the exact colour it already has — do "
-        f"not recolour the body, the overhead guard, the mast, or any "
-        f"panel, and do not introduce any colour that is not already on the "
-        f"unit. Clean off dirt and dust and make faded, scuffed, chipped, "
-        f"or lightly-rusted areas look freshly touched up by blending them "
-        f"into the SAME colour as the surrounding panel. Keep dents, deep "
-        f"gouges, broken parts, and severe rust-through clearly visible — "
-        f"this is a used unit, not a restoration, so it must not look "
-        f"factory-new.",
-        "Apply glossy wet-look tire shine to the tire SIDEWALLS only; leave "
-        "the tread dull, dusty, and worn.",
-        f"Keep everything else identical: the make, model, badges, OEM "
-        f"decals, capacity plates and serial numbers (same spelling and "
-        f"placement), the {eq_display}'s shape and each part's colour, the "
-        f"camera angle, and the full background. Do not add lamps, mirrors, "
-        f"beacons, or any hardware, and do not crop, zoom, rotate, or "
-        f"re-frame the shot.",
+        f"Photorealistic image of a heavily used {eq_display} after a "
+        f"quick, inexpensive shop-grade respray. This is a cheap-but-clean "
+        f"commercial repaint to make it listing-ready. Not a restoration, "
+        f"not factory fresh.",
+        "WHAT THE PAINT COVERS:\n"
+        "- Surface chips, scuffs, scratches, faded paint\n"
+        "- Light surface rust and oxidation\n"
+        "- Dirt, grime, and stains\n"
+        "- Dull colors restored to saturated original factory colors",
+        "WHAT THE PAINT DOES NOT COVER (must remain visible):\n"
+        "- Dents, panel deformations, bent hardware\n"
+        "- Deep metal gouges\n"
+        "- Missing/broken parts, cracked components\n"
+        "- Severe rust-through holes and large pitting\n"
+        "- Mismatched aftermarket panels (keep them distinct)",
+        "PAINT STYLE: Realistic shop spray gun application in exact "
+        "original factory color scheme. Even coverage with slight "
+        "orange-peel texture, minor overspray in corners. Looks competent "
+        "but budget-level.",
+        "Preserve all OEM decals in exact original positions with realistic "
+        "wear.",
+        "TIRES: Keep identical tires. Preserve all tread wear, cuts, and "
+        "cracks. Apply glossy tire shine ONLY to sidewalls (deep black, "
+        "wet-look, reflective). Tread stays dry, dusty, and matte.",
+        "SCENE: Exact same camera angle, perspective, framing, lighting, "
+        "and background as the source image. Do not change, crop, or "
+        "replace anything.",
+        "STRICT RULES:\n"
+        "- Do not add lights, beacons, mirrors, antennas, or new "
+        "attachments\n"
+        "- Do not add new damage or wear\n"
+        "- Do not make it look brand new\n"
+        "- Do not leave it unchanged — clear fresh respray must be obvious\n"
+        "- Preserve all original proportions, panels, and mechanical "
+        "details",
+        f"Result: Clearly used {eq_display} with fresh but cheap shop paint "
+        f"job and glossy sidewalls, while keeping all real-world wear and "
+        f"damage.",
     ]
 
     if paint_forks_on:
