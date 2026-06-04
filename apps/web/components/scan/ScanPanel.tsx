@@ -57,7 +57,7 @@ import { ScanFilterChips, type ScanFilter } from "./ScanFilterChips";
 import { ScanCommandBar } from "./ScanCommandBar";
 import { TipBanner } from "../workspace/TipBanner";
 
-const MAX_UPLOADS = 15;
+const MAX_UPLOADS = 150;
 
 /**
  * Local state for a file the operator dropped directly onto the Scan tab

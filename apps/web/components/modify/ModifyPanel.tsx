@@ -88,7 +88,7 @@ const ASPECT_RATIOS: Record<Exclude<CropAspect, "free">, [number, number]> = {
   "16:9": [16, 9],
 };
 
-const MAX_UPLOADS = 20;
+const MAX_UPLOADS = 150;
 
 export interface ModifyPanelProps {
   sessionId: string;

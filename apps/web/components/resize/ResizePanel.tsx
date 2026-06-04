@@ -45,7 +45,7 @@ import {
 } from "../../lib/types";
 import { TipBanner } from "../workspace/TipBanner";
 
-const MAX_UPLOADS = 15;
+const MAX_UPLOADS = 150;
 
 // Watermark string burnt into the bottom-right corner of every exported
 // JPEG when the operator ticks "Add AI disclaimer". Wording reads as an
