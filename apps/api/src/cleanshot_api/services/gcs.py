@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import datetime
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import google.auth
 import google.auth.transport.requests
@@ -26,6 +27,17 @@ from cleanshot_api.core.config import get_settings
 
 _SIGNED_URL_EXPIRY_PUT = datetime.timedelta(minutes=15)
 _SIGNED_URL_EXPIRY_GET = datetime.timedelta(hours=1)
+
+# Shared, process-wide pool for fanning out the network-bound IAM signBlob
+# calls behind V4 signing (each generate_signed_url with an access token is one
+# signBlob round-trip — confirmed: ADC on Cloud Run is token-only, so there's
+# no local key to sign with). Reused across requests so we don't construct and
+# tear down an executor on every batch-signing call, and bounded at 32 so
+# concurrent batch-signing requests can't spawn unbounded OS threads on a small
+# (1-vCPU) Cloud Run instance. signBlob releases the GIL while blocked on the
+# socket, so a fixed pool parallelizes the I/O well regardless of vCPU count.
+# Process-lifetime singleton — the interpreter reclaims it at exit.
+SIGNING_EXECUTOR = ThreadPoolExecutor(max_workers=32, thread_name_prefix="gcs-sign")
 
 
 def _get_credentials():
@@ -96,6 +108,60 @@ def mint_read_url(gcs_uri: str) -> tuple[str, datetime.datetime]:
         method="GET",
         service_account_email=settings.service_account_email,
         access_token=credentials.token,
+    )
+
+    return signed_url, expires_at
+
+
+def build_signing_client() -> tuple[storage.Client, str]:
+    """
+    Build a storage.Client with freshly-refreshed credentials and return it
+    alongside the access token, so a CALLER can mint many signed URLs while
+    only paying the credential-refresh + client-construction cost ONCE.
+
+    Use with sign_read_url_with() for batch signing (e.g. the history endpoint,
+    which signs one URL per asset across up to 200 sets). Calling the
+    per-URL mint_read_url() in a loop instead re-refreshes credentials and
+    rebuilds the client on every asset — the exact pattern that pushed
+    /api/v1/history past Vercel's function timeout once the photo library
+    grew unbounded.
+    """
+    credentials, project = _get_credentials()
+    client = storage.Client(
+        project=project or get_settings().gcp_project,
+        credentials=credentials,
+    )
+    return client, credentials.token
+
+
+def sign_read_url_with(
+    client: storage.Client,
+    access_token: str,
+    gcs_uri: str,
+) -> tuple[str, datetime.datetime]:
+    """
+    Mint a V4 signed GET URL using a pre-built client + access token from
+    build_signing_client(). Same output as mint_read_url() but without the
+    per-call credential refresh / client construction.
+
+    Note: V4 signing with an access_token still triggers one IAM signBlob
+    network round-trip per URL — callers signing many URLs should dispatch
+    these concurrently (asyncio.to_thread + gather).
+    """
+    settings = get_settings()
+    assert gcs_uri.startswith("gs://"), f"Expected gs:// URI, got: {gcs_uri}"
+    without_scheme = gcs_uri[len("gs://"):]
+    bucket_name, _, object_name = without_scheme.partition("/")
+
+    blob = client.bucket(bucket_name).blob(object_name)
+    expires_at = datetime.datetime.now(tz=datetime.timezone.utc) + _SIGNED_URL_EXPIRY_GET
+
+    signed_url: str = blob.generate_signed_url(
+        version="v4",
+        expiration=_SIGNED_URL_EXPIRY_GET,
+        method="GET",
+        service_account_email=settings.service_account_email,
+        access_token=access_token,
     )
 
     return signed_url, expires_at

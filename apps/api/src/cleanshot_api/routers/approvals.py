@@ -21,6 +21,7 @@ GET /api/v1/history?user_email={email}
 
 from __future__ import annotations
 
+import asyncio
 import datetime
 import json
 import re
@@ -36,7 +37,11 @@ from cleanshot_api.core.config import get_settings
 from cleanshot_api.core.security import require_api_key
 from cleanshot_api.db import queries
 from cleanshot_api.db.pool import get_pool
-from cleanshot_api.services.gcs import mint_read_url
+from cleanshot_api.services.gcs import (
+    SIGNING_EXECUTOR,
+    build_signing_client,
+    sign_read_url_with,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["approvals"])
 
@@ -250,37 +255,61 @@ async def get_history(
             now,
         )
 
+    if not sets:
+        return {"sets": [], "totalSets": 0}
+
+    # Fetch every set's assets in ONE query (was N+1: one round-trip per set).
+    set_ids = [s["id"] for s in sets]
+    async with pool.acquire() as conn:
+        asset_rows = await conn.fetch(
+            """
+            SELECT approval_set_id, asset_id, gcs_path, filename
+            FROM   approval_set_assets
+            WHERE  approval_set_id = ANY($1::uuid[])
+            ORDER  BY approval_set_id, created_at
+            """,
+            set_ids,
+        )
+
+    # Mint every signed URL concurrently. mint_read_url() used to run inline,
+    # sequentially, re-refreshing credentials + rebuilding the storage.Client
+    # on EVERY asset — across up to 200 sets that serialized into hundreds of
+    # IAM signBlob round-trips and blew past Vercel's function timeout once the
+    # library grew unbounded ("infinite photo library storage"). Now: refresh
+    # creds + build the client ONCE, then fan the per-asset signBlob calls out
+    # across the shared SIGNING_EXECUTOR (process-wide, bounded at 32 — see
+    # services/gcs.py). signBlob is network-IO-bound, so the default
+    # CPU-count-sized executor would needlessly serialize on a 1-vCPU box.
+    client, access_token = await asyncio.to_thread(build_signing_client)
+
+    def _sign(gcs_path: str) -> str:
+        try:
+            signed_url, _ = sign_read_url_with(client, access_token, gcs_path)
+            return signed_url
+        except Exception:
+            return ""
+
+    loop = asyncio.get_running_loop()
+    signed_urls = await asyncio.gather(
+        *(loop.run_in_executor(SIGNING_EXECUTOR, _sign, a["gcs_path"]) for a in asset_rows)
+    )
+
+    # Group assets (with their freshly-signed URLs) by set id, preserving the
+    # created_at ordering from the query above.
+    assets_by_set: dict[Any, list[dict]] = {}
+    for a, signed_url in zip(asset_rows, signed_urls):
+        assets_by_set.setdefault(a["approval_set_id"], []).append({
+            "assetId":      str(a["asset_id"]),
+            "filename":     a["filename"],
+            "thumbnailUrl": signed_url,
+            "gcsPath":      a["gcs_path"],
+        })
+
     result_sets = []
-
     for s in sets:
-        set_id    = s["id"]
-        dir_name  = s["gcs_dir"].split("/")[-1]  # YYYY-MM-DD_{make}_{model}
+        set_id     = s["id"]
+        dir_name   = s["gcs_dir"].split("/")[-1]  # YYYY-MM-DD_{make}_{model}
         expires_at = s["expires_at"]
-
-        # Fetch assets for this set
-        async with pool.acquire() as conn:
-            asset_rows = await conn.fetch(
-                """
-                SELECT asset_id, gcs_path, filename
-                FROM   approval_set_assets
-                WHERE  approval_set_id = $1
-                ORDER  BY created_at
-                """,
-                set_id,
-            )
-
-        assets_out = []
-        for a in asset_rows:
-            try:
-                signed_url, _ = mint_read_url(a["gcs_path"])
-            except Exception:
-                signed_url = ""
-            assets_out.append({
-                "assetId":     str(a["asset_id"]),
-                "filename":    a["filename"],
-                "thumbnailUrl": signed_url,
-                "gcsPath":     a["gcs_path"],
-            })
 
         result_sets.append({
             "id":          str(set_id),
@@ -293,7 +322,7 @@ async def get_history(
             "make":        s["make"],
             "model":       s["model"],
             "imageCount":  s["image_count"],
-            "assets":      assets_out,
+            "assets":      assets_by_set.get(set_id, []),
         })
 
     return {
