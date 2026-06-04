@@ -38,6 +38,10 @@ from cleanshot_api.models.schemas import (
     TweakTaskPayload,
 )
 from cleanshot_api.services.tasks import enqueue_scan
+from cleanshot_api.workers.master_prompts import (
+    render_master_prompt,
+    resolve_master_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -272,6 +276,7 @@ EQUIPMENT_BODY_PARTS: dict[str, str] = {
 def _build_enhance_prompt(
     toggles: EnhanceToggles,
     equipment_type: str = "forklift",
+    spine_override: str | None = None,
 ) -> str:
     """
     Build the enhance prompt.
@@ -286,6 +291,14 @@ def _build_enhance_prompt(
     Toggle-driven add-ons (remove people, background signage, rental
     scrub, plus light emphasis nudges) get appended AFTER the spine.
     Hard guardrails (scene anatomy preservation) sit at the very end.
+
+    `spine_override` — when set (a fully-rendered master prompt from
+    workers/master_prompts.py, placeholders already filled), it REPLACES
+    the built-in spine prose. The paint-forks block, the toggle add-ons,
+    and the final GUARDRAILS section are still appended on top, so toggle
+    checkboxes keep working regardless of prompt choice. When None, the
+    function behaves exactly as before (zero regression on the legacy /
+    "auto" path).
 
     DRIFT-WARNING:
       The Scan-tab "Regenerate" auto-prompt is built client-side in
@@ -320,58 +333,62 @@ def _build_enhance_prompt(
     # criteria at the end: too-new AND unchanged both fail.
     sections: list[str] = []
 
-    # NEW MASTER PROMPT (2026-06-03) — operator-supplied forklift respray
-    # spine, swapped in for the model-tuning test. The {eq_display} /
-    # {eq_parts} interpolation is retained so non-forklift equipment still
-    # reads correctly; the toggle add-ons + GUARDRAILS section below are
-    # untouched.
-    sections.append(
-        f"A photorealistic image of a heavily used {eq_display} that has "
-        f"just received a quick, inexpensive shop-grade respray."
-    )
+    if spine_override is not None:
+        # Master-prompt path: the operator-selected prompt (already rendered
+        # with equipment placeholders filled) is the entire spine. Toggle
+        # add-ons + GUARDRAILS still append below.
+        sections.append(spine_override)
+    else:
+        # ── Built-in spine (the "auto" / legacy path) ────────────────────
+        # Operator-supplied respray spine. The {eq_display} / {eq_parts}
+        # interpolation keeps non-forklift equipment reading correctly.
+        sections.append(
+            f"A photorealistic image of a heavily used {eq_display} that has "
+            f"just received a quick, inexpensive shop-grade respray."
+        )
 
-    sections.append(
-        f"This is a real commercial shop repaint — fast, cheap, and done to "
-        f"make the unit look listing-ready. It is explicitly NOT a "
-        f"professional restoration and NOT a factory-fresh finish. The goal "
-        f"is \"cheap but clean.\""
-    )
+        sections.append(
+            f"This is a real commercial shop repaint — fast, cheap, and done to "
+            f"make the unit look listing-ready. It is explicitly NOT a "
+            f"professional restoration and NOT a factory-fresh finish. The goal "
+            f"is \"cheap but clean.\""
+        )
 
-    sections.append(
-        "WHAT THE NEW PAINT COVERS:\n"
-        "- All surface paint chips, scuffs, scratches, and faded areas\n"
-        "- Light surface rust and oxidation\n"
-        "- Dirt, grime, dust, and surface stains (cleaned before painting)\n"
-        "- Dull, weathered original paint — now restored to saturated "
-        "original factory colors"
-    )
+        sections.append(
+            "WHAT THE NEW PAINT COVERS:\n"
+            "- All surface paint chips, scuffs, scratches, and faded areas\n"
+            "- Light surface rust and oxidation\n"
+            "- Dirt, grime, dust, and surface stains (cleaned before painting)\n"
+            "- Dull, weathered original paint — now restored to saturated "
+            "original factory colors"
+        )
 
-    sections.append(
-        "WHAT THE NEW PAINT DOES NOT COVER (these must remain clearly "
-        "visible):\n"
-        "- Dents, panel deformations, and bent hardware\n"
-        "- Deep gouges that go into the metal\n"
-        "- Missing parts, broken or cracked components\n"
-        "- Severe rust-through holes and large rust pitting craters\n"
-        "- Mismatched or replaced aftermarket panels (keep them visually "
-        "distinct)"
-    )
+        sections.append(
+            "WHAT THE NEW PAINT DOES NOT COVER (these must remain clearly "
+            "visible):\n"
+            "- Dents, panel deformations, and bent hardware\n"
+            "- Deep gouges that go into the metal\n"
+            "- Missing parts, broken or cracked components\n"
+            "- Severe rust-through holes and large rust pitting craters\n"
+            "- Mismatched or replaced aftermarket panels (keep them visually "
+            "distinct)"
+        )
 
-    sections.append(
-        f"PAINT JOB QUALITY:\n"
-        f"Apply a realistic shop spray gun respray in the exact original "
-        f"factory color scheme. Even coverage on most surfaces with slight "
-        f"orange-peel texture visible on close inspection, minor overspray "
-        f"in tight corners, and subtle edge buildup. It should look like a "
-        f"competent but budget-conscious shop job, not premium bodywork. "
-        f"Apply this respray to the {eq_parts}."
-    )
+        sections.append(
+            f"PAINT JOB QUALITY:\n"
+            f"Apply a realistic shop spray gun respray in the exact original "
+            f"factory color scheme. Even coverage on most surfaces with slight "
+            f"orange-peel texture visible on close inspection, minor overspray "
+            f"in tight corners, and subtle edge buildup. It should look like a "
+            f"competent but budget-conscious shop job, not premium bodywork. "
+            f"Apply this respray to the {eq_parts}."
+        )
 
-    sections.append(
-        "Preserve and mask off all OEM make, model, capacity, and safety "
-        "decals in their exact original positions with realistic existing "
-        "wear."
-    )
+        sections.append(
+            "Preserve and mask off all OEM make, model, capacity, and safety "
+            "decals in their exact original positions with realistic existing "
+            "wear."
+        )
 
     if paint_forks_on:
         sections.append(
@@ -390,29 +407,33 @@ def _build_enhance_prompt(
             "clearly against it."
         )
 
-    sections.append(
-        "TIRES:\n"
-        "Keep the exact same tires from the source image. Maintain all "
-        "tread wear, cuts, gouges, and aging cracks on the tread surface. "
-        "However, generously apply glossy tire shine ONLY to the sidewalls, "
-        "making them deep black, wet-look, and highly reflective. Tread "
-        "must remain dry, dusty, and matte."
-    )
+    if spine_override is None:
+        # Tires / scene / closing line are part of the built-in spine — a
+        # master prompt carries its own equivalents, so skip these when one
+        # is in use.
+        sections.append(
+            "TIRES:\n"
+            "Keep the exact same tires from the source image. Maintain all "
+            "tread wear, cuts, gouges, and aging cracks on the tread surface. "
+            "However, generously apply glossy tire shine ONLY to the sidewalls, "
+            "making them deep black, wet-look, and highly reflective. Tread "
+            "must remain dry, dusty, and matte."
+        )
 
-    sections.append(
-        "SCENE & COMPOSITION:\n"
-        "Maintain the exact same camera angle, perspective, framing, "
-        "lighting direction, and background environment as the source "
-        "image. Do not change, crop, rotate, or replace the background "
-        "under any circumstances."
-    )
+        sections.append(
+            "SCENE & COMPOSITION:\n"
+            "Maintain the exact same camera angle, perspective, framing, "
+            "lighting direction, and background environment as the source "
+            "image. Do not change, crop, rotate, or replace the background "
+            "under any circumstances."
+        )
 
-    sections.append(
-        f"The ideal result is a clearly used {eq_display} that has obviously "
-        f"received a fresh but inexpensive shop respray — improved "
-        f"appearance while still looking like a working, previously abused "
-        f"machine with glossy tire sidewalls."
-    )
+        sections.append(
+            f"The ideal result is a clearly used {eq_display} that has obviously "
+            f"received a fresh but inexpensive shop respray — improved "
+            f"appearance while still looking like a working, previously abused "
+            f"machine with glossy tire sidewalls."
+        )
 
     # ── Toggle-driven additions ────────────────────────────────────────
     extras: list[str] = []
@@ -543,6 +564,7 @@ def _build_enhance_prompt(
 def _build_kontext_prompt(
     toggles: EnhanceToggles,
     equipment_type: str = "forklift",
+    spine_override: str | None = None,
 ) -> str:
     """Build a Kontext-specific enhance prompt.
 
@@ -559,6 +581,11 @@ def _build_kontext_prompt(
     already covers paint, rust, tire-shine and decal preservation, and
     re-stating them just dilutes the edit for Kontext.
 
+    `spine_override` — when set (a rendered master prompt from
+    workers/master_prompts.py), it REPLACES the terse built-in base; the
+    paint-forks clause + the per-toggle ACTION clauses still append on top.
+    None → behaves exactly as before (legacy / "auto" path).
+
     During the model-tuning phase test users run with all toggles OFF, so
     they receive only the clean base — exactly the baseline we want to
     measure. See [[project-model-tuning-phase]].
@@ -573,12 +600,16 @@ def _build_kontext_prompt(
         and equipment_type != "scissor_lift"
     )
 
-    # NEW MASTER PROMPT (2026-06-03) — operator-supplied Kontext-specific
-    # respray base, swapped in for the model-tuning test. Kept terser than
-    # the Gemini spine (Kontext degrades on long prose). {eq_display}
-    # interpolation retained; toggle clauses below are untouched.
-    lines: list[str] = [
-        f"Photorealistic image of a heavily used {eq_display} after a "
+    lines: list[str]
+    if spine_override is not None:
+        # Master-prompt path: the selected prompt is the whole base; toggle
+        # clauses still append below.
+        lines = [spine_override]
+    else:
+        # Built-in terse base (the "auto" / legacy path). {eq_display}
+        # interpolation retained; toggle clauses below are untouched.
+        lines = [
+            f"Photorealistic image of a heavily used {eq_display} after a "
         f"quick, inexpensive shop-grade respray. This is a cheap-but-clean "
         f"commercial repaint to make it listing-ready. Not a restoration, "
         f"not factory fresh.",
@@ -1610,12 +1641,35 @@ async def _run_enhance(
     call_started_at = _time.monotonic()
     provider_model = None
     provider_name = payload.provider or "gemini"
+    # Set inside the try once the master prompt is resolved; pre-init here so
+    # the except handler's usage-event insert can reference it even if an
+    # exception fires before resolution.
+    prompt_choice_suffix = ""
 
     try:
         # Custom prompt overrides — either from the Scan tab's "Regenerate"
         # auto-prompt or the Enhance tab's "Custom prompt (advanced)" textarea.
         # When set, the model receives this text verbatim and toggles are
         # ignored. Otherwise the toggle-derived prompt is used.
+        #
+        # Master-prompt selection (Enhance tab "Prompt:" dropdown): when
+        # payload.prompt_choice resolves to an operator-authored prompt, that
+        # prompt (placeholders filled) becomes the SPINE — the procedural
+        # builders still append the paint-forks block, toggle add-ons, and
+        # GUARDRAILS on top. "auto"/None → spine_override is None → builders
+        # behave exactly as the legacy path.
+        spine_override = resolve_master_prompt(
+            payload.prompt_choice, payload.provider
+        )
+        if spine_override is not None:
+            spine_override = render_master_prompt(
+                spine_override,
+                EQUIPMENT_DISPLAY.get(payload.equipment_type, "forklift"),
+                EQUIPMENT_ANATOMY.get(
+                    payload.equipment_type, EQUIPMENT_ANATOMY["forklift"]
+                ),
+            )
+
         if payload.custom_prompt:
             prompt = payload.custom_prompt
         elif payload.provider == "kontext":
@@ -1624,12 +1678,24 @@ async def _run_enhance(
             prompt = _build_kontext_prompt(
                 payload.toggles,
                 equipment_type=payload.equipment_type,
+                spine_override=spine_override,
             )
         else:
             prompt = _build_enhance_prompt(
                 payload.toggles,
                 equipment_type=payload.equipment_type,
+                spine_override=spine_override,
             )
+
+        # Attribution suffix for the usage-event `model` label — lets the
+        # admin dashboard tell prompt-tuning variants apart (e.g.
+        # "gemini-3.1-flash-image-preview [generic:claude]"). Only added
+        # when a master prompt was actually resolved (not auto/custom).
+        prompt_choice_suffix = (
+            f" [{payload.prompt_choice}]"
+            if spine_override is not None and payload.prompt_choice
+            else ""
+        )
 
         # Dispatch to the requested provider. The Gemini semaphore is
         # still useful for cost control on the AI Studio key (the key has
@@ -1716,7 +1782,7 @@ async def _run_enhance(
                     session_id=payload.session_id,
                     job_id=payload.job_id,
                     provider=provider_name,
-                    model=provider_model or "unknown",
+                    model=(provider_model or "unknown") + prompt_choice_suffix,
                     operation="enhance",
                     status="success",
                     latency_ms=int((_time.monotonic() - call_started_at) * 1000),
@@ -1800,7 +1866,7 @@ async def _run_enhance(
                     session_id=payload.session_id,
                     job_id=payload.job_id,
                     provider=provider_name,
-                    model=provider_model or "unknown",
+                    model=(provider_model or "unknown") + prompt_choice_suffix,
                     operation="enhance",
                     status="failed",
                     latency_ms=int((_time.monotonic() - call_started_at) * 1000),

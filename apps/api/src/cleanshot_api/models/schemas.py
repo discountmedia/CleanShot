@@ -202,6 +202,15 @@ class EnhanceRequest(BaseModel):
     # "Custom prompt (advanced)" section produces this; the toggles
     # are disabled in the UI when it's in use.
     custom_prompt: str | None = None
+    # Per-card master-prompt selection from the Enhance tab's "Prompt:"
+    # dropdown. One opaque key:
+    #   • None / "auto"        → legacy procedural builder (default; no regression)
+    #   • "generic:<author>"   → one-size-fits-all master prompt by that author
+    #   • "tailored:<author>"  → model-specific master prompt by that author
+    # See workers/master_prompts.py. The chosen prompt REPLACES the
+    # procedural spine; toggles + guardrails are still appended on top.
+    # custom_prompt still outranks this.
+    prompt_choice: str | None = None
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -638,6 +647,10 @@ class EnhanceTaskPayload(BaseModel):
     # a deploy will silently lose the override and fall back to toggles —
     # acceptable for the brief deploy window.)
     custom_prompt: str | None = None
+    # Master-prompt selection key carried through from EnhanceRequest.
+    # None/"auto" → procedural builder; "generic:<author>" / "tailored:<author>"
+    # → resolved via workers/master_prompts.py and used as the spine override.
+    prompt_choice: str | None = None
 
 
 class ScanTaskPayload(BaseModel):

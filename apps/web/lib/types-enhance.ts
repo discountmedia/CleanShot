@@ -40,6 +40,57 @@ export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
   reve:     "Reve",
 };
 
+// ─── Master-prompt selection (the per-card "Prompt:" dropdown) ───────────────
+//
+// The operator hand-authored a library of master enhance prompts, each written
+// by a different LLM. Each generator card carries one "Prompt:" dropdown whose
+// value is an opaque key sent verbatim to the BFF as `promptChoice`:
+//
+//   • "auto"             → backend procedural builder (default; no regression)
+//   • "generic:<author>" → one-size-fits-all master prompt by that author
+//   • "tailored:<author>" → model-specific master prompt by that author
+//
+// Resolution + the prompt text itself live server-side in
+// apps/api/.../workers/master_prompts.py. This file only needs the option
+// vocabulary so the dropdowns can be built. KEEP IN SYNC with that module's
+// GENERIC_PROMPTS keys + TAILORED_AUTHORS.
+
+export type PromptAuthor = "claude" | "gemini" | "openai" | "grok";
+
+export type PromptChoice =
+  | "auto"
+  | `generic:${PromptAuthor}`
+  | `tailored:${PromptAuthor}`;
+
+export const PROMPT_AUTHOR_LABELS: Record<PromptAuthor, string> = {
+  claude: "Claude",
+  gemini: "Gemini",
+  openai: "OpenAI",
+  grok:   "Grok",
+};
+
+// Authors offered under "Tailored for <generator>" per card. Edit-style models
+// have all four; the namesake generators (gemini/openai/grok) carry only their
+// own author. Mirrors TAILORED_AUTHORS in master_prompts.py.
+export const TAILORED_AUTHORS_BY_GENERATOR: Record<EnhanceProvider, PromptAuthor[]> = {
+  kontext:  ["claude", "gemini", "openai", "grok"],
+  ideogram: ["claude", "gemini", "openai", "grok"],
+  reve:     ["claude", "gemini", "openai", "grok"],
+  gemini:   ["gemini"],
+  openai:   ["openai"],
+  grok:     ["grok"],
+};
+
+// The four generic (one-size-fits-all) authors — offered on every card, and the
+// only options the "Set all" bulk helper exposes (since generic + auto are valid
+// for every generator).
+export const GENERIC_AUTHORS: readonly PromptAuthor[] = [
+  "claude",
+  "gemini",
+  "openai",
+  "grok",
+] as const;
+
 /**
  * Per-provider chip classes when SELECTED (i.e. checkbox / variant footer
  * highlighted). Matches the saturated `bg-*-950/40 text-*-300 border-*-800`

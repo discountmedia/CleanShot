@@ -33,6 +33,13 @@ interface ClientRequest {
    */
   equipmentType?: "forklift" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
   customPrompt?: string;                  // when set, FastAPI bypasses toggles
+  /**
+   * Per-card master-prompt selection from the Enhance tab's "Prompt:" dropdown.
+   * One opaque key: "auto" | "generic:<author>" | "tailored:<author>". When
+   * "auto" or omitted, FastAPI falls through to its procedural builder (today's
+   * behavior). Resolved server-side in workers/master_prompts.py.
+   */
+  promptChoice?: string;
   idempotencyKey: string;
 }
 
@@ -58,6 +65,12 @@ export async function POST(request: NextRequest) {
       // Only forward custom_prompt when non-empty; omitting lets FastAPI
       // use its `None` default and the worker falls through to toggles.
       ...(body.customPrompt?.trim() ? { custom_prompt: body.customPrompt } : {}),
+      // Only forward prompt_choice when it's an actual master-prompt
+      // selection; "auto"/empty stays off the wire so FastAPI keeps its
+      // procedural default.
+      ...(body.promptChoice && body.promptChoice !== "auto"
+        ? { prompt_choice: body.promptChoice }
+        : {}),
       idempotency_key: body.idempotencyKey,
     }),
     signal: request.signal,
