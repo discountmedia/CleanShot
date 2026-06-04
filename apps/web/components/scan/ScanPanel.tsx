@@ -535,6 +535,33 @@ export function ScanPanel({
   return (
     <div className="space-y-4">
 
+      {/* ── Top-of-tab escape hatch ──
+          Skip the AI quality check entirely and forward every queued
+          image straight to Resize. Useful when the operator already
+          trusts the Enhance output and just wants to crop + export.
+          Sits ABOVE the TipBanner so it's the first thing the operator
+          sees on entering the tab; disabled until at least one image is
+          queued and any in-flight uploads have settled. */}
+      {(() => {
+        const canSkip = allAssets.length > 0 && !anyUploadInFlight;
+        return (
+          <div className="flex">
+            <button
+              type="button"
+              onClick={() => onSendToResize(allAssets)}
+              disabled={!canSkip}
+              className={`inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-colors ${
+                canSkip
+                  ? "border-blue-500 bg-blue-600 hover:bg-blue-500 text-white"
+                  : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"
+              }`}
+            >
+              Skip scanning and start resizing →
+            </button>
+          </div>
+        );
+      })()}
+
       {/* ── Plain-language explanation of what this tab is for ── */}
       <TipBanner
         title="Scan tab — what this does"
