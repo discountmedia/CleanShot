@@ -214,6 +214,7 @@ REVE_PROMPT_MAX_CHARS = 2560
 # unit category.
 EQUIPMENT_DISPLAY: dict[str, str] = {
     "forklift":       "forklift",
+    "rough_terrain":  "rough-terrain forklift",
     "scissor_lift":   "scissor lift",
     "telehandler":    "telehandler",
     "reach_truck":    "reach truck",
@@ -226,6 +227,13 @@ EQUIPMENT_ANATOMY: dict[str, str] = {
     "forklift": (
         "Same mast configuration, fork count, fork length, overhead guard "
         "shape, counterweight shape, and tire type."
+    ),
+    "rough_terrain": (
+        "Same mast configuration, fork count, fork length, overhead guard "
+        "shape, counterweight shape, and the LARGE PNEUMATIC outdoor tires "
+        "with their existing tread pattern — rough-terrain units run on "
+        "knobby pneumatic tires (NOT the small solid cushion tires of a "
+        "warehouse forklift). Preserve the heavier-duty outdoor frame."
     ),
     "scissor_lift": (
         "Same platform size and handrail pattern, scissor mechanism "
@@ -264,6 +272,7 @@ EQUIPMENT_ANATOMY: dict[str, str] = {
 # Keeps the refined prompt readable for non-forklift types.
 EQUIPMENT_BODY_PARTS: dict[str, str] = {
     "forklift":       "chassis, mast, and carriage",
+    "rough_terrain":  "chassis, mast, carriage, and counterweight",
     "scissor_lift":   "chassis, scissor arms, and platform railing",
     "telehandler":    "chassis, boom, and cab",
     "reach_truck":    "chassis, mast, reach mechanism, and cab",

@@ -18,6 +18,7 @@ export type ConsensusVerdict = "pass" | "fail" | "split";
  *  apps/api/src/cleanshot_api/workers/prompts.py. */
 export type EquipmentType =
   | "forklift"
+  | "rough_terrain"
   | "scissor_lift"
   | "telehandler"
   | "reach_truck"
@@ -31,8 +32,9 @@ export type EquipmentType =
 // grouping decision 2026-05-27 — picking equipment is faster when
 // related categories sit next to each other instead of interleaved.
 export const EQUIPMENT_TYPES: readonly EquipmentType[] = [
-  // ── Warehouse fork lifts (size descending) ──
+  // ── Forklifts (warehouse + outdoor / rough-terrain) ──
   "forklift",
+  "rough_terrain",
   "reach_truck",
   "order_picker",
   "walkie_stacker",
@@ -57,8 +59,8 @@ export interface EquipmentGroup {
 }
 export const EQUIPMENT_GROUPS: readonly EquipmentGroup[] = [
   {
-    label:   "Warehouse forks",
-    members: ["forklift", "reach_truck", "order_picker", "walkie_stacker", "pallet_jack"],
+    label:   "Forklifts",
+    members: ["forklift", "rough_terrain", "reach_truck", "order_picker", "walkie_stacker", "pallet_jack"],
   },
   {
     label:   "Aerial",
@@ -68,6 +70,7 @@ export const EQUIPMENT_GROUPS: readonly EquipmentGroup[] = [
 
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   forklift:       "Forklift",
+  rough_terrain:  "Rough Terrain",
   reach_truck:    "Reach Truck",
   telehandler:    "Telehandler",
   scissor_lift:   "Scissor Lift",

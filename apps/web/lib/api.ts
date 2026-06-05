@@ -93,7 +93,7 @@ export async function enqueueEnhance(params: {
   provider?: "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve";
   /** Equipment category — drives the backend's per-type anatomy block.
    * Defaults to "forklift" server-side if omitted. */
-  equipmentType?: "forklift" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
+  equipmentType?: "forklift" | "rough_terrain" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
   /** Per-card master-prompt selection from the Enhance "Prompt:" dropdown.
@@ -328,7 +328,7 @@ export interface BrandedCollageResult {
 export async function createBrandedCollage(params: {
   sessionId: string;
   /** Drives output filename suffix (`cleanshot_{equipmentType}_collage.jpg`). */
-  equipmentType: "forklift" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
+  equipmentType: "forklift" | "rough_terrain" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
   /** Exactly 5 asset IDs. First = hero; next 4 = thumbnail strip top-to-bottom. */
   assetIds: string[];
   /** When true, backend burns the AI-disclaimer watermark into the bottom-right. */

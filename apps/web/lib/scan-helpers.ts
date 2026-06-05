@@ -164,6 +164,7 @@ export function unifyAnomalies(
 
 const EQUIPMENT_DISPLAY: Record<EquipmentType, string> = {
   forklift:       "forklift",
+  rough_terrain:  "rough-terrain forklift",
   scissor_lift:   "scissor lift",
   telehandler:    "telehandler",
   reach_truck:    "reach truck",
@@ -175,6 +176,8 @@ const EQUIPMENT_DISPLAY: Record<EquipmentType, string> = {
 const EQUIPMENT_ANATOMY: Record<EquipmentType, string> = {
   forklift:
     "Same mast configuration, fork count, fork length, overhead guard shape, counterweight shape, and tire type.",
+  rough_terrain:
+    "Same mast configuration, fork count, fork length, overhead guard shape, counterweight shape, and the LARGE PNEUMATIC outdoor tires with their existing tread pattern — rough-terrain units run on knobby pneumatic tires (NOT solid cushion tires). Preserve the heavier-duty outdoor frame.",
   scissor_lift:
     "Same platform size and handrail pattern, scissor mechanism extension, base / chassis dimensions, drive wheels, and control box position.",
   telehandler:
@@ -193,6 +196,7 @@ const EQUIPMENT_ANATOMY: Record<EquipmentType, string> = {
 // including the {EQUIPMENT_BODY_PARTS}, has received a fresh coat".
 const EQUIPMENT_BODY_PARTS: Record<EquipmentType, string> = {
   forklift:       "chassis, mast, and carriage",
+  rough_terrain:  "chassis, mast, carriage, and counterweight",
   scissor_lift:   "chassis, scissor arms, and platform railing",
   telehandler:    "chassis, boom, and cab",
   reach_truck:    "chassis, mast, reach mechanism, and cab",
