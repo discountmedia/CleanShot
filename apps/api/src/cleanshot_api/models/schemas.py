@@ -247,6 +247,13 @@ class EnhanceToggles(BaseModel):
     # it on for actual studio shots (it'll over-clean a real yard floor
     # if mis-applied).
     showroom_floor: bool = Field(False, alias="showroomFloor")
+    # Identity-preservation flag for 3-wheel forklifts (single rear
+    # pivot/steer wheel under the counterweight). When ON, the prompt
+    # adds a guardrail telling the AI to preserve the single-rear-wheel
+    # layout instead of hallucinating a second rear wheel. UI only
+    # surfaces this toggle when equipmentType=="forklift"; the backend
+    # mirrors that gate (no-op for other equipment types).
+    three_wheel: bool = Field(False, alias="threeWheel")
 
 
 class EnhanceResponse(BaseModel):

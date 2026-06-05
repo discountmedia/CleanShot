@@ -548,6 +548,20 @@ def _build_enhance_prompt(
             "model badges, and safety stickers — only third-party rental-"
             "fleet branding is removed."
         )
+    # Identity-preservation guardrail for 3-wheel forklifts. Gated to
+    # equipment_type=="forklift" in lock-step with the EnhancePanel
+    # filter — rough-terrain / telehandler / scissor / pallet / etc.
+    # are never 3-wheel layouts, so the toggle silently no-ops there
+    # even if a hand-crafted request sends it on.
+    if toggles.three_wheel and equipment_type == "forklift":
+        extras.append(
+            "THREE-WHEEL FORKLIFT — this unit is a 3-WHEEL design with a "
+            "SINGLE rear wheel (a pivot / steer wheel under the centre of "
+            "the counterweight), NOT two rear wheels. Preserve the single-"
+            "rear-wheel layout exactly: do not add a second rear wheel, "
+            "do not split the single wheel into a dual set, do not change "
+            "the wheel position or size."
+        )
 
     if extras:
         sections.append(
@@ -694,6 +708,13 @@ def _build_kontext_prompt(
         lines.append(
             "Balance the exposure and lighting while keeping the scene and "
             "location intact."
+        )
+    # 3-wheel guardrail — gated to equipment_type=="forklift" same as
+    # the Gemini procedural builder.
+    if toggles.three_wheel and equipment_type == "forklift":
+        lines.append(
+            "This is a 3-WHEEL forklift — keep the SINGLE rear pivot/steer "
+            "wheel under the counterweight. Do not add a second rear wheel."
         )
 
     return "\n".join(lines)

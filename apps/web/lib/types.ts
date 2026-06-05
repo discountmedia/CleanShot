@@ -126,6 +126,15 @@ export interface EnhanceToggles {
    * would over-clean a real ground surface.
    */
   showroomFloor: boolean;
+  /**
+   * Identity-preservation flag for 3-wheel (single-rear-pivot-wheel)
+   * forklifts. When ON, the prompt asserts the unit has ONE rear wheel
+   * and tells the generator not to hallucinate a second one. UI only
+   * surfaces this toggle when equipmentType === "forklift" (see the
+   * filter in EnhancePanel) — irrelevant for telehandlers / scissor
+   * lifts / pallet jacks etc.
+   */
+  threeWheel: boolean;
 }
 
 /**
@@ -149,6 +158,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   improveLighting: false,
   removeRentalBranding: false,
   showroomFloor: false,
+  threeWheel: false,
 };
 
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
@@ -162,6 +172,7 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   improveLighting: "Improve Lighting",
   removeRentalBranding: "Remove Rental-Fleet Branding",
   showroomFloor: "Perfect Showroom Floor",
+  threeWheel: "3-Wheel",
 };
 
 export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
@@ -175,6 +186,7 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
   showroomFloor: "Studio / showroom shots only — replaces the floor with a perfect, shiny, middle-gray polished-concrete finish. Preserves the unit's contact shadow. No-op for outdoor / yard photos",
+  threeWheel: "This is a 3-wheel forklift (single rear pivot/steer wheel under the counterweight) — tells the AI to preserve the single-rear-wheel layout instead of hallucinating a second rear wheel. Forklift only.",
 };
 
 // ─── Upload ───────────────────────────────────────────────────────────────────

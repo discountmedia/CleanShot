@@ -1550,16 +1550,21 @@ export function EnhancePanel({
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
-                  // paintForksRedYellowTips applies to every equipment
-                  // type EXCEPT scissor lift — forklifts, telehandlers,
-                  // reach trucks, order pickers, pallet jacks, and
-                  // walkie stackers all carry visible forks. Backend
-                  // mirrors this rule in enhance_worker.py's
-                  // paint_forks_on check; keep them in lock-step.
+                  // Equipment-conditional toggle visibility:
+                  //  • paintForksRedYellowTips — shown for every equipment
+                  //    type EXCEPT scissor_lift (everything else carries
+                  //    visible forks). Backend mirrors this in
+                  //    enhance_worker.py's paint_forks_on check.
+                  //  • threeWheel — shown ONLY when equipmentType is
+                  //    "forklift" (rough_terrain / telehandler / scissor
+                  //    lift / reach truck / order picker / pallet jack /
+                  //    walkie stacker are never 3-wheel layouts).
+                  // Keep these gates in lock-step with the backend.
                   .filter((key) => {
-                    if (key !== "paintForksRedYellowTips") return true;
                     const et = meta.equipmentType ?? "forklift";
-                    return et !== "scissor_lift";
+                    if (key === "paintForksRedYellowTips") return et !== "scissor_lift";
+                    if (key === "threeWheel")              return et === "forklift";
+                    return true;
                   })
                   .map((key) => (
                     <ToggleSwitch
