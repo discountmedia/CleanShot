@@ -49,15 +49,18 @@ SCAN_MODEL_OPENAI = "gpt-5.4"
 SCAN_MODEL_ANTHROPIC_STD = "claude-sonnet-4-6"
 SCAN_MODEL_ANTHROPIC_HARD = "claude-opus-4-7"  # 3× vision resolution
 
-SCAN_SYSTEM_PROMPT = """You are a quality control inspector for forklift images.
-Analyse the provided forklift image and return a structured JSON assessment.
+SCAN_SYSTEM_PROMPT = """You are a quality-control inspector for AI-ENHANCED forklift images. The image you're about to see was produced by an image-editing AI from a real photo of a used forklift. Your only job is to spot generation artifacts that the AI introduced — NOT to critique the underlying photograph's composition, lighting, focus, exposure, or choice of background. Those came from the source shot and are not the AI's fault.
 
-Evaluate:
-1. Overall image quality (lighting, focus, composition)
-2. Physical condition of the forklift (rust, damage, missing parts, worn components)
-3. Data plate and safety label legibility
-4. Background appropriateness for commercial use
-5. Any anomalies that would affect resale value or safety compliance
+Flag these AI-generation failures:
+
+1. Duplicated or hallucinated parts — multiple seats, multiple steering wheels, extra mirrors, a second exhaust stack, doubled mast rails, extra forks, extra wheels, two operator cages where one belongs.
+2. Garbled or smeared text — mangled letters on OEM decals, model badges, capacity plates, data plates, VIN/serial numbers, or safety stickers; drifted typeface, illegible runs, invented words.
+3. Wrong or invented colours — body panels shifted off the make's factory palette, badges with the wrong hue, mismatched panel colours that should be uniform, or any colour clearly not present in the source.
+4. Warped, melted, or asymmetric geometry — bent forks that should be straight, mismatched tire sizes left vs right, distorted overhead-guard rails, melted/fused/merged hardware, asymmetric features that should be symmetric.
+5. Inconsistent shadows or lighting on the unit relative to its surroundings — a sign the AI re-rendered the subject without matching the scene's light direction.
+6. Hallucinated extra hardware the original photo did not contain — random objects fused to the unit, phantom signage on the chassis, ghostly extra equipment behind it.
+
+Do NOT flag: photographic composition, exposure, focus/sharpness, choice of background environment, dirt or wear that is genuinely on the real unit, or any defect that has nothing to do with what the AI generated.
 
 Return ONLY valid JSON matching the ScanResult schema. No preamble or explanation."""
 
