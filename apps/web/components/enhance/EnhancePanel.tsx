@@ -352,6 +352,18 @@ export function EnhancePanel({
   const [chosenByFile, setChosenByFile] = useState<Map<string, EnhanceProvider>>(new Map());
   const [heldFiles, setHeldFiles] = useState<Set<string>>(new Set());
 
+  // Mirror of enhanceJobs so handleJobComplete (memoized with stable
+  // deps so the poller's callback identity stays steady across re-
+  // renders) can read the AT-SUBMIT-TIME per-file provider count from
+  // inside its closure. We deliberately gate auto-pick on what was
+  // enqueued for THIS file, not on the live selectedProviders set —
+  // the operator can untick a provider mid-batch and that should not
+  // retroactively make the still-running variants of that batch look
+  // "uncontested." Bare assign during render is the canonical "latest
+  // snapshot for callbacks" pattern.
+  const enhanceJobsRef = useRef(enhanceJobs);
+  enhanceJobsRef.current = enhanceJobs;
+
   // Per-variant Flux erase dialog state. When a target is set, the
   // EraseDialog opens with that variant's source asset. Single dialog
   // instance shared across all SourceCompareCards — only one erase
@@ -487,6 +499,24 @@ export function EnhancePanel({
             });
             return next;
           });
+          // Narrow auto-pick: when EXACTLY one provider was enqueued for
+          // THIS file, the variant that just completed is trivially the
+          // winner — there's no other candidate to compare against. The
+          // embedded Darkroom (which now filters to chosen winners only)
+          // would otherwise appear empty for the dominant single-
+          // provider Gemini case. Skipped when a manual pick already
+          // exists. We read the per-file enqueued count from
+          // enhanceJobsRef so toggling a provider on/off AFTER submit
+          // doesn't retroactively change which files qualify — only
+          // what the batch was actually enqueued with counts.
+          if ((enhanceJobsRef.current.get(file.id)?.size ?? 0) === 1) {
+            setChosenByFile((prev) => {
+              if (prev.has(file.id)) return prev;
+              const next = new Map(prev);
+              next.set(file.id, provider);
+              return next;
+            });
+          }
         })
         .catch((err: Error) => {
           console.warn("[enhance] failed to fetch asset URL", err);
@@ -1173,6 +1203,35 @@ export function EnhancePanel({
     return out;
   }, [files, heldFiles, chosenByFile, enhanceJobs, completed, sentJobIds]);
 
+  // Sibling of readyToSend used by the embedded Darkroom panel below.
+  // Same winner-resolution chain (file → chosenByFile → enhanceJobs
+  // [file][chosen] → completed[jobId]) and ALSO filters held files so
+  // "Hold" reads consistently as "exclude from every batch operation"
+  // — without this filter, an operator who held a file before its job
+  // completed (and lost track of which they held) would silently get
+  // batch slider adjustments applied to it. Unlike readyToSend we do
+  // NOT filter by sentJobIds: an already-sent variant may still need
+  // a brighter re-pass before a subsequent Resize export.
+  //
+  // Returns the jobId alongside each item so onModifyApplied can patch
+  // results back keyed by assetId → jobId. assetId is guaranteed
+  // one-to-one with jobId (each job owns its own outputAssetId, and
+  // every job ID is unique per batch), so building a Map<assetId,
+  // jobId> never silently de-dupes.
+  const pickedWinners = useMemo(() => {
+    const out: Array<{ jobId: string; item: CompletedEnhanceItem }> = [];
+    for (const f of files) {
+      if (heldFiles.has(f.id)) continue;
+      const chosen = chosenByFile.get(f.id);
+      if (!chosen) continue;
+      const jobId = enhanceJobs.get(f.id)?.get(chosen);
+      if (!jobId) continue;
+      const item = completed.get(jobId);
+      if (item) out.push({ jobId, item });
+    }
+    return out;
+  }, [files, heldFiles, chosenByFile, enhanceJobs, completed]);
+
   // Manual "Send N to Scan →" CTA handler used by CommandBar.
   const handleSendAll = useCallback(() => {
     if (readyToSend.length === 0) return;
@@ -1770,41 +1829,92 @@ export function EnhancePanel({
       )}
 
       {/* ── Darkroom (Adjustments / Crop / Straighten) ──
-          Appears once at least one variant has finished. Was the standalone
-          Modify tab until 2026-06-01; relocated here so darkroom controls
-          are available "after images are generated." Replaces variants
-          in-place, keyed by Map insertion order. Embedded mode hides the
-          TipBanner + standalone uploader. */}
-      {completed.size > 0 && (
+          FILTERED to operator-picked winners (the `pickedWinners` memo
+          above) — variants without a Choose click don't appear, and
+          held files are excluded so Hold reads as a real opt-out from
+          every batch operation. The live-preview grid inside
+          ModifyPanel renders directly from `resizeAssets`, so it
+          shrinks to winners-only too. Single-provider runs auto-pick
+          on job completion (see handleJobComplete); multi-provider
+          runs require explicit Choose clicks per card.
+
+          Race defense: the `onModifyApplied` arrow and the
+          `resizeAssets` array are both fresh on every render, but
+          ModifyPanel's `handleApply` is recreated each render too and
+          runs to completion on the at-click closure. That click-time
+          closure pins (a) the `pairs[i].original.assetId` values it
+          will send back, AND (b) THIS callback's `pickedWinners`
+          snapshot — the two are guaranteed to be from the same
+          render. So even if the operator re-picks a winner during the
+          await, the assetIdToJobId lookup below succeeds against the
+          original (pre-Apply) state and patches the right jobId.
+
+          Winner changed AFTER Apply: the modified bytes are persisted
+          under the OLD jobId in `completed`. The new winner is the
+          original untouched variant. Acceptable; do not cascade.
+
+          Embedded mode hides the TipBanner + standalone uploader. */}
+      {pickedWinners.length > 0 && (
         <ModifyPanel
           embedded={true}
           sessionId={sessionId}
-          resizeAssets={Array.from(completed.values()).map((item) => ({
+          resizeAssets={pickedWinners.map(({ item }) => ({
             assetId:      item.outputAssetId,
             filename:     item.filename,
             thumbnailUrl: item.outputUrl,
             outputUrl:    item.outputUrl,
             provider:     item.provider,
           }))}
-          onModifyApplied={(next) => {
-            // ModifyPanel returns the modified assets in the same order it
-            // received them, so we replay the completed Map's key order
-            // (Maps iterate insertion-order in JS) and patch each entry's
-            // outputAssetId/outputUrl with the freshly-rendered version.
+          onModifyApplied={(pairs) => {
+            // outputAssetId is structurally one-to-one with jobId (each
+            // job mints its own asset), so this Map can't silently de-
+            // duplicate keys.
+            const assetIdToJobId = new Map(
+              pickedWinners.map(({ jobId, item }) => [item.outputAssetId, jobId]),
+            );
+            if (pairs.length !== pickedWinners.length) {
+              console.warn(
+                "[darkroom] partial result: sent",
+                pickedWinners.length,
+                "got",
+                pairs.length,
+                "— some variants may not have been patched",
+              );
+            }
+            // Patch `completed` so SourceCompareCard's variant thumb
+            // re-renders with the Darkroom-rendered image immediately
+            // (variantsByFile derives from `completed`).
             setCompleted((prev) => {
-              const jobIds = Array.from(prev.keys());
               const updated = new Map(prev);
-              next.forEach((modified, idx) => {
-                const jobId = jobIds[idx];
-                if (!jobId) return;
+              for (const { original, modified } of pairs) {
+                const jobId = assetIdToJobId.get(original.assetId);
+                if (!jobId) continue;
                 const cur = updated.get(jobId);
-                if (!cur) return;
+                if (!cur) continue;
                 updated.set(jobId, {
                   ...cur,
                   outputAssetId: modified.assetId,
-                  outputUrl:     modified.outputUrl ?? modified.thumbnailUrl,
+                  // ModifyPanel guarantees outputUrl is set on the
+                  // returned modified asset (see ModifyPanel.handleApply),
+                  // so no defensive fallback is needed.
+                  outputUrl:     modified.outputUrl!,
                 });
-              });
+              }
+              return updated;
+            });
+            // Mirror outputAssetId into jobStateMap for symmetry with
+            // the Erase / Tweak / Ideogram patches — some downstream
+            // tool-open flows read it as a fallback identifier for the
+            // current asset behind a job.
+            setJobStateMap((prev) => {
+              const updated = new Map(prev);
+              for (const { original, modified } of pairs) {
+                const jobId = assetIdToJobId.get(original.assetId);
+                if (!jobId) continue;
+                const cur = updated.get(jobId);
+                if (!cur) continue;
+                updated.set(jobId, { ...cur, outputAssetId: modified.assetId });
+              }
               return updated;
             });
           }}

@@ -22,7 +22,7 @@
 // Phase 1 is BATCH ONLY — same adjustments / crop / rotation apply to
 // every queued image. Per-image variation is Phase 2.
 
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import {
@@ -93,7 +93,18 @@ const MAX_UPLOADS = 150;
 export interface ModifyPanelProps {
   sessionId: string;
   resizeAssets: PipelineAsset[];
-  onModifyApplied: (next: PipelineAsset[]) => void;
+  /**
+   * Called after a successful Apply. Each entry pairs the asset that
+   * was submitted (`original`, pre-Modify — assetId etc. as the caller
+   * gave us) with the newly-rendered asset (`modified`, post-Modify).
+   * Passing both lets the caller round-trip by the original assetId
+   * even when its own derived state has changed between Apply-click
+   * and resolve (e.g. EnhancePanel's winner-pick changing mid-flight).
+   * Order matches the order the caller passed in via `resizeAssets`.
+   */
+  onModifyApplied: (
+    pairs: Array<{ original: PipelineAsset; modified: PipelineAsset }>,
+  ) => void;
   /** Wipe the cross-tab pipeline state (Workspace's resizeAssets). */
   onClearPipeline?: () => void;
   /** Jump straight to the Resize tab without applying any adjustments. */
@@ -259,6 +270,32 @@ export function ModifyPanel({
   const allAssets = [...resizeAssets, ...standaloneAssets];
   const anyUploadInFlight = uploads.some((u) => u.status === "uploading");
 
+  // Garbage-collect per-image state when an assetId disappears from
+  // allAssets — happens in embedded mode if the operator runs Erase /
+  // Tweak / Ideogram on a variant whose darkroom adjustments were
+  // mid-tune (those tools patch completed[jobId].outputAssetId in
+  // place, so the old assetId vanishes from pickedWinners → resizeAssets
+  // → allAssets). Without this prune, perImageAdj keeps a stale entry
+  // forever and the operator's slider dial-in silently disappears.
+  // Dep is the pipe-joined assetId list so the effect only re-runs when
+  // the SET of assets changes — not on every parent render.
+  const allAssetIdsKey = allAssets.map((a) => a.assetId).join("|");
+  useEffect(() => {
+    const currentIds = new Set(allAssetIdsKey ? allAssetIdsKey.split("|") : []);
+    setPerImageAdj((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const key of Array.from(next.keys())) {
+        if (!currentIds.has(key)) {
+          next.delete(key);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+    setSelectedAssetId((prev) => (prev && !currentIds.has(prev) ? null : prev));
+  }, [allAssetIdsKey]);
+
   // The adjustments the operator is currently EDITING — in batch
   // mode this is the global batchAdj; in per-image mode it's the
   // selected thumb's per-image entry (falling back to batchAdj if
@@ -418,17 +455,22 @@ export function ModifyPanel({
         adjustments: batchAdj,
         perAsset:    perAssetRecord,
       });
-      const next: PipelineAsset[] = items.map((it, i) => {
-        const original = allAssets[i];
-        return {
+      const pairs = items.map((it, i) => {
+        // applyModifyBatch preserves input order (api.ts contract +
+        // backend pyvips loop), so allAssets[i] is always defined for
+        // 0 ≤ i < items.length. Non-null assertion documents that
+        // contract for the type-checker.
+        const original = allAssets[i]!;
+        const modified: PipelineAsset = {
           assetId:      it.assetId,
-          filename:     original?.filename ?? it.filename,
+          filename:     original.filename,
           thumbnailUrl: it.url,
           outputUrl:    it.url,
-          provider:     original?.provider,
+          provider:     original.provider,
         };
+        return { original, modified };
       });
-      onModifyApplied(next);
+      onModifyApplied(pairs);
       // Clear standalone uploads + revoke object URLs.
       setUploads((prev) => {
         prev.forEach((u) => URL.revokeObjectURL(u.previewUrl));
@@ -439,7 +481,7 @@ export function ModifyPanel({
       // Show the green "→ Continue to Resize" success card. handleResetAll
       // doesn't clear this; only an explicit Dismiss or a subsequent
       // successful Apply replaces the count.
-      setAppliedCount(next.length);
+      setAppliedCount(pairs.length);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Modify failed");
     } finally {
@@ -897,7 +939,14 @@ export function ModifyPanel({
                 </p>
               )}
 
-              {appliedCount !== null && (
+              {/* Success card — "Ready for Resize" framing only makes sense
+                  in the (now-gone) standalone Modify tab where the next step
+                  was actually Resize. In embedded mode (inside Enhance), the
+                  operator's next step is still Send-to-Scan or Skip-Scan, so
+                  the framing is misleading. The variants grid above re-renders
+                  with the modified images as soon as setCompleted lands; that
+                  IS the visual confirmation here. */}
+              {!embedded && appliedCount !== null && (
                 <div className="bg-emerald-950/50 border-2 border-emerald-600 rounded-xl px-5 py-4 flex items-center gap-4">
                   <div className="flex-1">
                     <p className="text-base font-bold text-emerald-100">
@@ -954,12 +1003,14 @@ export function ModifyPanel({
             </div>
           </section>
 
-          {/* ── Standardized bottom action row ──────────────────────────
-              Green Proceed · Blue Skip · Red Clear All, per the app-wide
-              button colour system. Proceed applies any pending
-              adjustments first (if non-neutral) then moves to Resize;
-              Skip jumps to Resize without applying; Clear All wipes the
-              Modify queue + cross-tab pipeline state. */}
+          {/* ── Standardized bottom action row (standalone tab only) ──
+              Green Proceed · Blue Skip · Red Clear All. Hidden in embedded
+              mode entirely: EnhancePanel owns its own send/skip/clear
+              controls (CommandBar + the top-level "Skip scanning" button)
+              and a lone red "Clear All" here would only wipe ModifyPanel's
+              local slider state — orphaned affordance that surprises the
+              operator. */}
+          {!embedded && (
           <div className="flex items-center gap-3 flex-wrap pt-2">
             {onSkipToResize && (
               <button
@@ -992,6 +1043,7 @@ export function ModifyPanel({
               Clear All
             </button>
           </div>
+          )}
         </>
       )}
     </div>
