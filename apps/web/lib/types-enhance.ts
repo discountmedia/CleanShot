@@ -9,35 +9,30 @@
  * apps/api/src/cleanshot_api/models/schemas.py.
  */
 /**
- * Image-edit GENERATION provider. Flux 2 Max deliberately not in this
- * list — it's reserved for mask-based erase on completed variants
- * (see lib/api.ts enqueueErase) rather than full-image generation.
- * The Kontext slot is BFL's identity-preserving flux-1-kontext/max
- * via the RunComfy proxy — same vendor as the erase tool but
- * different model family. Ideogram joined as a 5th option for its
- * typography strength on OEM decals + model numbers; same underlying
- * /v1/edit endpoint as the per-variant Ideogram Edit tool. Reve is
- * the 6th option — synchronous /v1/image/edit; auto-enhances the
- * instruction internally for a distinct creative voice.
+ * Image-edit GENERATION provider for the primary Enhance picker.
+ * Narrowed to Gemini / OpenAI / Grok 2026-06-05 — Kontext (BFL Flux
+ * Kontext Max via RunComfy), Ideogram (3.0 /v1/edit), and Reve
+ * (latest-fast /v1/image/edit) were removed from the user-facing
+ * picker. Note: Ideogram is still wired internally for the per-variant
+ * Tweak ("T cyan Edit") + Inpaint ("🖌 rose") tools — those tools have
+ * their own `tool` Literal separate from this primary-provider union.
+ * Likewise the BFL erase tool (`⌫ purple`) uses its own BFL_API_KEY
+ * path, not this Literal. Backend helpers _enhance_with_kontext /
+ * _enhance_with_reve remain as dead-but-harmless code so a revert is a
+ * one-line restoration if the operator brings these models back.
  */
-export type EnhanceProvider = "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve";
+export type EnhanceProvider = "gemini" | "openai" | "grok";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
   "grok",
-  "kontext",
-  "ideogram",
-  "reve",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
   gemini:   "Gemini",
   openai:   "OpenAI",
   grok:     "Grok",
-  kontext:  "Kontext",
-  ideogram: "Ideogram",
-  reve:     "Reve",
 };
 
 // ─── Master-prompt selection (the per-card "Prompt:" dropdown) ───────────────
@@ -69,16 +64,16 @@ export const PROMPT_AUTHOR_LABELS: Record<PromptAuthor, string> = {
   grok:   "Grok",
 };
 
-// Authors offered under "Tailored for <generator>" per card. Edit-style models
-// have all four; the namesake generators (gemini/openai/grok) carry only their
-// own author. Mirrors TAILORED_AUTHORS in master_prompts.py.
+// Authors offered under "Tailored for <generator>" per card. With the
+// Kontext/Ideogram/Reve edit-style models removed from the picker (see
+// EnhanceProvider above), only the three namesake generators remain —
+// each offers only its own author. Master prompts for the removed
+// generators still live in master_prompts.py as dead-but-harmless code
+// in case the operator wants any of them back.
 export const TAILORED_AUTHORS_BY_GENERATOR: Record<EnhanceProvider, PromptAuthor[]> = {
-  kontext:  ["claude", "gemini", "openai", "grok"],
-  ideogram: ["claude", "gemini", "openai", "grok"],
-  reve:     ["claude", "gemini", "openai", "grok"],
-  gemini:   ["gemini"],
-  openai:   ["openai"],
-  grok:     ["grok"],
+  gemini: ["gemini"],
+  openai: ["openai"],
+  grok:   ["grok"],
 };
 
 // The four generic (one-size-fits-all) authors — offered on every card, and the
@@ -97,12 +92,9 @@ export const GENERIC_AUTHORS: readonly PromptAuthor[] = [
  * vocabulary the rest of the app uses.
  */
 export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
-  gemini:   "bg-blue-950/40 text-blue-300 border-blue-800",
-  openai:   "bg-green-950/40 text-green-300 border-green-800",
-  grok:     "bg-orange-950/40 text-orange-300 border-orange-800",
-  kontext:  "bg-purple-950/40 text-purple-300 border-purple-800",
-  ideogram: "bg-cyan-950/40 text-cyan-300 border-cyan-800",
-  reve:     "bg-fuchsia-950/40 text-fuchsia-300 border-fuchsia-800",
+  gemini: "bg-blue-950/40 text-blue-300 border-blue-800",
+  openai: "bg-green-950/40 text-green-300 border-green-800",
+  grok:   "bg-orange-950/40 text-orange-300 border-orange-800",
 };
 
 /**
@@ -140,23 +132,5 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
     speedClass:  "text-emerald-300 bg-emerald-950/60 border-emerald-800",
     description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
     titleClass:  "text-orange-300",
-  },
-  kontext: {
-    speedLabel:  "Moderate",
-    speedClass:  "text-amber-300 bg-amber-950/60 border-amber-800",
-    description: "BFL Flux Kontext Max (via RunComfy) — purpose-built for identity-preserving edits. Strong on subject continuity.",
-    titleClass:  "text-fuchsia-300",
-  },
-  ideogram: {
-    speedLabel:  "Fastest",
-    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
-    description: "Ideogram 3.0 /v1/edit — typography-strong, best when the unit has visible OEM decals, model numbers, or signage to preserve.",
-    titleClass:  "text-cyan-300",
-  },
-  reve: {
-    speedLabel:  "Fast",
-    speedClass:  "text-emerald-200 bg-emerald-900/70 border-emerald-600",
-    description: "Reve image-edit (latest-fast) — synchronous /v1/image/edit; auto-enhances the instruction internally for a distinct creative voice.",
-    titleClass:  "text-fuchsia-300",
   },
 };
