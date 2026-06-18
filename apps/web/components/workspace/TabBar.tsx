@@ -1,7 +1,7 @@
 "use client";
 // apps/web/components/workspace/TabBar.tsx
 // Tab navigation row beneath the header.
-// Active tab gets a red underline + red text — matches the inventory-dashboard pattern.
+// Active tab gets a brand-purple underline + purple text — matches the inventory-dashboard pattern.
 
 export type TabId = "enhance" | "scan" | "resize" | "history";
 
@@ -45,7 +45,7 @@ export function TabBar({ tabs, active, onChange, onPrefetch }: TabBarProps) {
                 relative flex items-center gap-2 py-4 text-base font-bold uppercase tracking-[0.16em]
                 transition-colors whitespace-nowrap
                 ${isActive
-                  ? "text-red-400"
+                  ? "text-brand-400"
                   : "text-zinc-200 hover:text-white"}
               `}
             >
@@ -54,14 +54,14 @@ export function TabBar({ tabs, active, onChange, onPrefetch }: TabBarProps) {
                 <span className={`
                   inline-flex items-center justify-center min-w-6.5 h-5.5 px-2
                   rounded text-sm font-bold tabular-nums
-                  ${isActive ? "bg-red-900 text-red-100" : "bg-zinc-800 text-zinc-100"}
+                  ${isActive ? "bg-brand-900 text-brand-300" : "bg-zinc-800 text-zinc-100"}
                 `}>
                   {tab.count}
                 </span>
               )}
               {isActive && (
                 <span
-                  className="absolute left-0 right-0 bottom-0 h-0.75 bg-red-600"
+                  className="absolute left-0 right-0 bottom-0 h-0.75 bg-brand-500"
                   aria-hidden="true"
                 />
               )}

@@ -1,26 +1,54 @@
 /* Tailwind v4: single @import replaces @tailwind base/components/utilities */
 @import "tailwindcss";
 
-/* All design tokens — no tailwind.config.js in v4 */
+/* ── Brand palette ────────────────────────────────────────────────────────
+   Colours + font mimic the company marketing site (home.css). This is a
+   palette-only restyle: we remap the Tailwind colour families the app
+   already uses (black / zinc surfaces, sky links) onto the brand greys +
+   purple, so existing utility classes pick up the new look with NO layout
+   change.
+
+   Deliberately NOT remapped (so per-model provider chips + the semantic
+   button system keep their meaning): blue (gemini), green (openai),
+   orange (grok), purple (kontext), cyan (ideogram), fuchsia (reve), plus
+   red (errors / cancel — matches brand --error) and yellow (field hints).
+   sky-300 is also left alone — gemini's provider title uses it. */
 @theme {
-  --color-brand-900:   #1A2F5E;
-  --color-brand-700:   #1F4E9B;
-  --color-brand-500:   #2E75B6;
-  --color-brand-100:   #EBF3FB;
+  /* Company purple — exposed under the (previously unused) brand-* family
+     so the purple utilities never collide with kontext's purple-* chip. */
+  --color-brand-300:  #DDA3EE;
+  --color-brand-400:  #CE6FEC;   /* brand-purple-light — active text, accents */
+  --color-brand-500:  #A559BD;   /* brand-purple — primary accent / fills */
+  --color-brand-600:  #914EA6;   /* brand-purple-hover */
+  --color-brand-700:  #7E3E92;
+  --color-brand-900:  #3A2142;   /* deep purple — subtle tinted backgrounds */
 
-  --color-success-900: #1E4620;
-  --color-success-100: #D6EFD8;
+  /* Acid lime — logo text, headings, placeholders. Custom token (no Tailwind
+     `lime-*` override) so nothing else shifts. */
+  --color-acid:       #95EA00;
 
-  --color-warn-900:    #7F4F00;
-  --color-warn-100:    #FFF3CD;
+  /* Surfaces + text — remap black + the zinc ramp onto the brand greys.
+     #131313 page → #1C1C1C → #2D2D2D card → #353535 raised. */
+  --color-black:      #131313;   /* page + header base */
+  --color-white:      #F4F4F4;   /* text-primary (near-white, not pure) */
 
-  --color-error-900:   #6B1A1A;
-  --color-error-100:   #FDECEA;
+  --color-zinc-950:   #171717;
+  --color-zinc-900:   #2D2D2D;   /* card surface */
+  --color-zinc-800:   #353535;   /* raised surface / card border */
+  --color-zinc-700:   #454549;   /* muted / input border */
+  --color-zinc-600:   #5A5A60;   /* unselected control border */
+  --color-zinc-500:   #9F9F9F;   /* muted text */
+  --color-zinc-400:   #B0B0B0;   /* muted text (alt) */
+  --color-zinc-300:   #CDCDCD;
+  --color-zinc-200:   #E4E4E4;
+  --color-zinc-100:   #F4F4F4;   /* primary text */
 
-  --color-surface:     #F8FAFC;
-  --color-border:      #E2E8F0;
+  /* Links / focus accents → brand purple. sky-300 intentionally untouched
+     (gemini provider title). */
+  --color-sky-400:    #CE6FEC;   /* link colour (utility usages) */
+  --color-sky-500:    #A559BD;   /* focus rings */
 
-  --font-sans:   'Inter', system-ui, sans-serif;
+  --font-sans:   'myriad-pro', system-ui, sans-serif;
   --font-mono:   'JetBrains Mono', monospace;
 
   --radius-card: 0.75rem;
@@ -34,19 +62,29 @@
 
 /* ── Hyperlinks / inline CTAs ────────────────────────────────────────────
    Canonical link style for the whole app: bold + one consistent bright
-   colour (sky-400). This is a base-layer default — any link that needs a
-   different colour can still override with a Tailwind text-* utility
-   (utilities out-specificity base rules). The goal is that a link with NO
-   explicit colour class always lands on the same obvious accent instead of
-   inheriting body text colour and disappearing. See STYLE_GUIDE.md. */
+   colour. Brand restyle moved this from sky-400 to brand-purple-light. Any
+   link that needs a different colour can still override with a Tailwind
+   text-* utility (utilities out-specificity base rules). See STYLE_GUIDE.md. */
 @layer base {
   a {
     font-weight: 700;
-    color: #38bdf8; /* sky-400 */
+    color: #CE6FEC; /* brand-purple-light */
   }
   a:hover {
-    color: #7dd3fc; /* sky-300 */
+    color: #DDA3EE; /* lighter purple */
     text-decoration: underline;
+  }
+
+  /* App-wide brand font. The Adobe "myriad-pro" web font is not bundled;
+     this sets the family + a graceful system-sans fallback. */
+  body {
+    font-family: var(--font-sans);
+  }
+
+  /* Placeholders pick up the brand lime (dimmed so inputs stay legible). */
+  ::placeholder {
+    color: #95EA00;
+    opacity: 0.55;
   }
 
   /* Reserve the vertical scrollbar's gutter at all times so content

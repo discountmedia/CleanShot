@@ -21,7 +21,7 @@ export function Header({
   isAdmin = false,
 }: HeaderProps) {
   return (
-    <header className="bg-black border-b-2 border-red-600">
+    <header className="bg-black border-b-2 border-brand-500">
       {/* BETA banner — sits above the logo row so it's the first thing
           the operator sees on page load. Links to the user profile page
           where they can file a support ticket. Amber striped to read as
@@ -37,7 +37,7 @@ export function Header({
             Site is currently in testing — bugs will be present.{" "}
             <Link
               href="/profile"
-              className="font-bold text-sky-400 underline hover:text-sky-300 transition-colors"
+              className="font-bold text-brand-400 underline hover:text-brand-300 transition-colors"
             >
               Send a support ticket through the user profile page
             </Link>{" "}
@@ -68,7 +68,7 @@ export function Header({
             as a co-equal brand mark next to the Discount Forklift logo
             instead of fine print. */}
         <div className="flex items-baseline gap-3 min-w-0">
-          <h1 className="text-3xl font-extrabold tracking-[0.14em] text-white uppercase">
+          <h1 className="text-3xl font-extrabold tracking-[0.14em] text-acid uppercase">
             CleanShot
           </h1>
           {subtitle && (
@@ -83,7 +83,7 @@ export function Header({
           {isAdmin && (
             <Link
               href="/admin"
-              className="text-sm uppercase tracking-[0.16em] font-bold text-red-300 hover:text-white border-2 border-red-700 hover:border-red-500 bg-red-950/40 hover:bg-red-900/50 px-4 py-2 rounded transition-colors"
+              className="text-sm uppercase tracking-[0.16em] font-bold text-brand-300 hover:text-white border-2 border-brand-700 hover:border-brand-500 bg-brand-900/40 hover:bg-brand-700/40 px-4 py-2 rounded transition-colors"
               aria-label="Open admin dashboard"
             >
               Admin
