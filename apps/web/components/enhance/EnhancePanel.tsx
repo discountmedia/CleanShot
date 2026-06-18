@@ -1913,9 +1913,8 @@ export function EnhancePanel({
 
       {/* ── Save & export ──
           Moved here from the removed Resize tab. Operates on the
-          operator-picked winners — Save Project unlocks the export
-          presets, then PRO / collage / branded-collage download from
-          right inside Enhance. */}
+          operator-picked winners — Save Project unlocks the PRO export,
+          then download from right inside Enhance. */}
       {pickedWinners.length > 0 && (
         <ExportControls
           sessionId={sessionId}

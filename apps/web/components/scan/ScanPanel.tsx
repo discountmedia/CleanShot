@@ -884,8 +884,8 @@ export function ScanPanel({
       {/* ── Save & export ──
           Moved here from the removed Resize tab. Shows once at least one
           card has been approved (or the operator hit "Skip scanning —
-          queue all for export"). Save Project unlocks the export presets,
-          then PRO / collage / branded-collage download right here. */}
+          queue all for export"). Save Project unlocks the PRO export,
+          then download right here. */}
       {exportAssets.length > 0 && (
         <ExportControls
           sessionId={sessionId}

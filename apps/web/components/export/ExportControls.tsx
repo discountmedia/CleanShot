@@ -2,40 +2,31 @@
 // apps/web/components/export/ExportControls.tsx
 //
 // Save Project + Export controls — extracted from the old Resize tab so the
-// same Save / PRO-export / collage / branded-collage flow can be embedded at
-// the bottom of BOTH the Enhance and Scan tabs (the standalone Resize tab was
-// removed). Operates on a caller-supplied `assets` list (Enhance feeds it the
-// picked winners; Scan feeds it the approved cards) and keeps a local,
-// drag-reorderable copy of that list so branded-collage hero ordering still
-// works without round-tripping through Workspace state.
+// same Save / PRO-export flow can be embedded at the bottom of BOTH the
+// Enhance and Scan tabs (the standalone Resize tab was removed). Operates on a
+// caller-supplied `assets` list (Enhance feeds it the picked winners; Scan
+// feeds it the approved cards) and keeps a local, drag-reorderable copy of
+// that list so the operator can set export order without round-tripping
+// through Workspace state.
 //
 // Flow (unchanged from the old Resize tab):
 //   1. Confirm the project fields (pre-filled from Workspace meta + login email).
 //   2. Click "Save Project" → POST /api/projects/save (also approves the set to
 //      Your Photo Library). Backend flips projects.saved_at, unblocking exports.
-//   3. Pick an export preset (PRO / collage / branded collage) and download.
+//   3. Click "PRO export" and download.
 //
 // Deliberately omits the standalone uploader + Clear-all that the Resize tab
 // had — the host tab (Enhance / Scan) already owns image intake and clearing.
 
-import { useEffect, useMemo, useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   approveSet,
-  createBrandedCollage,
-  exportCollageAsBlob,
   exportProPreviewStream,
-  getSignedUploadUrl,
   saveProject,
-  uploadToGcs,
   type ExportProPreviewItem,
 } from "../../lib/api";
 import { formatBytes } from "../../lib/compress";
-import {
-  EQUIPMENT_GROUPS,
-  EQUIPMENT_TYPE_LABELS,
-  type EquipmentType,
-  type ForkliftMeta,
-} from "../../lib/types";
+import { type ForkliftMeta } from "../../lib/types";
 
 // Watermark string burnt into the bottom-right corner of every exported JPEG
 // when the operator ticks "Add AI disclaimer". Backend pyvips uses the same
@@ -53,10 +44,10 @@ export interface ExportAsset {
 export interface ExportControlsProps {
   sessionId: string;
   /**
-   * Curated assets to save + export. Order matters — index 0 becomes the hero
-   * in branded collages. The host tab passes its current set (Enhance: picked
+   * Curated assets to save + export. Order matters — it drives the export
+   * filename numbering. The host tab passes its current set (Enhance: picked
    * winners; Scan: approved cards); ExportControls keeps a local reorderable
-   * copy so the operator can drag to set the hero/order before exporting.
+   * copy so the operator can drag to set the order before exporting.
    */
   assets: ExportAsset[];
   /** Shared forklift metadata from Workspace — pre-fills the project form. */
@@ -182,24 +173,11 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
   }, [meta, userEmail]);
 
   // ── Status flags ──
-  const [isSaving,           setIsSaving]           = useState(false);
-  const [isSaved,            setIsSaved]            = useState(false);
-  const [isExporting,        setIsExporting]        = useState(false);
-  const [isExportingCollage, setIsExportingCollage] = useState(false);
-  const [isCreatingCollage,  setIsCreatingCollage]  = useState(false);
-  const [collageEquipmentType, setCollageEquipmentType] =
-    useState<EquipmentType | null>(meta.equipmentType ?? null);
-  const [error,              setError]              = useState<string | null>(null);
-  const [addAiDisclaimer,    setAddAiDisclaimer]    = useState(false);
-
-  // ── Branded-collage result state ──
-  const [collageBlob,        setCollageBlob]        = useState<Blob | null>(null);
-  const [collagePreviewUrl,  setCollagePreviewUrl]  = useState<string | null>(null);
-  const [collageFilename,    setCollageFilename]    = useState<string | null>(null);
-  const [collageSizeBytes,   setCollageSizeBytes]   = useState<number>(0);
-  const [collageSizeWarning, setCollageSizeWarning] = useState<boolean>(false);
-  const [collageSavingToHistory, setCollageSavingToHistory] = useState(false);
-  const [collageSavedToHistory,  setCollageSavedToHistory]  = useState(false);
+  const [isSaving,        setIsSaving]        = useState(false);
+  const [isSaved,         setIsSaved]         = useState(false);
+  const [isExporting,     setIsExporting]     = useState(false);
+  const [error,           setError]           = useState<string | null>(null);
+  const [addAiDisclaimer, setAddAiDisclaimer] = useState(false);
 
   // ── PRO export preview state ──
   const [previewItems, setPreviewItems] = useState<ExportProPreviewItem[]>([]);
@@ -213,8 +191,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
   const { valid: formValid, yearNum } = validateForm(form);
   const hasAssets = orderedAssets.length > 0;
   const canSave   = formValid && !isSaving;
-  const canExport        = isSaved && hasAssets && !isExporting && !isExportingCollage;
-  const canExportCollage = isSaved && hasAssets && !isExporting && !isExportingCollage;
+  const canExport = isSaved && hasAssets && !isExporting;
 
   const updateField = <K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -316,133 +293,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
     }
   };
 
-  // ─── Collage export (1024 long edge, no crop) ───────────────────────────────
-
-  const handleExportCollage = async () => {
-    if (!hasAssets) return;
-    setError(null);
-    setIsExportingCollage(true);
-    try {
-      const { blob, filename, warning } = await exportCollageAsBlob({
-        sessionId,
-        assetIds:  orderedAssets.map((a) => a.assetId),
-        providers: orderedAssets.map((a) => a.provider ?? null),
-        aiDisclaimer: addAiDisclaimer,
-      });
-      if (warning) setAnyWarning(true);
-      const objectUrl = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = objectUrl;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(objectUrl);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Collage export failed");
-    } finally {
-      setIsExportingCollage(false);
-    }
-  };
-
-  // ─── Branded collage ──────────────────────────────────────────────────────
-
-  const handleCreateBrandedCollage = async () => {
-    if (!collageEquipmentType || orderedAssets.length < 5 || !isSaved) return;
-    setError(null);
-    setIsCreatingCollage(true);
-    if (collagePreviewUrl) URL.revokeObjectURL(collagePreviewUrl);
-    setCollageBlob(null);
-    setCollagePreviewUrl(null);
-    setCollageFilename(null);
-    setCollageSizeBytes(0);
-    setCollageSizeWarning(false);
-    setCollageSavedToHistory(false);
-    try {
-      const { blob, filename, warning } = await createBrandedCollage({
-        sessionId,
-        equipmentType: collageEquipmentType,
-        assetIds:      orderedAssets.slice(0, 5).map((a) => a.assetId),
-        aiDisclaimer:  addAiDisclaimer,
-      });
-      setCollageBlob(blob);
-      setCollagePreviewUrl(URL.createObjectURL(blob));
-      setCollageFilename(filename);
-      setCollageSizeBytes(blob.size);
-      setCollageSizeWarning(Boolean(warning));
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error
-          ? `Collage creation failed: ${err.message}`
-          : "Collage creation failed",
-      );
-    } finally {
-      setIsCreatingCollage(false);
-    }
-  };
-
-  const handleDownloadCollage = () => {
-    if (!collageBlob || !collageFilename) return;
-    const objectUrl = URL.createObjectURL(collageBlob);
-    const a = document.createElement("a");
-    a.href = objectUrl;
-    a.download = collageFilename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(objectUrl);
-  };
-
-  const handleSaveCollageToHistory = async () => {
-    if (!collageBlob || !collageFilename || collageSavingToHistory) return;
-    setError(null);
-    setCollageSavingToHistory(true);
-    try {
-      const blobAsFile = new File([collageBlob], collageFilename, { type: "image/jpeg" });
-      const signed = await getSignedUploadUrl({
-        sessionId,
-        filename:    collageFilename,
-        contentType: "image/jpeg",
-      });
-      await uploadToGcs(signed.uploadUrl, blobAsFile);
-      await approveSet({
-        sessionId,
-        assetIds: [signed.assetId],
-        projectMeta: {
-          make:  form.make.trim()  || "unknown",
-          model: form.model.trim() || "unknown",
-          year:  form.year.trim(),
-        },
-      });
-      setCollageSavedToHistory(true);
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error
-          ? `Save to Your Photo Library failed: ${err.message}`
-          : "Save to Your Photo Library failed",
-      );
-    } finally {
-      setCollageSavingToHistory(false);
-    }
-  };
-
-  const handleDiscardCollagePreview = () => {
-    if (collagePreviewUrl) URL.revokeObjectURL(collagePreviewUrl);
-    setCollageBlob(null);
-    setCollagePreviewUrl(null);
-    setCollageFilename(null);
-    setCollageSizeBytes(0);
-    setCollageSizeWarning(false);
-    setCollageSavedToHistory(false);
-  };
-
-  // Revoke the collage blob URL on unmount so it doesn't leak.
-  useEffect(() => {
-    return () => {
-      if (collagePreviewUrl) URL.revokeObjectURL(collagePreviewUrl);
-    };
-  }, [collagePreviewUrl]);
-
   // ─── Render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -457,14 +307,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             <li>• <strong className="font-semibold text-yellow-300">≤ 99 KB JPEG</strong> — quality iterated until target</li>
           </ul>
         </div>
-        <div className="space-y-2.5 pt-4 border-t border-zinc-800">
-          <h3 className="text-lg font-semibold text-acid">COLLAGE EXPORT</h3>
-          <ul className="text-base text-zinc-100 space-y-1.5 leading-relaxed" role="list">
-            <li>• <strong className="font-semibold text-yellow-300">1024 px long edge</strong> — original aspect ratio preserved</li>
-            <li>• <strong className="font-semibold text-yellow-300">No crop</strong> — fits to long edge; output is whatever the input&apos;s shape calls for</li>
-            <li>• <strong className="font-semibold text-yellow-300">≤ 99 KB JPEG</strong> — same quality-iteration loop as PRO</li>
-          </ul>
-        </div>
       </div>
 
       {/* ── Export set (reorderable) ── */}
@@ -477,7 +319,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
               </span>
               <span className="text-sm text-zinc-300 leading-relaxed">
                 These images will be included in the next export.{" "}
-                <span className="font-semibold text-yellow-300">Drag any tile to reorder</span> — image #1 becomes the hero in branded collages.
+                <span className="font-semibold text-yellow-300">Drag any tile to reorder</span> — the order drives the export filename numbering.
               </span>
             </div>
             <span className="text-sm uppercase tracking-[0.18em] font-mono text-zinc-300 tabular-nums shrink-0">
@@ -688,170 +530,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
               : previewItems.length > 0
                 ? `Re-resize ${orderedAssets.length} image${orderedAssets.length !== 1 ? "s" : ""} (PRO)`
                 : `PRO export — 1024×731 (${orderedAssets.length})`}
-      </button>
-
-      {/* ── Create branded collage ── */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-900 p-4 space-y-3">
-        <div className="space-y-1">
-          <h3 className="text-base font-bold text-acid uppercase tracking-[0.12em]">
-            Create branded collage
-          </h3>
-          <p className="text-sm text-zinc-300 leading-relaxed">
-            Composes your first 5 queued images into the marketing-layout
-            collage — one hero shot on the left, four thumbnails stacked on
-            the right. 1024 px long edge, ≤99 KB JPEG.
-          </p>
-        </div>
-
-        <div className="space-y-2">
-          <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
-            What kind of equipment is this?
-          </span>
-          <div className="flex flex-wrap items-stretch gap-x-6 gap-y-2">
-            {EQUIPMENT_GROUPS.map((group) => (
-              <div
-                key={group.label ?? group.members.join("-")}
-                className="flex flex-wrap gap-2"
-                role="group"
-                aria-label={group.label}
-              >
-                {group.members.map((id) => {
-                  const selected = collageEquipmentType === id;
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setCollageEquipmentType(id)}
-                      aria-pressed={selected}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-colors ${
-                        selected
-                          ? "bg-blue-950 border-blue-500 text-white"
-                          : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
-                      }`}
-                    >
-                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selected ? "border-blue-400" : "border-zinc-600"}`}>
-                        {selected && <span className="w-2 h-2 rounded-full bg-blue-400" />}
-                      </span>
-                      <span className="text-sm uppercase tracking-[0.12em] font-bold">
-                        {EQUIPMENT_TYPE_LABELS[id]}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <button
-          onClick={handleCreateBrandedCollage}
-          disabled={
-            !collageEquipmentType ||
-            orderedAssets.length < 5 ||
-            !isSaved ||
-            isCreatingCollage ||
-            isExporting ||
-            isExportingCollage
-          }
-          className={`
-            inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all
-            ${collageEquipmentType && orderedAssets.length >= 5 && isSaved && !isCreatingCollage && !isExporting && !isExportingCollage
-              ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
-              : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
-          `}
-        >
-          {isCreatingCollage
-            ? "Composing collage…"
-            : !isSaved
-              ? "Save project first"
-              : !collageEquipmentType
-                ? "Pick equipment type to continue"
-                : orderedAssets.length < 5
-                  ? `Need 5 images (have ${orderedAssets.length})`
-                  : collagePreviewUrl
-                    ? "Re-compose collage"
-                    : "Create image collage"}
-        </button>
-      </section>
-
-      {/* ── Branded-collage preview + actions ── */}
-      {collagePreviewUrl && collageBlob && collageFilename && (
-        <section className="rounded-xl border-2 border-emerald-600 bg-emerald-950/30 p-5 space-y-4">
-          <div className="flex items-baseline justify-between gap-3 flex-wrap">
-            <h3 className="text-lg font-bold text-emerald-100 uppercase tracking-[0.12em]">
-              Collage preview
-            </h3>
-            <span className="text-sm font-mono text-emerald-200 tabular-nums">
-              {(collageSizeBytes / 1024).toFixed(1)} KB · {collageFilename}
-            </span>
-          </div>
-
-          {collageSizeWarning && (
-            <p className="text-sm text-amber-300 bg-amber-950/40 border border-amber-800 rounded-lg px-3 py-2">
-              ⚠ The encoder couldn&apos;t hit ≤99 KB at acceptable quality.
-              This file is the closest it could get — inspect it before publishing.
-            </p>
-          )}
-
-          <div className="rounded-lg overflow-hidden border border-emerald-800 bg-black">
-            {/* eslint-disable-next-line @next/next/no-img-element -- blob URL, no Next/Image needed */}
-            <img src={collagePreviewUrl} alt="Composed marketing collage preview" className="block w-full h-auto" />
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <button
-              onClick={handleDownloadCollage}
-              className="inline-flex py-3 px-5 rounded-lg font-bold text-base text-white border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 transition-colors"
-            >
-              ⬇ Download collage
-            </button>
-            <button
-              onClick={handleSaveCollageToHistory}
-              disabled={collageSavingToHistory || collageSavedToHistory}
-              className={`inline-flex py-3 px-5 rounded-lg font-bold text-base border-2 transition-colors ${
-                collageSavedToHistory
-                  ? "border-green-700 bg-green-700 text-white cursor-default"
-                  : collageSavingToHistory
-                    ? "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"
-                    : "border-green-500 bg-green-600 hover:bg-green-500 text-white"
-              }`}
-            >
-              {collageSavedToHistory
-                ? "✓ Saved to Your Photo Library"
-                : collageSavingToHistory
-                  ? "Saving to Your Photo Library…"
-                  : "💾 Save to Your Photo Library"}
-            </button>
-          </div>
-
-          <button
-            onClick={handleDiscardCollagePreview}
-            className="text-sm font-bold uppercase tracking-[0.14em] text-zinc-300 hover:text-white transition-colors border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
-          >
-            Discard preview
-          </button>
-        </section>
-      )}
-
-      {/* ── Collage export (1024 long edge, no crop, ≤99 KB) ── */}
-      <button
-        onClick={handleExportCollage}
-        disabled={!canExportCollage}
-        className={`
-          inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
-          ${canExportCollage
-            ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
-            : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
-        `}
-        title="Collage preset: 1024px long edge, no crop, ≤99 KB JPEG. Use for pre-composed multi-image listing collages."
-      >
-        {isExportingCollage
-          ? "Resizing collage(s)…"
-          : !isSaved
-            ? "Save project first"
-            : !hasAssets
-              ? "No assets queued"
-              : `Collage export — 1024 long edge (${orderedAssets.length})`}
       </button>
 
       {/* ── Streaming progress ── */}

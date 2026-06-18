@@ -138,7 +138,7 @@ Use `tone="info"` (blue, default) for "what this tab does"; `tone="warn"` (amber
 
 ### Equipment chips (current → target)
 
-Currently segmented-control chips grouped into "warehouse forks" vs "aerial" clusters (`EQUIPMENT_GROUPS` in `lib/types.ts`). **Target: restyle to the toggle look-and-feel above** on both the Enhance MetaCard and the Resize collage picker (open item).
+Currently segmented-control chips grouped into "warehouse forks" vs "aerial" clusters (`EQUIPMENT_GROUPS` in `lib/types.ts`). **Target: restyle to the toggle look-and-feel above** on the Enhance MetaCard (open item).
 
 ---
 

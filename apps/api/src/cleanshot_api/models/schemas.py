@@ -412,44 +412,6 @@ class ExportProRequest(BaseModel):
     ai_disclaimer: bool = False
 
 
-class ExportCollageRequest(BaseModel):
-    """
-    COLLAGE preset: 1024px LONG EDGE (fit, NOT crop), JPEG ≤99 kb.
-    Same input shape as ExportProRequest; difference is server-side —
-    no 7:5 crop, just downsize to fit the long edge.
-    """
-    session_id: uuid.UUID
-    asset_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
-    # Parallel list to asset_ids — entry [i] is the AI provider that
-    # produced asset_ids[i]. Same semantics as ExportProRequest.providers
-    # (filename suffix for distinguishing duplicate variants in ZIPs).
-    providers: list[str | None] | None = None
-    # When true, the export pipeline burns the AI-disclaimer watermark
-    # string into the bottom-right corner of every exported JPEG.
-    ai_disclaimer: bool = False
-
-
-class ExportBrandedCollageRequest(BaseModel):
-    """
-    BRANDED COLLAGE preset — composes the marketing-layout collage that
-    Discount Forklift uses on listing sites: 1 large hero on the left
-    (640×580) + 4 thumbnails stacked on the right (384×145 each), final
-    canvas 1024×580, JPEG ≤99 kb.
-
-    `asset_ids` must contain EXACTLY 5 ids in render order: index 0 is
-    the hero, indices 1-4 fill the thumbnail strip top-to-bottom.
-
-    `equipment_type` is informational — drives the output filename
-    suffix so operators can tell forklift / scissor / telehandler
-    collages apart in their downloads folder. The layout itself is the
-    same across all three.
-    """
-    session_id: uuid.UUID
-    equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "order_picker", "pallet_jack", "walkie_stacker"]
-    asset_ids: list[uuid.UUID] = Field(min_length=5, max_length=5)
-    ai_disclaimer: bool = False
-
-
 class ModifyAdjustments(BaseModel):
     """
     All Modify-tab adjustments combined. Operator can mix any subset

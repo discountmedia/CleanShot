@@ -15,8 +15,6 @@ from cleanshot_api.core.security import require_api_key
 from cleanshot_api.db import queries
 from cleanshot_api.db.pool import get_pool
 from cleanshot_api.models.schemas import (
-    ExportBrandedCollageRequest,
-    ExportCollageRequest,
     ExportCustomRequest,
     ExportFullsizeRequest,
     ExportFullsizeResponse,
@@ -25,8 +23,6 @@ from cleanshot_api.models.schemas import (
 )
 from cleanshot_api.services import gcs as gcs_service
 from cleanshot_api.services.image_processing import (
-    compose_branded_collage,
-    export_collage,
     export_custom,
     export_pro,
 )
@@ -195,143 +191,6 @@ async def export_pro_preset(
         media_type="application/zip",
         headers=headers,
     )
-
-
-@router.post(
-    "/export/collage",
-    dependencies=[Depends(require_api_key)],
-)
-async def export_collage_preset(
-    body: ExportCollageRequest,
-    pool: asyncpg.Pool = Depends(get_pool),
-) -> Response:
-    """
-    COLLAGE preset: 1024px LONG EDGE (fit, NOT crop), JPEG ≤99 kb per asset.
-
-    Unlike /export/pro (1024×731 7:5 cover-crop), Collage preserves the
-    source aspect ratio — output is at most 1024 px on the long edge,
-    whatever the short edge falls out to. Used for pre-composed
-    multi-image listing collages where the layout has already been
-    decided upstream and the operator just needs a marketing-target-
-    sized JPEG under the listing-site upload cap.
-
-    Returns a single JPEG for one asset, ZIP for many. Sets
-    X-Warning: target-size-unachievable when the iterated quality
-    search can't hit ≤99 kb.
-    """
-    async with pool.acquire() as conn:
-        project = await queries.get_project_for_session(conn, body.session_id)
-        _require_saved_project(project)
-
-    results: list[tuple[str, bytes, bool]] = []
-    for asset_id in body.asset_ids:
-        async with pool.acquire() as conn:
-            asset = await queries.get_asset(conn, asset_id)
-        if asset is None:
-            continue
-
-        from google.cloud import storage as gcs
-        from cleanshot_api.core.config import get_settings
-        settings = get_settings()
-        client = gcs.Client(project=settings.gcp_project)
-        without_scheme = asset.gcs_uri[len("gs://"):]
-        bucket_name, _, obj = without_scheme.partition("/")
-        input_bytes = client.bucket(bucket_name).blob(obj).download_as_bytes()
-
-        result = export_collage(input_bytes, ai_disclaimer=body.ai_disclaimer)
-        filename = f"{asset_id}_collage.jpg"
-        results.append((filename, result.data, result.size_warning))
-
-    if len(results) == 1:
-        filename, data, size_warning = results[0]
-        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-        if size_warning:
-            headers["X-Warning"] = "target-size-unachievable"
-        return Response(content=data, media_type="image/jpeg", headers=headers)
-
-    buf = io.BytesIO()
-    any_warning = False
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for filename, data, size_warning in results:
-            zf.writestr(filename, data)
-            if size_warning:
-                any_warning = True
-
-    headers = {"Content-Disposition": 'attachment; filename="cleanshot_collage_export.zip"'}
-    if any_warning:
-        headers["X-Warning"] = "target-size-unachievable-some-images"
-    return Response(
-        content=buf.getvalue(),
-        media_type="application/zip",
-        headers=headers,
-    )
-
-
-@router.post(
-    "/export/branded-collage",
-    dependencies=[Depends(require_api_key)],
-)
-async def export_branded_collage(
-    body: ExportBrandedCollageRequest,
-    pool: asyncpg.Pool = Depends(get_pool),
-) -> Response:
-    """
-    BRANDED COLLAGE — composes the 5-image marketing-layout collage that
-    Discount Forklift uses on listing sites. One large hero shot on the
-    left (640×580), four supporting thumbnails stacked on the right
-    (384×145 each), final canvas 1024×580, JPEG ≤99 kb.
-
-    `body.asset_ids` must contain exactly 5 ids in render order:
-        index 0 — hero
-        index 1-4 — thumbnail strip top-to-bottom
-    Schema enforces the length; the worker assumes it.
-
-    Returns a single JPEG. Sets X-Warning when the quality-iteration
-    loop couldn't fit under 99 kb.
-    """
-    async with pool.acquire() as conn:
-        project = await queries.get_project_for_session(conn, body.session_id)
-        _require_saved_project(project)
-
-    # Fetch the 5 source byte-blobs in parallel — they live in GCS.
-    from google.cloud import storage as gcs_lib
-    from cleanshot_api.core.config import get_settings
-    settings = get_settings()
-    gcs_client = gcs_lib.Client(project=settings.gcp_project)
-
-    async def fetch(asset_id: uuid.UUID) -> bytes | None:
-        async with pool.acquire() as conn:
-            asset = await queries.get_asset(conn, asset_id)
-        if asset is None:
-            return None
-        without_scheme = asset.gcs_uri[len("gs://"):]
-        bucket_name, _, obj = without_scheme.partition("/")
-        return await asyncio.to_thread(
-            gcs_client.bucket(bucket_name).blob(obj).download_as_bytes,
-        )
-
-    blobs = await asyncio.gather(*[fetch(aid) for aid in body.asset_ids])
-    missing = [aid for aid, b in zip(body.asset_ids, blobs) if b is None]
-    if missing:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Assets not found: {missing}",
-        )
-
-    # Compose in a worker thread — pyvips composite + JPEG quality loop
-    # is CPU-bound, no point holding up the event loop.
-    result = await asyncio.to_thread(
-        compose_branded_collage,
-        hero_bytes=blobs[0],
-        thumb_bytes=[blobs[1], blobs[2], blobs[3], blobs[4]],
-        ai_disclaimer=body.ai_disclaimer,
-    )
-
-    filename = f"cleanshot_{body.equipment_type}_collage.jpg"
-    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
-    if result.size_warning:
-        headers["X-Warning"] = "target-size-unachievable"
-    return Response(content=result.data, media_type="image/jpeg", headers=headers)
 
 
 @router.post(
