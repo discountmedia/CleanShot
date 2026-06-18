@@ -3,7 +3,7 @@
 // Tab navigation row beneath the header.
 // Active tab gets a brand-purple underline + purple text — matches the inventory-dashboard pattern.
 
-export type TabId = "enhance" | "scan" | "resize" | "history";
+export type TabId = "enhance" | "scan" | "history";
 
 export interface TabDef {
   id: TabId;

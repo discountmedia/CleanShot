@@ -46,6 +46,7 @@ import { useJobPoller } from "../../lib/polling";
 import { computeConsensus } from "../../lib/scan-helpers";
 import type {
   EquipmentType,
+  ForkliftMeta,
   ImageScanState,
   JobRecord,
   ProviderScanResult,
@@ -56,6 +57,7 @@ import { ScanCard } from "./ScanCard";
 import { ScanFilterChips, type ScanFilter } from "./ScanFilterChips";
 import { ScanCommandBar } from "./ScanCommandBar";
 import { TipBanner } from "../workspace/TipBanner";
+import { ExportControls } from "../export/ExportControls";
 
 const MAX_UPLOADS = 150;
 
@@ -95,33 +97,24 @@ export interface ScanPanelProps {
    */
   onClearPipeline: () => void;
   /**
-   * Called when the operator approves a scan (per-card or bulk). Workspace
-   * appends to its resizeAssets pipeline + switches to the Resize tab.
-   */
-  onSendToResize:  (items: PipelineAsset[]) => void;
-  /**
-   * Same as onSendToResize but the destination tab is Modify instead
-   * of Resize. Workspace appends to the same resizeAssets pool (since
-   * Modify and Resize share the queue) but flips to the Modify tab
-   * so the operator can darkroom-tweak before final export. Optional —
-   * older callers without the prop fall back to Resize-only flow.
-   */
-  onSendToModify?: (items: PipelineAsset[]) => void;
-  /**
    * Equipment category from the lifted workspace meta. Threaded into
    * RegenPanel so the regen prompt's per-type guardrails match the
    * one Enhance used for the original generation.
    */
   equipmentType:   EquipmentType;
+  /** Shared forklift metadata — pre-fills the embedded ExportControls form. */
+  meta:            Partial<ForkliftMeta>;
+  /** Signed-in user's email — threaded into the embedded ExportControls. */
+  userEmail:       string;
 }
 
 export function ScanPanel({
   sessionId,
   enhancedAssets,
   onClearPipeline,
-  onSendToResize,
-  onSendToModify,
   equipmentType,
+  meta,
+  userEmail,
 }: ScanPanelProps) {
   // ─── Core scan state ────────────────────────────────────────────────────
 
@@ -139,6 +132,19 @@ export function ScanPanel({
   const [rejected, setRejected]           = useState<Set<string>>(new Set());
   const [regenOpenId, setRegenOpenId]     = useState<string | null>(null);
   const [detailsOpenId, setDetailsOpenId] = useState<string | null>(null);
+
+  // Approved (or skip-scanned) assets queued for the embedded ExportControls
+  // below. Replaces the old "Send to Resize" hand-off — Save + export now
+  // happen right here in the Scan tab. Append-only + deduped by assetId.
+  const [exportAssets, setExportAssets]   = useState<PipelineAsset[]>([]);
+  const appendExportAssets = useCallback((items: PipelineAsset[]) => {
+    if (items.length === 0) return;
+    setExportAssets((prev) => {
+      const seen = new Set(prev.map((a) => a.assetId));
+      const additions = items.filter((it) => !seen.has(it.assetId));
+      return additions.length > 0 ? [...prev, ...additions] : prev;
+    });
+  }, []);
 
   // ─── Standalone-upload state ────────────────────────────────────────────
 
@@ -452,10 +458,10 @@ export function ScanPanel({
       if (approved.has(assetId) || rejected.has(assetId)) return;
       const scan = scanStates.find((s) => s.assetId === assetId);
       if (!scan || scan.providerResults.length === 0) return;
-      onSendToResize([buildResizeItem(scan)]);
+      appendExportAssets([buildResizeItem(scan)]);
       setApproved((prev) => new Set(prev).add(assetId));
     },
-    [approved, rejected, scanStates, onSendToResize, buildResizeItem],
+    [approved, rejected, scanStates, appendExportAssets, buildResizeItem],
   );
 
   const handleReject = useCallback(
@@ -471,27 +477,13 @@ export function ScanPanel({
 
   const handleApproveBulk = useCallback(() => {
     if (eligibleForBulk.length === 0) return;
-    onSendToResize(eligibleForBulk.map(buildResizeItem));
+    appendExportAssets(eligibleForBulk.map(buildResizeItem));
     setApproved((prev) => {
       const next = new Set(prev);
       for (const s of eligibleForBulk) next.add(s.assetId);
       return next;
     });
-  }, [eligibleForBulk, onSendToResize, buildResizeItem]);
-
-  // Same eligible set as the Resize bulk action, but lands the approved
-  // items in the Modify tab (still goes through Workspace.resizeAssets
-  // since Modify reads that pool). Operator picks this when they want
-  // to darkroom-tweak before final crop+export.
-  const handleApproveBulkModify = useCallback(() => {
-    if (eligibleForBulk.length === 0 || !onSendToModify) return;
-    onSendToModify(eligibleForBulk.map(buildResizeItem));
-    setApproved((prev) => {
-      const next = new Set(prev);
-      for (const s of eligibleForBulk) next.add(s.assetId);
-      return next;
-    });
-  }, [eligibleForBulk, onSendToModify, buildResizeItem]);
+  }, [eligibleForBulk, appendExportAssets, buildResizeItem]);
 
   const handleApplyRegen = useCallback(
     async (assetId: string, payload: { prompt: string; provider: EnhanceProvider }) => {
@@ -527,6 +519,7 @@ export function ScanPanel({
     setDetailsOpenId(null);
     setJobStartedMs(new Map());
     setFilter("all");
+    setExportAssets([]);
     onClearPipeline();
   };
 
@@ -536,19 +529,19 @@ export function ScanPanel({
     <div className="space-y-4">
 
       {/* ── Top-of-tab escape hatch ──
-          Skip the AI quality check entirely and forward every queued
-          image straight to Resize. Useful when the operator already
-          trusts the Enhance output and just wants to crop + export.
-          Sits ABOVE the TipBanner so it's the first thing the operator
-          sees on entering the tab; disabled until at least one image is
-          queued and any in-flight uploads have settled. */}
+          Skip the AI quality check entirely and queue every image straight
+          into the Save & Export section at the bottom of this tab. Useful
+          when the operator already trusts the Enhance output and just wants
+          to crop + export. Sits ABOVE the TipBanner so it's the first thing
+          the operator sees on entering the tab; disabled until at least one
+          image is queued and any in-flight uploads have settled. */}
       {(() => {
         const canSkip = allAssets.length > 0 && !anyUploadInFlight;
         return (
           <div className="flex">
             <button
               type="button"
-              onClick={() => onSendToResize(allAssets)}
+              onClick={() => appendExportAssets(allAssets)}
               disabled={!canSkip}
               className={`inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-colors ${
                 canSkip
@@ -556,7 +549,7 @@ export function ScanPanel({
                   : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"
               }`}
             >
-              Skip scanning and start resizing →
+              Skip scanning — queue all for export ↓
             </button>
           </div>
         );
@@ -570,7 +563,7 @@ export function ScanPanel({
           <>Each card shows the consensus verdict at the top — <span className="text-green-300 font-semibold">PASS</span> means all agree, <span className="text-yellow-300 font-semibold">MIXED</span> means they disagree, <span className="text-red-300 font-semibold">FAIL</span> means all flagged a problem.</>,
           <>Click any card to expand it and read the specific issues each AI found.</>,
           <>Use <span className="font-semibold text-white">↻ Regenerate</span> on a failing image to get a fresh AI version that targets the flagged issues.</>,
-          <>When done, click <span className="font-semibold text-white">Approve N → Resize</span> at the bottom to send all undecided cards to the Resize tab.</>,
+          <>When done, click <span className="font-semibold text-white">Approve N → Export</span> at the bottom to queue all undecided cards into the Save &amp; Export section.</>,
         ]}
       >
         <p>
@@ -885,7 +878,20 @@ export function ScanPanel({
           rejectedCount={rejected.size}
           eligibleCount={eligibleForBulk.length}
           onApproveBulk={handleApproveBulk}
-          onApproveBulkModify={onSendToModify ? handleApproveBulkModify : undefined}
+        />
+      )}
+
+      {/* ── Save & export ──
+          Moved here from the removed Resize tab. Shows once at least one
+          card has been approved (or the operator hit "Skip scanning —
+          queue all for export"). Save Project unlocks the export presets,
+          then PRO / collage / branded-collage download right here. */}
+      {exportAssets.length > 0 && (
+        <ExportControls
+          sessionId={sessionId}
+          assets={exportAssets}
+          meta={meta}
+          userEmail={userEmail}
         />
       )}
     </div>

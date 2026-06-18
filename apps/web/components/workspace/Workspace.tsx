@@ -36,27 +36,26 @@ import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 // often already parsed, eliminating the brief flash between click
 // and panel-mount that the dynamic-import added.
 const loadScanPanel    = () => import("@/components/scan/ScanPanel").then(m => ({ default: m.ScanPanel }));
-const loadResizePanel  = () => import("@/components/resize/ResizePanel").then(m => ({ default: m.ResizePanel }));
 const loadHistoryList  = () => import("@/components/history/HistoryList").then(m => ({ default: m.HistoryList }));
 
 const ScanPanel    = dynamic(loadScanPanel,   { ssr: false });
-const ResizePanel  = dynamic(loadResizePanel, { ssr: false });
 const HistoryList  = dynamic(loadHistoryList, { ssr: false });
 
 // TabBar hands tab id → prefetch loader. Enhance is intentionally
 // missing (it's eagerly imported, no chunk to prefetch). Calling
 // `loader()` schedules the chunk download with no other side effects;
 // safe to invoke on every hover. Modify tab was removed 2026-06-01 —
-// darkroom now lives inside Enhance below the variants grid.
+// darkroom now lives inside Enhance below the variants grid. Resize tab
+// was removed 2026-06-17 — Save + export now live inside Enhance and Scan
+// (the ExportControls component).
 const TAB_PREFETCH: Partial<Record<TabId, () => Promise<unknown>>> = {
   scan:    loadScanPanel,
-  resize:  loadResizePanel,
   history: loadHistoryList,
 };
 
 import { createSession } from "@/lib/api";
 import { getRestriction } from "@/lib/access-control";
-import type { ForkliftMeta, ResizeResult } from "@/lib/types";
+import type { ForkliftMeta } from "@/lib/types";
 
 // Cross-panel asset shape. Each panel emits these as its output.
 interface PipelineAsset {
@@ -137,8 +136,8 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
 
   // Bumped every time the cross-panel pipeline gets cleared (by
   // EnhancePanel's auto-reset on a new batch, by any tab's "Clear all"
-  // button, etc.). Used as the React `key` on ScanPanel and ResizePanel
-  // so they remount with fresh local state — otherwise their internal
+  // button, etc.). Used as the React `key` on ScanPanel so it remounts
+  // with fresh local state — otherwise its internal
   // scanStates / uploads / previewItems would survive the workspace
   // queue clear and the operator would still see ghost cards from the
   // previous batch.
@@ -150,14 +149,11 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   const [sessionError, setSessionError] = useState<string | null>(null);
 
   // Cross-panel pipeline state. The flow is curated by the user:
-  //   Enhance → "Send to Scan"   → enhancedAssets  (what Scan tab analyzes)
-  //   Scan    → "Send to Resize" → resizeAssets   (what Resize tab processes)
-  //   Resize  → onResizeComplete → resizeResults  (sized outputs for export)
-  // Each handoff is explicit so the operator can curate (e.g., only push
-  // images that passed scan, or regenerated versions instead of originals).
+  //   Enhance → "Send to Scan" → enhancedAssets  (what Scan tab analyzes)
+  // Save + export are no longer a separate tab — they live inside Enhance
+  // and Scan (the ExportControls component), so there's no downstream
+  // resize/export pipeline state to thread through Workspace anymore.
   const [enhancedAssets, setEnhancedAssets] = useState<PipelineAsset[]>([]);
-  const [resizeAssets,   setResizeAssets]   = useState<PipelineAsset[]>([]);
-  const [resizeResults,  setResizeResults]  = useState<ResizeResult[]>([]);
 
   // Forklift metadata is owned by Workspace so it survives panel
   // switches and so Resize can pre-fill its Save Project form from
@@ -182,7 +178,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   const allTabs = [
     { id: "enhance" as const, label: "Enhance" },
     { id: "scan"    as const, label: "Scan",    count: enhancedAssets.length || undefined },
-    { id: "resize"  as const, label: "Resize",  count: resizeAssets.length || undefined },
     { id: "history" as const, label: "Your Photo Library" },
   ];
   // Restricted users see only the Enhance tab.
@@ -230,67 +225,13 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // Called by EnhancePanel or ScanPanel when the user clicks their own
   // "Clear all" — wipes the downstream pipeline state at the workspace
   // level so old assets don't keep getting rescanned or re-listed.
-  // Also bumps pipelineGeneration, which forces ScanPanel + ResizePanel
-  // to remount with empty local state on the next render. Without that
-  // remount their internal scanStates / preview lists would still show
-  // ghost rows from the cleared batch.
+  // Also bumps pipelineGeneration, which forces ScanPanel to remount with
+  // empty local state on the next render. Without that remount its internal
+  // scanStates / preview lists would still show ghost rows from the
+  // cleared batch.
   const handleClearPipeline = () => {
     setEnhancedAssets([]);
-    setResizeAssets([]);
-    setResizeResults([]);
     setPipelineGeneration((g) => g + 1);
-  };
-
-  // Explicit user action from the Scan tab. Mirror of handleSendToScan,
-  // but feeds the resizeAssets pipeline + switches to the Resize tab.
-  // Duplicates are intentionally allowed — the operator may want to
-  // resize the same source image through multiple providers' variants
-  // and download them all (filenames carry provider suffixes so the
-  // ZIP entries are distinguishable).
-  const handleSendToResize = (items: PipelineAsset[]) => {
-    setResizeAssets((prev) => {
-      return items.length > 0 ? [...prev, ...items] : prev;
-    });
-    setActiveTab("resize");
-  };
-
-  // Modify tab was removed 2026-06-01 — darkroom now lives inside Enhance
-  // below the variants grid. This callback is kept (still wired into
-  // ScanPanel as `onSendToModify`) but redirected: items land in
-  // resizeAssets and the operator goes straight to Resize. Eventually
-  // ScanPanel's "Send to Modify" button should be renamed/removed, but
-  // routing it here keeps the existing prop contract working without a
-  // multi-file refactor.
-  const handleSendToModify = (items: PipelineAsset[]) => {
-    setResizeAssets((prev) => {
-      return items.length > 0 ? [...prev, ...items] : prev;
-    });
-    setActiveTab("resize");
-  };
-
-  // Shortcut path: send straight from Enhance to Resize, skipping the
-  // Scan tab entirely. Used by operators who already trust the
-  // enhance output and just want to crop + export. Same shape /
-  // provider-suffix logic as handleSendToScan — only the destination
-  // tab differs.
-  const handleEnhanceToResize = (items: Array<{
-    jobId: string;
-    outputAssetId: string;
-    filename: string;
-    outputUrl: string;
-    provider?: string;
-  }>) => {
-    setResizeAssets((prev) => {
-      const additions = items.map((it): PipelineAsset => ({
-        assetId:      it.outputAssetId,
-        filename:     providerSuffixedFilename(it.filename, it.provider),
-        thumbnailUrl: it.outputUrl,
-        outputUrl:    it.outputUrl,
-        provider:     it.provider,
-      }));
-      return additions.length > 0 ? [...prev, ...additions] : prev;
-    });
-    setActiveTab("resize");
   };
 
   return (
@@ -316,7 +257,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           </div>
         )}
 
-        {/* Active panel — all four stay mounted to preserve in-progress state
+        {/* Active panel — panels stay mounted to preserve in-progress state
             across tab switches; only the active one is visible. */}
         <div className="relative">
           <PanelSlot active={activeTab === "enhance"}>
@@ -326,9 +267,9 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 meta={meta}
                 onMetaChange={setMeta}
                 onSendToScan={handleSendToScan}
-                onSendToResize={handleEnhanceToResize}
                 onClearPipeline={handleClearPipeline}
                 onFileCountChange={setEnhanceFileCount}
+                userEmail={userEmail}
                 restriction={restriction}
               />
             )}
@@ -344,47 +285,17 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 sessionId={sessionId}
                 enhancedAssets={enhancedAssets}
                 onClearPipeline={handleClearPipeline}
-                onSendToResize={handleSendToResize}
-                onSendToModify={handleSendToModify}
                 equipmentType={meta.equipmentType ?? "forklift"}
-              />
-            )}
-          </PanelSlot>
-
-          {/* Modify tab removed 2026-06-01 — darkroom relocated inside
-              EnhancePanel below the variants grid. */}
-
-          <PanelSlot active={activeTab === "resize"}>
-            {sessionId && visitedTabs.has("resize") && (
-              <ResizePanel
-                // key bumps when handleClearPipeline runs — see ScanPanel above.
-                key={pipelineGeneration}
-                sessionId={sessionId}
-                // ResizePanel's prop is named enhancedAssets for historic
-                // reasons; semantically it now receives the curated
-                // resizeAssets list (images user explicitly sent to Resize
-                // from the Scan tab).
-                enhancedAssets={resizeAssets}
-                resizeResults={resizeResults}
-                onResizeComplete={setResizeResults}
-                onClearPipeline={handleClearPipeline}
-                // Drag-to-reorder on the Resize tab — rebuild resizeAssets
-                // in the new order using the existing PipelineAsset objects
-                // (lookup by assetId preserves outputUrl + every other
-                // field that ResizePanel's narrowed view doesn't carry).
-                onReorderAssets={(assetIdsInOrder) => {
-                  setResizeAssets((prev) => {
-                    const lookup = new Map(prev.map((a) => [a.assetId, a]));
-                    return assetIdsInOrder
-                      .map((id) => lookup.get(id))
-                      .filter((a): a is PipelineAsset => a !== undefined);
-                  });
-                }}
                 meta={meta}
                 userEmail={userEmail}
               />
             )}
           </PanelSlot>
+
+          {/* Modify tab removed 2026-06-01 — darkroom relocated inside
+              EnhancePanel below the variants grid. Resize tab removed
+              2026-06-17 — Save + export now live inside Enhance and Scan
+              (ExportControls). */}
 
           <PanelSlot active={activeTab === "history"}>
             {visitedTabs.has("history") && (

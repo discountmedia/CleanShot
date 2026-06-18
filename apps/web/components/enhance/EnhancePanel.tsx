@@ -65,6 +65,7 @@ import { TipBanner } from "../workspace/TipBanner";
 // variants grid (2026-06-01) — the Modify tab itself is being deleted.
 // Embedded mode hides the TipBanner + standalone uploader.
 import { ModifyPanel } from "../modify/ModifyPanel";
+import { ExportControls } from "../export/ExportControls";
 
 const MAX_UPLOADS = 150;
 
@@ -228,10 +229,11 @@ export interface EnhancePanelProps {
   meta: Partial<ForkliftMeta>;
   onMetaChange: (meta: Partial<ForkliftMeta>) => void;
   onSendToScan: (items: CompletedEnhanceItem[]) => void;
-  onSendToResize: (items: CompletedEnhanceItem[]) => void;
   onClearPipeline: () => void;
   /** Lets Workspace render the BatchContextStrip image count. */
   onFileCountChange: (count: number) => void;
+  /** Signed-in user's email — threaded into the embedded ExportControls. */
+  userEmail: string;
   /**
    * Per-user access restriction (null = unrestricted). When set, the
    * model picker collapses to the single locked model, feature toggles
@@ -247,9 +249,9 @@ export function EnhancePanel({
   meta,
   onMetaChange,
   onSendToScan,
-  onSendToResize,
   onClearPipeline,
   onFileCountChange,
+  userEmail,
   restriction = null,
 }: EnhancePanelProps) {
   const inputId = useId();
@@ -1243,18 +1245,6 @@ export function EnhancePanel({
     });
   }, [readyToSend, onSendToScan]);
 
-  // "Skip Scan → Send N to Resize" CTA handler, rendered inline with
-  // handleSendAll inside CommandBar so both buttons match in size.
-  const handleSkipScan = useCallback(() => {
-    if (readyToSend.length === 0) return;
-    onSendToResize(readyToSend);
-    setSentJobIds((prev) => {
-      const next = new Set(prev);
-      for (const it of readyToSend) next.add(it.jobId);
-      return next;
-    });
-  }, [readyToSend, onSendToResize]);
-
   // ─── CommandBar tallies ────────────────────────────────────────────────
 
   const commandCounts = useMemo(() => {
@@ -1921,6 +1911,25 @@ export function EnhancePanel({
         />
       )}
 
+      {/* ── Save & export ──
+          Moved here from the removed Resize tab. Operates on the
+          operator-picked winners — Save Project unlocks the export
+          presets, then PRO / collage / branded-collage download from
+          right inside Enhance. */}
+      {pickedWinners.length > 0 && (
+        <ExportControls
+          sessionId={sessionId}
+          assets={pickedWinners.map(({ item }) => ({
+            assetId:      item.outputAssetId,
+            filename:     item.filename,
+            thumbnailUrl: item.outputUrl,
+            provider:     item.provider,
+          }))}
+          meta={meta}
+          userEmail={userEmail}
+        />
+      )}
+
       {/* ── Model attribution ── */}
       {enhanceJobs.size > 0 && (
         <p className="text-[11px] text-zinc-700 text-center">
@@ -1943,7 +1952,6 @@ export function EnhancePanel({
           undecidedCount={commandCounts.undecided}
           heldCount={commandCounts.held}
           onSendAll={handleSendAll}
-          onSkipScan={handleSkipScan}
         />
       )}
     </div>

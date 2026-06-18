@@ -1,8 +1,9 @@
 // apps/web/components/scan/ScanCommandBar.tsx
 // Sticky bottom action strip — mirrors the Enhance tab's CommandBar.
 // Shows verdict tallies, approved/rejected counts, and one primary CTA:
-// "Approve N → Resize" — approves every undecided card regardless of
-// consensus verdict or confidence.
+// "Approve N → Export" — approves every undecided card regardless of
+// consensus verdict or confidence and queues them into the Save & Export
+// section at the bottom of the tab.
 //
 // Operator's escape hatches: per-card Reject (✕) keeps a card out of
 // the bulk action; per-card Approve forwards just that one.
@@ -18,7 +19,7 @@ interface ScanCommandBarProps {
   /** Number of cards that would be approved by the bulk CTAs right now. */
   eligibleCount: number;
 
-  /** Bulk-approve → Resize handler. Approves every eligible card and flips to Resize. */
+  /** Bulk-approve handler. Approves every eligible card and queues them for export. */
   onApproveBulk: () => void;
   /**
    * Bulk-approve → Modify handler. Approves every eligible card AND flips
@@ -101,7 +102,7 @@ export function ScanCommandBar({
                 : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
             }`}
           >
-            Approve {eligibleCount} → Resize
+            Approve {eligibleCount} → Export
           </button>
         </div>
       </div>
