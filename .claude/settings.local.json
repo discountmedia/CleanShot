@@ -3,7 +3,10 @@
     "allow": [
       "Bash(gcloud run *)",
       "Bash(gcloud secrets *)",
-      "Bash(git fetch *)"
+      "Bash(git fetch *)",
+      "Bash(python -c ' *)",
+      "Bash(git add *)",
+      "Bash(git commit *)"
     ]
   }
 }
