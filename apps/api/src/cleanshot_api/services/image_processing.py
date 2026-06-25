@@ -70,7 +70,7 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     # rgba=True renders the coloured text directly (4-band sRGB + alpha).
     text_img = pyvips.Image.text(
         markup,
-        font="Roboto Bold 11",
+        font="Roboto Bold 13",
         dpi=72,
         rgba=True,
     )
