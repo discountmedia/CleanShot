@@ -70,7 +70,7 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     # rgba=True renders the coloured text directly (4-band sRGB + alpha).
     text_img = pyvips.Image.text(
         markup,
-        font="Roboto Bold 13",
+        font="Roboto Bold 15",
         dpi=72,
         rgba=True,
     )
@@ -89,7 +89,7 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     coverage = text_img.extract_band(3)
     rgb = text_img.extract_band(0, n=3)
 
-    # Shadow: black RGBA following the text shape, dimmed to ~65% alpha.
+    # Shadow: black RGBA following the text shape, dimmed to ~72% alpha.
     # `.copy(interpretation="srgb")` is REQUIRED — bandjoin produces a
     # 4-band image that pyvips otherwise tags as "multiband", which
     # libvips composite() refuses to align with the canvas's srgb
@@ -97,12 +97,12 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     # 'srgb'"). Forcing the interpretation tells libvips to treat the
     # 4 bands as srgb+alpha.
     shadow = coverage.new_from_image([0, 0, 0]).bandjoin(
-        (coverage * 0.65).cast("uchar"),
+        (coverage * 0.72).cast("uchar"),
     ).copy(interpretation="srgb")
-    # Foreground: the coloured text at ~92% alpha — less transparent than
-    # before so the disclaimer reads clearly while still being a watermark.
+    # Foreground: the coloured text at ~98% alpha — nearly opaque so the
+    # disclaimer reads clearly while still being a burned-in watermark.
     fg = rgb.bandjoin(
-        (coverage * 0.92).cast("uchar"),
+        (coverage * 0.98).cast("uchar"),
     ).copy(interpretation="srgb")
 
     img = img.composite(shadow, "over", x=x + 1, y=y + 1)
