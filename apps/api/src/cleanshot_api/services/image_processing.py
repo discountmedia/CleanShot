@@ -33,33 +33,51 @@ class ExportResult:
 # Watermark text burnt into the bottom-right of every exported JPEG when
 # the operator ticks "Add AI disclaimer" in the Resize tab. Mirrors the
 # AI_DISCLAIMER_WATERMARK constant in the web app — keep in sync.
+#
+# The leading "*Disclaimer:" label is rendered in green; the remainder in
+# white. The split point is the literal label below — the renderer colours
+# everything up to and including it green and the rest white.
+AI_DISCLAIMER_LABEL = "*Disclaimer:"
 AI_DISCLAIMER_WATERMARK = (
-    "AI-enhanced image — depicts the unit as it will be delivered"
+    "*Disclaimer:  AI enhanced images - used for representational purposes"
 )
+
+# Green applied to the "*Disclaimer:" label (Tailwind green-500).
+_DISCLAIMER_LABEL_COLOR = "#22c55e"
 
 
 def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     """
     Burn AI_DISCLAIMER_WATERMARK into the bottom-right corner of `img`.
 
-    Renders a tiny semi-transparent white string with a one-pixel dark
-    shadow offset for legibility on both light and dark backgrounds. The
-    output bytes carry the watermark permanently — the customer-facing
-    listing photo cannot have it stripped.
+    Renders a tiny string with a green "*Disclaimer:" label and a white
+    body, plus a one-pixel dark shadow offset for legibility on both light
+    and dark backgrounds. The output bytes carry the watermark permanently
+    — the customer-facing listing photo cannot have it stripped.
 
     Sized for 1024-px-wide exports; on smaller images the relative
     proportion shifts but the watermark stays legible.
     """
-    # Single-band alpha mask: U8 with values 0..255 where text was drawn.
-    mask = pyvips.Image.text(
-        AI_DISCLAIMER_WATERMARK,
-        font="sans bold 11",
+    # Pango markup so the label and body can carry different colours in a
+    # single text render. Roboto matches the web-app preview font; falls
+    # back to Liberation via fontconfig if Roboto isn't installed.
+    label = AI_DISCLAIMER_LABEL
+    body = AI_DISCLAIMER_WATERMARK[len(label):]
+    markup = (
+        f'<span foreground="{_DISCLAIMER_LABEL_COLOR}">{label}</span>'
+        f'<span foreground="#ffffff">{body}</span>'
+    )
+    # rgba=True renders the coloured text directly (4-band sRGB + alpha).
+    text_img = pyvips.Image.text(
+        markup,
+        font="Roboto Bold 11",
         dpi=72,
+        rgba=True,
     )
 
     margin = 12
-    x = img.width  - mask.width  - margin
-    y = img.height - mask.height - margin
+    x = img.width  - text_img.width  - margin
+    y = img.height - text_img.height - margin
     # Bail if the export is too small to host the watermark at all
     # (e.g. a custom-export <100×100 thumbnail). The caller is expected
     # to only enable this for PRO exports which are always ≥1024px on
@@ -67,20 +85,24 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     if x < 0 or y < 0:
         return img
 
-    # Shadow: black RGBA with the same text mask, dimmed to ~55% alpha.
+    # Alpha band carries the text coverage; RGB bands carry the colours.
+    coverage = text_img.extract_band(3)
+    rgb = text_img.extract_band(0, n=3)
+
+    # Shadow: black RGBA following the text shape, dimmed to ~65% alpha.
     # `.copy(interpretation="srgb")` is REQUIRED — bandjoin produces a
     # 4-band image that pyvips otherwise tags as "multiband", which
     # libvips composite() refuses to align with the canvas's srgb
     # (errors: "vips_colourspace: no known route from 'multiband' to
     # 'srgb'"). Forcing the interpretation tells libvips to treat the
     # 4 bands as srgb+alpha.
-    shadow = mask.new_from_image([0, 0, 0]).bandjoin(
-        (mask * 0.55).cast("uchar"),
+    shadow = coverage.new_from_image([0, 0, 0]).bandjoin(
+        (coverage * 0.65).cast("uchar"),
     ).copy(interpretation="srgb")
-    # Foreground: white RGBA, dimmed to ~70% alpha so the disclaimer is
-    # readable but unmistakably a watermark, not a primary element.
-    fg = mask.new_from_image([255, 255, 255]).bandjoin(
-        (mask * 0.70).cast("uchar"),
+    # Foreground: the coloured text at ~92% alpha — less transparent than
+    # before so the disclaimer reads clearly while still being a watermark.
+    fg = rgb.bandjoin(
+        (coverage * 0.92).cast("uchar"),
     ).copy(interpretation="srgb")
 
     img = img.composite(shadow, "over", x=x + 1, y=y + 1)

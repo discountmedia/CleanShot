@@ -30,9 +30,11 @@ import { type ForkliftMeta } from "../../lib/types";
 
 // Watermark string burnt into the bottom-right corner of every exported JPEG
 // when the operator ticks "Add AI disclaimer". Backend pyvips uses the same
-// string; keep in sync if you change one (hard-won lesson #20).
+// string; keep in sync if you change one (hard-won lesson #20). The leading
+// "*Disclaimer:" label is rendered green; the rest white.
+export const AI_DISCLAIMER_LABEL = "*Disclaimer:";
 export const AI_DISCLAIMER_WATERMARK =
-  "AI-enhanced image — depicts the unit as it will be delivered";
+  "*Disclaimer:  AI enhanced images - used for representational purposes";
 
 export interface ExportAsset {
   assetId:      string;
@@ -500,8 +502,16 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             Burns a tiny, semi-transparent line of text into the bottom-right
             corner of every exported JPEG:
           </p>
-          <p className="text-sm text-yellow-300 italic font-mono mt-1.5 leading-snug">
-            &ldquo;{AI_DISCLAIMER_WATERMARK}&rdquo;
+          <p
+            className="text-sm mt-1.5 leading-snug"
+            style={{ fontFamily: "Roboto, sans-serif" }}
+          >
+            &ldquo;
+            <span className="font-bold text-green-500">{AI_DISCLAIMER_LABEL}</span>
+            <span className="font-bold text-zinc-100">
+              {AI_DISCLAIMER_WATERMARK.slice(AI_DISCLAIMER_LABEL.length)}
+            </span>
+            &rdquo;
           </p>
           <p className="text-sm text-zinc-300 mt-1.5 leading-relaxed">
             Use this when the photo is going to a customer-facing listing —

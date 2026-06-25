@@ -30,6 +30,7 @@ FROM python:3.12-slim AS final
 # libvips>=8.18: pyvips bindings
 # librsvg2-common: SVG rasterization
 # fontconfig + fonts-liberation: required for SVG/text rendering
+# fonts-roboto: Roboto for the AI-disclaimer watermark (matches web preview)
 # libcairo2: pango/cairo dependency
 # libwebp-dev: WebP encode/decode
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -38,6 +39,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         librsvg2-common \
         fontconfig \
         fonts-liberation \
+        fonts-roboto \
         libcairo2 \
         libwebp-dev \
     && apt-get clean \
