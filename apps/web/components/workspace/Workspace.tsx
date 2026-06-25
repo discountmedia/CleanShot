@@ -287,6 +287,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 onClearPipeline={handleClearPipeline}
                 equipmentType={meta.equipmentType ?? "forklift"}
                 meta={meta}
+                onMetaChange={setMeta}
                 userEmail={userEmail}
               />
             )}

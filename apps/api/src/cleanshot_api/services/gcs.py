@@ -86,10 +86,20 @@ def mint_upload_url(
     return signed_url, f"gs://{settings.gcs_bucket_originals}/{object_name}", object_name
 
 
-def mint_read_url(gcs_uri: str) -> tuple[str, datetime.datetime]:
+def mint_read_url(
+    gcs_uri: str,
+    *,
+    download_filename: str | None = None,
+) -> tuple[str, datetime.datetime]:
     """
     Mint a V4 signed GET URL for an existing GCS object.
     Returns: (signed_url, expires_at_utc)
+
+    When `download_filename` is given, the URL carries a
+    `response-content-disposition` override so the browser saves the file
+    under that name. This is the only reliable way to control the download
+    name for a cross-origin fetch — the HTML `download` attribute is
+    ignored by browsers for cross-origin (storage.googleapis.com) hrefs.
     """
     settings = get_settings()
     credentials, _ = _get_credentials()
@@ -102,12 +112,19 @@ def mint_read_url(gcs_uri: str) -> tuple[str, datetime.datetime]:
     blob = client.bucket(bucket_name).blob(object_name)
     expires_at = datetime.datetime.now(tz=datetime.timezone.utc) + _SIGNED_URL_EXPIRY_GET
 
+    sign_kwargs: dict = {}
+    if download_filename:
+        sign_kwargs["response_disposition"] = (
+            f'attachment; filename="{download_filename}"'
+        )
+
     signed_url: str = blob.generate_signed_url(
         version="v4",
         expiration=_SIGNED_URL_EXPIRY_GET,
         method="GET",
         service_account_email=settings.service_account_email,
         access_token=credentials.token,
+        **sign_kwargs,
     )
 
     return signed_url, expires_at

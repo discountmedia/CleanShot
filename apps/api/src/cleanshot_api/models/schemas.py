@@ -350,6 +350,10 @@ class ScanBatchRequest(BaseModel):
     session_id: uuid.UUID
     asset_ids: list[uuid.UUID] = Field(min_length=1, max_length=50)
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    # Optional equipment context from the Scan-tab meta fields — sharpens
+    # the QC inspector's anatomy judgement and cuts false geometry flags.
+    equipment_type: str | None = None
+    make: str | None = None
 
 
 class ScanBatchResponse(BaseModel):
@@ -632,6 +636,9 @@ class ScanTaskPayload(BaseModel):
     input_asset_id: uuid.UUID
     input_gcs_uri: str
     scan_difficulty: str = "standard"  # "standard" | "hard" — routes claude-opus-4-7
+    # Optional equipment context carried through to the scan prompt builder.
+    equipment_type: str | None = None
+    make: str | None = None
 
 
 class CleanupTaskPayload(BaseModel):
@@ -649,10 +656,20 @@ class CleanupTaskPayload(BaseModel):
 
 class ScanResult(BaseModel):
     """Structured output schema passed to all three AI providers as JSON schema."""
-    verdict: str = Field(description="'pass' or 'fail'")
+    verdict: str = Field(
+        description="'pass' or 'fail'. Default to 'pass'. Only 'fail' for a "
+        "gross, obvious AI generation defect a customer would notice as fake."
+    )
     confidence: float = Field(ge=0.0, le=1.0, description="0.0–1.0")
-    anomalies: list[AnomalyItem] = Field(default_factory=list)
-    summary: str = Field(description="One-sentence plain-English verdict")
+    anomalies: list[AnomalyItem] = Field(
+        default_factory=list,
+        description="Serious (medium/high) generation defects only. Empty "
+        "when the image passes. Never list nitpicks or photography critique.",
+    )
+    summary: str = Field(
+        description="One-sentence plain-English verdict. No advice or "
+        "photography tips."
+    )
 
     @field_validator("verdict")
     @classmethod
@@ -663,10 +680,10 @@ class ScanResult(BaseModel):
 
 
 class AnomalyItem(BaseModel):
-    type: str              # e.g. "rust", "missing_fork_tine", "damaged_mast"
-    location: str          # e.g. "left_fork", "mast_top", "data_plate"
-    severity: str          # "low" | "medium" | "high"
-    description: str
+    type: str = Field(description="Serious defect category, e.g. 'duplicated_part', 'missing_part', 'melted_geometry', 'garbled_text', 'wrong_colour', 'hallucinated_object'")
+    location: str = Field(description="Where on the unit, e.g. 'left_fork', 'mast_top', 'data_plate'")
+    severity: str = Field(description="'medium' or 'high' only — do not report 'low'/nitpick issues at all")
+    description: str = Field(description="What the obvious defect is. State the defect only; no advice or photography tips.")
 
 
 # Rebuild to resolve forward references

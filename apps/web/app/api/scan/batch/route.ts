@@ -13,6 +13,8 @@ interface ClientRequest {
   sessionId: string;
   assetIds: string[];
   idempotencyKey: string;
+  equipmentType?: string;
+  make?: string;
 }
 
 interface FastApiResponse {
@@ -33,6 +35,8 @@ export async function POST(request: NextRequest) {
       session_id:      body.sessionId,
       asset_ids:       body.assetIds,
       idempotency_key: body.idempotencyKey,
+      equipment_type:  body.equipmentType ?? null,
+      make:            body.make ?? null,
     }),
     signal: request.signal,
     cache: "no-store",

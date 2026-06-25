@@ -58,6 +58,7 @@ import { ScanFilterChips, type ScanFilter } from "./ScanFilterChips";
 import { ScanCommandBar } from "./ScanCommandBar";
 import { TipBanner } from "../workspace/TipBanner";
 import { ExportControls } from "../export/ExportControls";
+import { MetaCard } from "../enhance/MetaCard";
 
 const MAX_UPLOADS = 150;
 
@@ -104,6 +105,13 @@ export interface ScanPanelProps {
   equipmentType:   EquipmentType;
   /** Shared forklift metadata — pre-fills the embedded ExportControls form. */
   meta:            Partial<ForkliftMeta>;
+  /**
+   * Mutates the shared workspace meta. Lets the Scan tab carry the same
+   * equipment-detail fields as Enhance — important for standalone scans
+   * (operator never visited Enhance) and so the values feed both the scan
+   * prompt and the export filenames.
+   */
+  onMetaChange:    (meta: Partial<ForkliftMeta>) => void;
   /** Signed-in user's email — threaded into the embedded ExportControls. */
   userEmail:       string;
 }
@@ -114,6 +122,7 @@ export function ScanPanel({
   onClearPipeline,
   equipmentType,
   meta,
+  onMetaChange,
   userEmail,
 }: ScanPanelProps) {
   // ─── Core scan state ────────────────────────────────────────────────────
@@ -132,6 +141,7 @@ export function ScanPanel({
   const [rejected, setRejected]           = useState<Set<string>>(new Set());
   const [regenOpenId, setRegenOpenId]     = useState<string | null>(null);
   const [detailsOpenId, setDetailsOpenId] = useState<string | null>(null);
+  const [metaExpanded, setMetaExpanded]   = useState<boolean>(false);
 
   // Approved (or skip-scanned) assets queued for the embedded ExportControls
   // below. Replaces the old "Send to Resize" hand-off — Save + export now
@@ -368,6 +378,8 @@ export function ScanPanel({
         sessionId,
         assetIds:        allAssets.map((a) => a.assetId),
         idempotencyKey:  `scan-batch-${uuidv4()}`,
+        equipmentType:   meta.equipmentType ?? equipmentType,
+        make:            meta.make?.trim() || undefined,
       });
       setBatchJobIds(jobIds);
     } catch (err: unknown) {
@@ -572,6 +584,20 @@ export function ScanPanel({
           shows up so you can make the call.
         </p>
       </TipBanner>
+
+      {/* ── Equipment details ──
+          Same meta fields as the Enhance tab, bound to the shared workspace
+          meta. Editing here feeds the scan prompt's equipment context AND
+          the export filenames (zip + per-image). Hidden once results are in
+          so it doesn't crowd the results view. */}
+      {scanStates.length === 0 && (
+        <MetaCard
+          meta={meta}
+          onChange={onMetaChange}
+          expanded={metaExpanded}
+          onExpand={setMetaExpanded}
+        />
+      )}
 
       {/* ── Standalone upload zone ── */}
       {scanStates.length === 0 && (

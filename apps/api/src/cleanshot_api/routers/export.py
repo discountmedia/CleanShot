@@ -106,6 +106,25 @@ def _build_pro_filename(
     return f"{base}_{seq}{provider_part}.jpg"
 
 
+def _build_zip_filename(*, make: str, model: str, year: int) -> str:
+    """
+    Meta-derived name for the bundled ZIP so the operator's download is
+    labelled with the unit instead of a generic 'cleanshot_pro_export.zip'.
+    Mirrors the base of `_build_pro_filename`. Example:
+
+      Toyota_8FGU25_2019.zip
+
+    Falls back to 'cleanshot_pro_export.zip' if every meta part is empty.
+    """
+    parts = [
+        _sanitize_filename_part(make),
+        _sanitize_filename_part(model),
+        _sanitize_filename_part(str(year) if year else ""),
+    ]
+    parts = [p for p in parts if p]
+    return f"{'_'.join(parts)}.zip" if parts else "cleanshot_pro_export.zip"
+
+
 @router.post(
     "/export/fullsize",
     response_model=ExportFullsizeResponse,
@@ -307,7 +326,14 @@ async def export_pro_preview(
                         content_type="image/jpeg",
                     )
 
-                    preview_url, _ = gcs_service.mint_read_url(out_uri)
+                    # download_filename so the per-image "Download" link
+                    # saves under the meta name (Toyota_8FGU25_2019_01.jpg)
+                    # instead of the raw {asset_id}.jpg object name — the
+                    # HTML download attr can't override a cross-origin href.
+                    preview_url, _ = gcs_service.mint_read_url(
+                        out_uri,
+                        download_filename=out_filename,
+                    )
                     zf.writestr(out_filename, result.data)
 
                     probe = pyvips.Image.new_from_buffer(result.data, "")
@@ -339,12 +365,21 @@ async def export_pro_preview(
                 zip_bytes,
                 content_type="application/zip",
             )
-            zip_url, _ = gcs_service.mint_read_url(zip_uri)
+            zip_download_name = _build_zip_filename(
+                make=project.make,
+                model=project.model,
+                year=project.year,
+            )
+            zip_url, _ = gcs_service.mint_read_url(
+                zip_uri,
+                download_filename=zip_download_name,
+            )
 
             yield json.dumps({
                 "event":            "result",
                 "items":            items,
                 "zip_url":          zip_url,
+                "zip_filename":     zip_download_name,
                 "zip_size_bytes":   len(zip_bytes),
                 "any_size_warning": any_warning,
             }) + "\n"

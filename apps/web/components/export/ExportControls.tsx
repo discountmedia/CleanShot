@@ -184,6 +184,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
   // ── PRO export preview state ──
   const [previewItems, setPreviewItems] = useState<ExportProPreviewItem[]>([]);
   const [zipUrl,       setZipUrl]       = useState<string | null>(null);
+  const [zipFilename,  setZipFilename]  = useState<string>("cleanshot_pro_export.zip");
   const [zipSizeBytes, setZipSizeBytes] = useState<number>(0);
   const [anyWarning,   setAnyWarning]   = useState<boolean>(false);
   const [progressTotal,    setProgressTotal]    = useState<number>(0);
@@ -283,6 +284,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
           onResult: (resp) => {
             setPreviewItems(resp.items);
             setZipUrl(resp.zipUrl);
+            setZipFilename(resp.zipFilename);
             setZipSizeBytes(resp.zipSizeBytes);
             setAnyWarning(resp.anySizeWarning);
           },
@@ -598,7 +600,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             {zipUrl && (
               <a
                 href={zipUrl}
-                download="cleanshot_pro_export.zip"
+                download={zipFilename}
                 className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-2"
               >
                 Download ZIP

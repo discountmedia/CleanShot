@@ -49,32 +49,78 @@ SCAN_MODEL_OPENAI = "gpt-5.4"
 SCAN_MODEL_ANTHROPIC_STD = "claude-sonnet-4-6"
 SCAN_MODEL_ANTHROPIC_HARD = "claude-opus-4-7"  # 3× vision resolution
 
-SCAN_SYSTEM_PROMPT = """You are a quality-control inspector for AI-ENHANCED forklift images. The image you're about to see was produced by an image-editing AI from a real photo of a used forklift. Your only job is to spot generation artifacts that the AI introduced — NOT to critique the underlying photograph's composition, lighting, focus, exposure, or choice of background. Those came from the source shot and are not the AI's fault.
+SCAN_SYSTEM_PROMPT_BASE = """You are the FINAL quality-control gate for AI-ENHANCED equipment listing photos. Each image was produced by an image-editing AI from a real photo of a used machine (forklift, telehandler, scissor lift, etc.). You exist as a cover-your-ass check against SERIOUS, OBVIOUS AI failures that would embarrass the company or mislead a buyer if the photo went live. You are NOT a photo critic and NOT a perfectionist.
 
-Flag these AI-generation failures:
+DEFAULT TO "pass". Only return "fail" when the image has a GROSS, UNMISTAKABLE generation defect that a normal customer would immediately notice as wrong or fake. If the image looks good enough to put on a listing, it passes. Minor imperfections are expected and acceptable — they are not failures.
 
-1. Duplicated or hallucinated parts — multiple seats, multiple steering wheels, extra mirrors, a second exhaust stack, doubled mast rails, extra forks, extra wheels, two operator cages where one belongs.
-2. Garbled or smeared text — mangled letters on OEM decals, model badges, capacity plates, data plates, VIN/serial numbers, or safety stickers; drifted typeface, illegible runs, invented words.
-3. Wrong or invented colours — body panels shifted off the make's factory palette, badges with the wrong hue, mismatched panel colours that should be uniform, or any colour clearly not present in the source.
-4. Warped, melted, or asymmetric geometry — bent forks that should be straight, mismatched tire sizes left vs right, distorted overhead-guard rails, melted/fused/merged hardware, asymmetric features that should be symmetric.
-5. Inconsistent shadows or lighting on the unit relative to its surroundings — a sign the AI re-rendered the subject without matching the scene's light direction.
-6. Hallucinated extra hardware the original photo did not contain — random objects fused to the unit, phantom signage on the chassis, ghostly extra equipment behind it.
+Return "fail" ONLY for serious, obvious defects like these:
+1. Duplicated or extra major parts — two seats, two steering wheels, a second mast, extra forks, an extra wheel, a duplicated operator cage.
+2. Missing or destroyed major parts — forks gone where forks belong, a wheel missing, the mast or overhead guard structurally broken or dissolved.
+3. Grossly warped, melted, or fused structure — the chassis, mast, or forks obviously bent, melted, or merged in a way no real machine could be.
+4. Text turned into obvious gibberish — an OEM badge, capacity plate, or decal rendered as scrambled nonsense letters that plainly reads as fake.
+5. Wildly wrong colour — the whole machine or a major panel painted a colour that is obviously not real (e.g. a forklift turned bright purple).
+6. Hallucinated objects fused to the machine — phantom equipment, random objects, or extra hardware grafted onto the unit that was never in the real photo.
+7. Mangled people — if a person is visible: extra limbs, fused hands, or a distorted face.
 
-Do NOT flag: photographic composition, exposure, focus/sharpness, choice of background environment, dirt or wear that is genuinely on the real unit, or any defect that has nothing to do with what the AI generated.
+DO NOT FLAG these — they are NOT failures, and you must NOT mention them at all:
+- Minor or subtle warped geometry, slight asymmetry, or small perspective skew that still looks like a real machine. Only call out geometry when it is grossly, obviously broken.
+- Text that is slightly soft, slightly blurry, or only partially legible but still plausible. Only call out text when it is obvious scrambled nonsense.
+- Subtle colour shifts, reflections, or minor panel-tone differences.
+- ANY photography quality: lighting, angle, composition, exposure, focus, sharpness, framing, background choice, shadows, or how flattering the shot is. This is explicitly not your job and the operator does not want it.
+- Real dirt, wear, scratches, or rust actually on the used machine.
+- Anything that is merely "could be a little better" rather than "obviously broken or fake".
+
+Do NOT give advice, suggestions, or photography tips of any kind — not in the summary, not in the anomalies. If there is no serious defect, return verdict "pass" with an empty anomalies list and a one-sentence summary. Only ever populate anomalies with serious (medium- or high-severity) generation defects from the list above; never with nitpicks.
 
 Return ONLY valid JSON matching the ScanResult schema. No preamble or explanation."""
+
+
+def _build_scan_prompt(equipment_type: str | None, make: str | None) -> str:
+    """
+    Append known-equipment context to the base prompt so the inspector
+    judges anatomy against the RIGHT machine. Knowing the unit is e.g. a
+    scissor lift (which has no forks) prevents a big class of false
+    "missing/warped part" flags — directly addressing the operator's
+    complaint about over-eager geometry warnings.
+    """
+    ctx_lines: list[str] = []
+    if equipment_type:
+        label = equipment_type.replace("_", " ").strip()
+        if label:
+            ctx_lines.append(
+                f"- This unit is a {label}. Judge its anatomy by what a real "
+                f"{label} actually has; never flag a part as missing or wrong "
+                f"that this equipment type does not normally have."
+            )
+    if make and make.strip():
+        ctx_lines.append(
+            f'- Stated make: "{make.strip()}". Only flag colour when it is '
+            f"wildly, obviously wrong — not for subtle brand-palette differences."
+        )
+    if not ctx_lines:
+        return SCAN_SYSTEM_PROMPT_BASE
+    return (
+        f"{SCAN_SYSTEM_PROMPT_BASE}\n\nKNOWN EQUIPMENT CONTEXT:\n"
+        + "\n".join(ctx_lines)
+    )
+
+
+# Backwards-compatible default (no equipment context) for any caller that
+# still imports the bare prompt.
+SCAN_SYSTEM_PROMPT = SCAN_SYSTEM_PROMPT_BASE
 
 
 async def _scan_gemini(
     genai_client: Any,
     gcs_uri: str,
+    system_prompt: str,
 ) -> tuple[ScanResult, int]:
     """Gemini scan — uses GCS URI directly (no base64 transfer)."""
     t0 = time.monotonic()
     # Gemini file_data requires mime_type. Derive from filename in URI.
     mime_type = mimetypes.guess_type(gcs_uri)[0] or "image/jpeg"
     file_part = types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
-    text_part = types.Part.from_text(text=SCAN_SYSTEM_PROMPT)
+    text_part = types.Part.from_text(text=system_prompt)
     response = await genai_client.aio.models.generate_content(
         model=SCAN_MODEL_GEMINI,
         contents=[
@@ -119,6 +165,7 @@ async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
 async def _scan_openai(
     openai_client: Any,
     gcs_uri: str,
+    system_prompt: str,
 ) -> tuple[ScanResult, int]:
     """OpenAI scan — Responses API with gpt-5.4, data URL WITH prefix."""
     image_bytes, ct = await _load_image_bytes(gcs_uri)
@@ -142,7 +189,7 @@ async def _scan_openai(
                         "image_url": data_url,  # WITH prefix — OpenAI requirement
                         "detail": "high",
                     },
-                    {"type": "input_text", "text": SCAN_SYSTEM_PROMPT},
+                    {"type": "input_text", "text": system_prompt},
                 ],
             }
         ],
@@ -157,6 +204,7 @@ async def _scan_anthropic(
     anthropic_client: Any,
     gcs_uri: str,
     difficulty: str,
+    system_prompt: str,
 ) -> tuple[ScanResult, int]:
     """
     Anthropic scan — tool-forced JSON via tool_choice. Raw base64 WITHOUT prefix.
@@ -175,7 +223,7 @@ async def _scan_anthropic(
     response = await anthropic_client.messages.create(
         model=model_id,
         max_tokens=3048,
-        system=SCAN_SYSTEM_PROMPT,
+        system=system_prompt,
         tools=[
             {
                 "name": "report_scan",
@@ -276,6 +324,10 @@ async def _run_scan(
     async with pool.acquire() as conn:
         await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
 
+    # Equipment context (if the operator filled in the meta fields) sharpens
+    # the inspector's anatomy judgement and cuts false geometry/colour flags.
+    system_prompt = _build_scan_prompt(payload.equipment_type, payload.make)
+
     try:
         provider_results:   dict[str, ScanResult] = {}
         provider_latencies: dict[str, int]        = {}
@@ -292,7 +344,7 @@ async def _run_scan(
         # land in its own bucket.
         async def _safe_gemini() -> None:
             try:
-                r, lat = await _scan_gemini(genai_client, payload.input_gcs_uri)
+                r, lat = await _scan_gemini(genai_client, payload.input_gcs_uri, system_prompt)
                 provider_results["gemini"]   = r
                 provider_latencies["gemini"] = lat
             except Exception as exc:
@@ -301,7 +353,7 @@ async def _run_scan(
 
         async def _safe_openai() -> None:
             try:
-                r, lat = await _scan_openai(openai_client, payload.input_gcs_uri)
+                r, lat = await _scan_openai(openai_client, payload.input_gcs_uri, system_prompt)
                 provider_results["openai"]   = r
                 provider_latencies["openai"] = lat
             except Exception as exc:
@@ -314,6 +366,7 @@ async def _run_scan(
                     anthropic_client,
                     payload.input_gcs_uri,
                     payload.scan_difficulty,
+                    system_prompt,
                 )
                 provider_results["anthropic"]   = r
                 provider_latencies["anthropic"] = lat

@@ -226,6 +226,8 @@ async def enqueue_scan_batch(
                 session_id=body.session_id,
                 input_asset_id=asset_id,
                 input_gcs_uri=asset.gcs_uri,
+                equipment_type=body.equipment_type,
+                make=body.make,
             )
             tasks_name = enqueue_scan(task_payload)
             await queries.set_job_tasks_name(conn, job.id, tasks_name)

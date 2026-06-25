@@ -117,6 +117,9 @@ export async function enqueueScanBatch(params: {
   sessionId: string;
   assetIds: string[];
   idempotencyKey: string;
+  /** Optional equipment context from the Scan-tab meta fields. */
+  equipmentType?: string;
+  make?: string;
 }): Promise<{ batchId: string; jobIds: string[] }> {
   return post("/api/scan/batch", params);
 }
@@ -318,6 +321,8 @@ export interface ExportProPreviewResponse {
   items:          ExportProPreviewItem[];
   /** V4 signed GET URL to the bundled ZIP in GCS — drop straight into <a href>. */
   zipUrl:         string;
+  /** Meta-derived ZIP filename, e.g. "Toyota_8FGU25_2019.zip". */
+  zipFilename:    string;
   zipSizeBytes:   number;
   /** Convenience flag: true if any item has sizeWarning=true. */
   anySizeWarning: boolean;
@@ -432,6 +437,7 @@ export async function exportProPreviewStream(
           callbacks.onResult({
             items,
             zipUrl:         event.zip_url as string,
+            zipFilename:    (event.zip_filename as string) ?? "cleanshot_pro_export.zip",
             zipSizeBytes:   event.zip_size_bytes as number,
             anySizeWarning: event.any_size_warning as boolean,
           });
