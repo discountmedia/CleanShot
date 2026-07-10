@@ -120,6 +120,14 @@ export async function enqueueScanBatch(params: {
   /** Optional equipment context from the Scan-tab meta fields. */
   equipmentType?: string;
   make?: string;
+  /**
+   * Optional map of { enhanced assetId → original (pre-enhance) assetId }.
+   * When present for an asset, the worker runs a differential (before/after)
+   * scan against the original instead of the isolated single-image scan.
+   */
+  originalAssetIds?: Record<string, string>;
+  /** Optional whitelist of edits the enhance step was asked to make. */
+  intendedEdits?: string[];
 }): Promise<{ batchId: string; jobIds: string[] }> {
   return post("/api/scan/batch", params);
 }

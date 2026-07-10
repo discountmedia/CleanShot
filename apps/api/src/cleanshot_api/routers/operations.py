@@ -203,6 +203,7 @@ async def enqueue_scan_batch(
     """Enqueue scan jobs for all requested asset IDs. Returns batch_id + job_ids."""
     batch_id = uuid.uuid4()
     job_ids: list[uuid.UUID] = []
+    originals = body.original_asset_ids or {}
 
     async with pool.acquire() as conn:
         for asset_id in body.asset_ids:
@@ -212,6 +213,19 @@ async def enqueue_scan_batch(
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=f"Asset {asset_id} not found",
                 )
+
+            # If the caller supplied the original (pre-enhance) asset for this
+            # enhanced asset, resolve its GCS URI so the worker runs a
+            # DIFFERENTIAL scan. Silently fall back to isolated mode if the
+            # original is missing or belongs to another session.
+            original_asset_id = originals.get(asset_id)
+            original_gcs_uri: str | None = None
+            if original_asset_id:
+                original = await queries.get_asset(conn, original_asset_id)
+                if original is not None and original.session_id == body.session_id:
+                    original_gcs_uri = original.gcs_uri
+                else:
+                    original_asset_id = None
 
             job = await queries.create_job(
                 conn,
@@ -228,6 +242,9 @@ async def enqueue_scan_batch(
                 input_gcs_uri=asset.gcs_uri,
                 equipment_type=body.equipment_type,
                 make=body.make,
+                original_asset_id=original_asset_id,
+                original_gcs_uri=original_gcs_uri,
+                intended_edits=body.intended_edits,
             )
             tasks_name = enqueue_scan(task_payload)
             await queries.set_job_tasks_name(conn, job.id, tasks_name)

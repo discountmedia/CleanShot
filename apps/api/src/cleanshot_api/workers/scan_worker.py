@@ -110,22 +110,122 @@ def _build_scan_prompt(equipment_type: str | None, make: str | None) -> str:
 SCAN_SYSTEM_PROMPT = SCAN_SYSTEM_PROMPT_BASE
 
 
+# ---------------------------------------------------------------------------
+# DIFFERENTIAL scan — compare the ENHANCED output against the ORIGINAL photo.
+#
+# The isolated scan above judges one image in a vacuum and is deliberately
+# blind to altered geometry (to keep false positives down). That blindness is
+# exactly what let a silent "72-inch forks → 32-inch forks" edit ship. When we
+# have the original photo, "spot the difference" is a far more grounded task:
+# the original IS the spec, so dimensional drift, added damage/debris, and
+# altered model numbers all surface as differences instead of requiring the
+# model to guess correctness from nothing. Intended edits (repaint, de-brand,
+# remove people) are passed in as a whitelist so we don't flag them.
+# ---------------------------------------------------------------------------
+SCAN_DIFFERENTIAL_PROMPT_BASE = """You are the FINAL quality-control gate for AI-ENHANCED equipment listing photos. You are shown TWO images of the SAME piece of used equipment:
+  • IMAGE 1 = the ORIGINAL real photo (the ground truth for what the machine actually looks like).
+  • IMAGE 2 = the AI-ENHANCED output produced from Image 1.
+
+Your ONLY job is to detect UNINTENDED physical changes the AI made to the MACHINE ITSELF — cases where the enhancer silently altered the equipment instead of just cleaning up the photo. If Image 2 faithfully preserves the real machine, it PASSES.
+
+CHANGES THAT ARE EXPECTED — never flag these:
+- Lighting, exposure, brightness, contrast, white balance, or overall colour grade.
+- Background, floor, or surroundings being cleaned, replaced, or simplified.
+- Reflections, shadows, glare, general cleanliness, removal of dirt/dust/scuffs.
+- Sharpness, resolution, crop, or framing/zoom differences.
+- Any edit explicitly listed under "REQUESTED EDITS" below.
+
+CHANGES THAT ARE DEFECTS — FLAG these when Image 2 differs from Image 1 in ways NOT requested:
+1. DIMENSIONS / PROPORTIONS altered — forks made shorter/longer/wider, mast made taller/shorter or gaining/losing sections, wheels resized, boom length changed, the machine's overall proportions distorted. This is the MOST IMPORTANT category: a buyer relies on the photo matching the real spec.
+2. PARTS added or removed — a fork, wheel, mirror, light, guard, hose, or attachment that appears or disappears versus the original.
+3. GEOMETRY altered — a part reshaped, bent, straightened, or restructured into a different form than the real one.
+4. DAMAGE or DEBRIS ADDED — new dents, rust, cracks, scratches, or clutter that were NOT present in the original. The enhancer must never make the machine look MORE damaged than it really is.
+5. TEXT / IDENTITY changed — model numbers, capacity plates, OEM badges, serial/spec text, or decals that now read as DIFFERENT digits/letters than the original (unless a restore was requested).
+6. COLOUR that misrepresents the machine — a panel or the whole unit painted a different colour than the real one, UNLESS a repaint was requested.
+
+Compare the two images carefully, part by part. DEFAULT TO "pass"; only "fail" when there is at least one clear, consequential UNINTENDED change from the list above that a buyer would notice or be misled by. Phrase every flagged item as a difference FROM THE ORIGINAL (e.g. "forks appear ~40% shorter than in the original photo"). Do NOT critique photography or give tips. If the only differences are expected/requested edits, return "pass" with empty anomalies.
+
+Return ONLY valid JSON matching the ScanResult schema. No preamble or explanation."""
+
+
+def _build_differential_prompt(
+    equipment_type: str | None,
+    make: str | None,
+    intended_edits: list[str] | None,
+) -> str:
+    """
+    Assemble the differential (before/after) scan prompt: base rubric +
+    equipment context + the whitelist of edits the enhance step was asked
+    to make (so deliberate changes aren't flagged as defects).
+    """
+    sections: list[str] = [SCAN_DIFFERENTIAL_PROMPT_BASE]
+
+    ctx_lines: list[str] = []
+    if equipment_type:
+        label = equipment_type.replace("_", " ").strip()
+        if label:
+            ctx_lines.append(
+                f"- Both images show a {label}. Judge only parts a real "
+                f"{label} actually has; do not expect a part this equipment "
+                f"type does not have."
+            )
+    if make and make.strip():
+        ctx_lines.append(f'- Stated make: "{make.strip()}".')
+    if ctx_lines:
+        sections.append("KNOWN EQUIPMENT CONTEXT:\n" + "\n".join(ctx_lines))
+
+    if intended_edits:
+        edits = "\n".join(f"- {e}" for e in intended_edits)
+        sections.append(
+            "REQUESTED EDITS (these were asked for — treat as EXPECTED, do NOT "
+            "flag them):\n" + edits
+        )
+    else:
+        sections.append(
+            "REQUESTED EDITS: standard listing cleanup only (lighting, "
+            "background, and general cleanliness). Treat any change to the "
+            "machine's physical form, parts, dimensions, or identifying text "
+            "as unintended."
+        )
+
+    return "\n\n".join(sections)
+
+
 async def _scan_gemini(
     genai_client: Any,
     gcs_uri: str,
     system_prompt: str,
+    original_gcs_uri: str | None = None,
 ) -> tuple[ScanResult, int]:
-    """Gemini scan — uses GCS URI directly (no base64 transfer)."""
+    """
+    Gemini scan — uses GCS URI directly (no base64 transfer).
+
+    When original_gcs_uri is set, runs DIFFERENTIAL: the original photo is
+    sent as IMAGE 1 and the enhanced output as IMAGE 2, with text labels so
+    the model knows which is which (Gemini honours part order).
+    """
     t0 = time.monotonic()
     # Gemini file_data requires mime_type. Derive from filename in URI.
     mime_type = mimetypes.guess_type(gcs_uri)[0] or "image/jpeg"
-    file_part = types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
+    enhanced_part = types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type)
     text_part = types.Part.from_text(text=system_prompt)
+
+    if original_gcs_uri:
+        orig_mime = mimetypes.guess_type(original_gcs_uri)[0] or "image/jpeg"
+        orig_part = types.Part.from_uri(file_uri=original_gcs_uri, mime_type=orig_mime)
+        parts = [
+            types.Part.from_text(text="IMAGE 1 — ORIGINAL real photo:"),
+            orig_part,
+            types.Part.from_text(text="IMAGE 2 — AI-ENHANCED output to inspect:"),
+            enhanced_part,
+            text_part,
+        ]
+    else:
+        parts = [enhanced_part, text_part]
+
     response = await genai_client.aio.models.generate_content(
         model=SCAN_MODEL_GEMINI,
-        contents=[
-            types.Content(role="user", parts=[file_part, text_part])
-        ],
+        contents=[types.Content(role="user", parts=parts)],
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
             response_schema=ScanResult,
@@ -166,11 +266,31 @@ async def _scan_openai(
     openai_client: Any,
     gcs_uri: str,
     system_prompt: str,
+    original_gcs_uri: str | None = None,
 ) -> tuple[ScanResult, int]:
-    """OpenAI scan — Responses API with gpt-5.4, data URL WITH prefix."""
+    """
+    OpenAI scan — Responses API with gpt-5.4, data URL WITH prefix.
+
+    When original_gcs_uri is set, runs DIFFERENTIAL: both images go into the
+    same content array (multiple input_image items are supported), labeled by
+    interleaved input_text so the model can tell original from enhanced.
+    """
     image_bytes, ct = await _load_image_bytes(gcs_uri)
     b64 = base64.b64encode(image_bytes).decode()
     data_url = f"data:{ct};base64,{b64}"
+
+    content: list[dict[str, Any]] = []
+    if original_gcs_uri:
+        orig_bytes, orig_ct = await _load_image_bytes(original_gcs_uri)
+        orig_b64 = base64.b64encode(orig_bytes).decode()
+        orig_url = f"data:{orig_ct};base64,{orig_b64}"
+        content.append({"type": "input_text", "text": "IMAGE 1 — ORIGINAL real photo:"})
+        content.append({"type": "input_image", "image_url": orig_url, "detail": "high"})
+        content.append({"type": "input_text", "text": "IMAGE 2 — AI-ENHANCED output to inspect:"})
+        content.append({"type": "input_image", "image_url": data_url, "detail": "high"})
+    else:
+        content.append({"type": "input_image", "image_url": data_url, "detail": "high"})
+    content.append({"type": "input_text", "text": system_prompt})
 
     t0 = time.monotonic()
     # Pass the Pydantic model as text_format — the SDK converts it to a
@@ -180,19 +300,7 @@ async def _scan_openai(
     # required to be supplied and to be false'.
     response = await openai_client.responses.parse(
         model=SCAN_MODEL_OPENAI,
-        input=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "input_image",
-                        "image_url": data_url,  # WITH prefix — OpenAI requirement
-                        "detail": "high",
-                    },
-                    {"type": "input_text", "text": system_prompt},
-                ],
-            }
-        ],
+        input=[{"role": "user", "content": content}],
         text_format=ScanResult,
     )
     latency_ms = int((time.monotonic() - t0) * 1000)
@@ -200,15 +308,31 @@ async def _scan_openai(
     return result, latency_ms
 
 
+def _anthropic_image_block(ct: str, b64: str) -> dict[str, Any]:
+    return {
+        "type": "image",
+        "source": {
+            "type": "base64",
+            "media_type": ct,
+            "data": b64,  # Raw base64, no prefix — Anthropic requirement
+        },
+    }
+
+
 async def _scan_anthropic(
     anthropic_client: Any,
     gcs_uri: str,
     difficulty: str,
     system_prompt: str,
+    original_gcs_uri: str | None = None,
 ) -> tuple[ScanResult, int]:
     """
     Anthropic scan — tool-forced JSON via tool_choice. Raw base64 WITHOUT prefix.
     Routes to claude-opus-4-7 for hard scans (3× vision resolution).
+
+    When original_gcs_uri is set, runs DIFFERENTIAL: both images are added as
+    image blocks with text labels between them (Anthropic's documented
+    multi-image pattern), original first then enhanced.
     """
     image_bytes, ct = await _load_image_bytes(gcs_uri)
     b64 = base64.b64encode(image_bytes).decode()  # NO data: prefix — Anthropic requirement
@@ -218,6 +342,18 @@ async def _scan_anthropic(
         if difficulty == "hard"
         else SCAN_MODEL_ANTHROPIC_STD
     )
+
+    if original_gcs_uri:
+        orig_bytes, orig_ct = await _load_image_bytes(original_gcs_uri)
+        orig_b64 = base64.b64encode(orig_bytes).decode()
+        content: list[dict[str, Any]] = [
+            {"type": "text", "text": "IMAGE 1 — ORIGINAL real photo:"},
+            _anthropic_image_block(orig_ct, orig_b64),
+            {"type": "text", "text": "IMAGE 2 — AI-ENHANCED output to inspect:"},
+            _anthropic_image_block(ct, b64),
+        ]
+    else:
+        content = [_anthropic_image_block(ct, b64)]
 
     t0 = time.monotonic()
     response = await anthropic_client.messages.create(
@@ -232,21 +368,7 @@ async def _scan_anthropic(
             }
         ],
         tool_choice={"type": "tool", "name": "report_scan"},
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "image",
-                        "source": {
-                            "type": "base64",
-                            "media_type": ct,
-                            "data": b64,  # Raw base64, no prefix
-                        },
-                    }
-                ],
-            }
-        ],
+        messages=[{"role": "user", "content": content}],
     )
     latency_ms = int((time.monotonic() - t0) * 1000)
     # tool_choice forces a tool_use block; model's args land in .input as a dict.
@@ -324,9 +446,21 @@ async def _run_scan(
     async with pool.acquire() as conn:
         await queries.update_job_status(conn, payload.job_id, JobStatusEnum.processing)
 
-    # Equipment context (if the operator filled in the meta fields) sharpens
-    # the inspector's anatomy judgement and cuts false geometry/colour flags.
-    system_prompt = _build_scan_prompt(payload.equipment_type, payload.make)
+    # DIFFERENTIAL mode fires whenever the enqueuer handed us the original
+    # pre-enhance photo. Then we compare enhanced-vs-original ("what changed?")
+    # instead of judging the output in a vacuum — which is what catches silent
+    # dimensional drift (shrunk forks) and added damage. No original (standalone
+    # uploads) → the legacy isolated CYA scan.
+    is_differential = bool(payload.original_gcs_uri)
+    if is_differential:
+        system_prompt = _build_differential_prompt(
+            payload.equipment_type, payload.make, payload.intended_edits
+        )
+    else:
+        # Equipment context (if the operator filled in the meta fields) sharpens
+        # the inspector's anatomy judgement and cuts false geometry/colour flags.
+        system_prompt = _build_scan_prompt(payload.equipment_type, payload.make)
+    original_uri = payload.original_gcs_uri  # None in isolated mode
 
     try:
         provider_results:   dict[str, ScanResult] = {}
@@ -344,7 +478,9 @@ async def _run_scan(
         # land in its own bucket.
         async def _safe_gemini() -> None:
             try:
-                r, lat = await _scan_gemini(genai_client, payload.input_gcs_uri, system_prompt)
+                r, lat = await _scan_gemini(
+                    genai_client, payload.input_gcs_uri, system_prompt, original_uri
+                )
                 provider_results["gemini"]   = r
                 provider_latencies["gemini"] = lat
             except Exception as exc:
@@ -353,7 +489,9 @@ async def _run_scan(
 
         async def _safe_openai() -> None:
             try:
-                r, lat = await _scan_openai(openai_client, payload.input_gcs_uri, system_prompt)
+                r, lat = await _scan_openai(
+                    openai_client, payload.input_gcs_uri, system_prompt, original_uri
+                )
                 provider_results["openai"]   = r
                 provider_latencies["openai"] = lat
             except Exception as exc:
@@ -367,6 +505,7 @@ async def _run_scan(
                     payload.input_gcs_uri,
                     payload.scan_difficulty,
                     system_prompt,
+                    original_uri,
                 )
                 provider_results["anthropic"]   = r
                 provider_latencies["anthropic"] = lat
@@ -444,8 +583,9 @@ async def _run_scan(
             await queries.update_job_status(conn, payload.job_id, JobStatusEnum.complete)
 
         logger.info(
-            "Scan complete for job %s | providers=%s | failed=%s | verdict=%s",
+            "Scan complete for job %s | mode=%s | providers=%s | failed=%s | verdict=%s",
             payload.job_id,
+            "differential" if is_differential else "isolated",
             list(provider_results.keys()),
             list(provider_errors.keys()),
             consensus["verdict"],

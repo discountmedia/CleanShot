@@ -70,6 +70,13 @@ interface PipelineAsset {
    * baked into the export filename.
    */
   provider?: string;
+  /**
+   * Asset id of the ORIGINAL pre-enhance photo. Present for variants that
+   * came from the Enhance tab; lets the Scan tab run a differential
+   * (before/after) scan. Undefined for standalone uploads (nothing to
+   * compare against — those get the isolated scan).
+   */
+  originalAssetId?: string;
 }
 
 // `filename` lives in the UI as "Toyota_8FGU25_2019_01.jpg" today. When
@@ -202,6 +209,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     filename: string;
     outputUrl: string;
     provider?: string;
+    sourceAssetId?: string;
   }>) => {
     setEnhancedAssets((prev) => {
       // Duplicates are now allowed by design — the same source image
@@ -210,11 +218,12 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       // same item. Filenames carry a provider suffix so the operator
       // can tell variants apart in the Scan tab list.
       const additions = items.map((it): PipelineAsset => ({
-        assetId:      it.outputAssetId,
-        filename:     providerSuffixedFilename(it.filename, it.provider),
-        thumbnailUrl: it.outputUrl,
-        outputUrl:    it.outputUrl,
-        provider:     it.provider,
+        assetId:         it.outputAssetId,
+        filename:        providerSuffixedFilename(it.filename, it.provider),
+        thumbnailUrl:    it.outputUrl,
+        outputUrl:       it.outputUrl,
+        provider:        it.provider,
+        originalAssetId: it.sourceAssetId,
       }));
       return additions.length > 0 ? [...prev, ...additions] : prev;
     });

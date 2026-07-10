@@ -15,6 +15,8 @@ interface ClientRequest {
   idempotencyKey: string;
   equipmentType?: string;
   make?: string;
+  originalAssetIds?: Record<string, string>;
+  intendedEdits?: string[];
 }
 
 interface FastApiResponse {
@@ -32,11 +34,13 @@ export async function POST(request: NextRequest) {
     method: "POST",
     headers: jsonHeaders(env.key),
     body: JSON.stringify({
-      session_id:      body.sessionId,
-      asset_ids:       body.assetIds,
-      idempotency_key: body.idempotencyKey,
-      equipment_type:  body.equipmentType ?? null,
-      make:            body.make ?? null,
+      session_id:         body.sessionId,
+      asset_ids:          body.assetIds,
+      idempotency_key:    body.idempotencyKey,
+      equipment_type:     body.equipmentType ?? null,
+      make:               body.make ?? null,
+      original_asset_ids: body.originalAssetIds ?? null,
+      intended_edits:     body.intendedEdits ?? null,
     }),
     signal: request.signal,
     cache: "no-store",

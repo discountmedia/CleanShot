@@ -354,6 +354,17 @@ class ScanBatchRequest(BaseModel):
     # the QC inspector's anatomy judgement and cuts false geometry flags.
     equipment_type: str | None = None
     make: str | None = None
+    # Optional map of {enhanced asset_id → original (pre-enhance) asset_id}.
+    # When an entry is present, that asset is scanned in DIFFERENTIAL mode —
+    # the inspector compares the enhanced output against its original and
+    # flags UNINTENDED physical changes (shrunk forks, added damage, altered
+    # text). Assets absent from the map (e.g. standalone uploads that were
+    # never enhanced) fall back to the isolated single-image CYA scan.
+    original_asset_ids: dict[uuid.UUID, uuid.UUID] | None = None
+    # Optional human-readable list of edits the enhance step was asked to
+    # make (repaint forks, remove people, …) so the differential inspector
+    # treats them as expected rather than flagging them as defects.
+    intended_edits: list[str] | None = None
 
 
 class ScanBatchResponse(BaseModel):
@@ -639,6 +650,18 @@ class ScanTaskPayload(BaseModel):
     # Optional equipment context carried through to the scan prompt builder.
     equipment_type: str | None = None
     make: str | None = None
+    # DIFFERENTIAL SCAN — when both are set, the enhanced image
+    # (input_asset_id/input_gcs_uri) is compared against the ORIGINAL
+    # pre-enhance photo below. The scan worker branches into differential
+    # mode: two images per provider + a "what changed?" prompt. When None,
+    # the worker runs the legacy isolated single-image scan (standalone
+    # uploads that have no original to compare against).
+    original_asset_id: uuid.UUID | None = None
+    original_gcs_uri: str | None = None
+    # Human-readable edits the enhance step was asked to make. Threaded into
+    # the differential prompt's whitelist so deliberate changes (repaint,
+    # de-brand, remove people) are not flagged as defects.
+    intended_edits: list[str] | None = None
 
 
 class CleanupTaskPayload(BaseModel):
@@ -680,10 +703,10 @@ class ScanResult(BaseModel):
 
 
 class AnomalyItem(BaseModel):
-    type: str = Field(description="Serious defect category, e.g. 'duplicated_part', 'missing_part', 'melted_geometry', 'garbled_text', 'wrong_colour', 'hallucinated_object'")
+    type: str = Field(description="Defect/change category. Isolated scan: 'duplicated_part', 'missing_part', 'melted_geometry', 'garbled_text', 'wrong_colour', 'hallucinated_object'. Differential scan (vs original): 'dimension_changed', 'part_added', 'part_removed', 'geometry_altered', 'damage_added', 'debris_added', 'text_changed', 'colour_changed'")
     location: str = Field(description="Where on the unit, e.g. 'left_fork', 'mast_top', 'data_plate'")
     severity: str = Field(description="'medium' or 'high' only — do not report 'low'/nitpick issues at all")
-    description: str = Field(description="What the obvious defect is. State the defect only; no advice or photography tips.")
+    description: str = Field(description="What the defect or unintended change is. In differential mode, phrase it as a difference from the original. State the issue only; no advice or photography tips.")
 
 
 # Rebuild to resolve forward references

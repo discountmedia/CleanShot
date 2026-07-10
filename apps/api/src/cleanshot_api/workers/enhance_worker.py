@@ -1849,12 +1849,24 @@ async def _run_enhance(
                 output_asset_id=output_asset.id,
             )
 
-        # Auto-enqueue scan job per spec
+        # Auto-enqueue scan job per spec. We hand the scan worker BOTH the
+        # enhanced output (to inspect) AND the original source photo
+        # (payload.input_asset_id/input_gcs_uri) so it runs in DIFFERENTIAL
+        # mode — comparing before/after to catch silent structural drift
+        # (e.g. shrunk forks) and added damage that an isolated scan misses.
+        # intended_edits (derived from the toggles the operator actually
+        # asked for) whitelists deliberate changes so they aren't flagged.
         scan_payload = ScanTaskPayload(
             job_id=uuid.uuid4(),
             session_id=payload.session_id,
             input_asset_id=output_asset.id,
             input_gcs_uri=output_gcs_uri,
+            original_asset_id=payload.input_asset_id,
+            original_gcs_uri=payload.input_gcs_uri,
+            equipment_type=payload.equipment_type,
+            intended_edits=_describe_intended_edits(
+                payload.toggles, payload.equipment_type, payload.custom_prompt
+            ),
         )
         async with pool.acquire() as conn:
             scan_job = await queries.create_job(
@@ -1905,6 +1917,59 @@ async def _run_enhance(
                 )
             except Exception:
                 logger.exception("usage_event insert failed (enhance failure path)")
+
+
+def _describe_intended_edits(
+    toggles: "EnhanceToggles",
+    equipment_type: str,
+    custom_prompt: str | None,
+) -> list[str] | None:
+    """
+    Translate the enhance toggles into a human-readable whitelist for the
+    differential scanner, so deliberate edits (repaint, de-brand, remove
+    people) are treated as EXPECTED rather than flagged as unintended
+    changes. Note we deliberately reinforce that a fork REPAINT must not
+    change the fork's shape or length — that exact silent-drift case is the
+    reason this whole differential pass exists. Returns None when nothing
+    non-cosmetic was requested (the prompt then uses its default whitelist).
+    """
+    edits: list[str] = []
+    if toggles.new_paint_job:
+        edits.append(
+            "The machine may have a fresh coat of paint — a cleaner or "
+            "slightly different paint finish is expected; do not flag it."
+        )
+    if toggles.paint_forks_red_yellow_tips and equipment_type != "scissor_lift":
+        edits.append(
+            "The forks may be repainted red with yellow tips. The COLOUR "
+            "change is expected, but the forks' shape, length, and count "
+            "must still match the original."
+        )
+    if toggles.remove_rust:
+        edits.append("Surface rust may be cleaned off; rust simply being gone is expected.")
+    if toggles.restore_decals:
+        edits.append(
+            "Faded decals/labels may be restored to be legible; still flag "
+            "model or capacity NUMBERS that changed to different values."
+        )
+    if toggles.remove_people:
+        edits.append("People may have been removed from the scene.")
+    if toggles.remove_background_signage:
+        edits.append("Background signage may have been removed.")
+    if toggles.shine_tires:
+        edits.append("Tire sidewalls may be glossed/darkened.")
+    if toggles.improve_lighting:
+        edits.append("Lighting and exposure may be improved.")
+    if toggles.remove_rental_branding:
+        edits.append("Rental-fleet branding/stickers may have been removed.")
+    if toggles.showroom_floor:
+        edits.append("The floor may be cleaned to a uniform studio finish.")
+    if custom_prompt:
+        edits.append(
+            "The operator supplied a custom instruction, so additional "
+            "reasonable edits they described are expected."
+        )
+    return edits or None
 
 
 async def _write_to_gcs(

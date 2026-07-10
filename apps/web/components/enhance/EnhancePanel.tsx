@@ -222,6 +222,12 @@ export interface CompletedEnhanceItem {
   outputAssetId: string;
   filename: string;
   outputUrl: string;
+  /**
+   * Asset id of the ORIGINAL pre-enhance photo this variant was generated
+   * from. Threaded to the Scan tab so it can run a differential (before/
+   * after) scan instead of judging the enhanced output in isolation.
+   */
+  sourceAssetId: string;
 }
 
 export interface EnhancePanelProps {
@@ -498,6 +504,7 @@ export function EnhancePanel({
               outputAssetId: job.outputAssetId as string,
               filename:      file.uploadedFilename ?? file.file.name,
               outputUrl:     url,
+              sourceAssetId: file.assetId ?? "",
             });
             return next;
           });

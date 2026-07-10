@@ -87,6 +87,12 @@ interface PipelineAsset {
   thumbnailUrl: string;
   outputUrl?:   string;
   provider?:    string;
+  /**
+   * Original pre-enhance asset id (present for Enhance-tab variants). When
+   * set, the scan runs differentially (enhanced vs original). Undefined for
+   * standalone uploads → isolated scan.
+   */
+  originalAssetId?: string;
 }
 
 export interface ScanPanelProps {
@@ -373,6 +379,14 @@ export function ScanPanel({
     setScanStates(initial);
     setJobStartedMs(new Map());
 
+    // Map each enhanced asset → its original pre-enhance asset so the worker
+    // can run a differential (before/after) scan. Standalone uploads have no
+    // original, so they're omitted and fall back to the isolated scan.
+    const originalAssetIds: Record<string, string> = {};
+    for (const a of allAssets) {
+      if (a.originalAssetId) originalAssetIds[a.assetId] = a.originalAssetId;
+    }
+
     try {
       const { jobIds } = await enqueueScanBatch({
         sessionId,
@@ -380,6 +394,7 @@ export function ScanPanel({
         idempotencyKey:  `scan-batch-${uuidv4()}`,
         equipmentType:   meta.equipmentType ?? equipmentType,
         make:            meta.make?.trim() || undefined,
+        originalAssetIds: Object.keys(originalAssetIds).length > 0 ? originalAssetIds : undefined,
       });
       setBatchJobIds(jobIds);
     } catch (err: unknown) {
