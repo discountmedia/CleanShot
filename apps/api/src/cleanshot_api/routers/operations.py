@@ -82,6 +82,9 @@ async def enqueue_enhance_job(
         equipment_type=body.equipment_type,
         custom_prompt=body.custom_prompt,
         prompt_choice=body.prompt_choice,
+        make=body.make,
+        model=body.model,
+        year=body.year,
     )
     tasks_name = enqueue_enhance(task_payload)
 
