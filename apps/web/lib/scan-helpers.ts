@@ -168,6 +168,8 @@ const EQUIPMENT_DISPLAY: Record<EquipmentType, string> = {
   scissor_lift:   "scissor lift",
   telehandler:    "telehandler",
   reach_truck:    "reach truck",
+  turret_truck:   "turret truck (VNA / swing-reach)",
+  articulated_forklift: "articulated narrow-aisle forklift (Bendi / Flexi / Aisle-Master style)",
   order_picker:   "order picker",
   pallet_jack:    "pallet jack",
   walkie_stacker: "walkie stacker",
@@ -184,6 +186,10 @@ const EQUIPMENT_ANATOMY: Record<EquipmentType, string> = {
     "Same boom length and section count, attachment (forks / bucket / lifting jib), outrigger configuration, cab shape, and wheel / tire type.",
   reach_truck:
     "Same mast height and section count, fork count and length, reach mechanism geometry (pantograph or moving-mast), operator cab / stand-up compartment shape, drive wheels, and load wheels.",
+  turret_truck:
+    "Same tall multi-stage mast and section count, the rotating / traversing turret fork head (swing-reach carriage), fork count and length, operator cab or platform shape (man-up cab that rises, or man-down), overhead guard, narrow chassis width, drive wheel, load wheels, and any aisle guide rollers. This is a very-narrow-aisle (VNA) truck — do NOT redraw it as a standard counterbalance forklift.",
+  articulated_forklift:
+    "Same articulating front end — the mast/carriage assembly pivots to the side for narrow-aisle turning (Bendi / Flexi / Aisle-Master style). Preserve that articulation joint, the mast configuration and section count, fork count and length, overhead guard shape, counterweight shape, compact chassis, and tire type. It resembles a counterbalance forklift but the front section bends — keep it.",
   order_picker:
     "Same platform size and railing pattern, mast height and section count, integrated forks or load support, base chassis dimensions, drive wheels, and operator control layout.",
   pallet_jack:
@@ -200,6 +206,8 @@ const EQUIPMENT_BODY_PARTS: Record<EquipmentType, string> = {
   scissor_lift:   "chassis, scissor arms, and platform railing",
   telehandler:    "chassis, boom, and cab",
   reach_truck:    "chassis, mast, reach mechanism, and cab",
+  turret_truck:   "chassis, mast, and turret fork head",
+  articulated_forklift: "chassis, articulating mast, and carriage",
   order_picker:   "chassis, mast, platform, and forks",
   pallet_jack:    "forks, tiller, and wheel housing",
   walkie_stacker: "chassis, mast, forks, and tiller",

@@ -22,6 +22,8 @@ export type EquipmentType =
   | "scissor_lift"
   | "telehandler"
   | "reach_truck"
+  | "turret_truck"
+  | "articulated_forklift"
   | "order_picker"
   | "pallet_jack"
   | "walkie_stacker";
@@ -36,6 +38,8 @@ export const EQUIPMENT_TYPES: readonly EquipmentType[] = [
   "forklift",
   "rough_terrain",
   "reach_truck",
+  "turret_truck",
+  "articulated_forklift",
   "order_picker",
   "walkie_stacker",
   "pallet_jack",
@@ -60,7 +64,7 @@ export interface EquipmentGroup {
 export const EQUIPMENT_GROUPS: readonly EquipmentGroup[] = [
   {
     label:   "Forklifts",
-    members: ["forklift", "rough_terrain", "reach_truck", "order_picker", "walkie_stacker", "pallet_jack"],
+    members: ["forklift", "rough_terrain", "reach_truck", "turret_truck", "articulated_forklift", "order_picker", "walkie_stacker", "pallet_jack"],
   },
   {
     label:   "Aerial",
@@ -72,6 +76,8 @@ export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   forklift:       "Forklift",
   rough_terrain:  "Rough Terrain",
   reach_truck:    "Reach Truck",
+  turret_truck:   "Turret Truck (VNA)",
+  articulated_forklift: "Articulated (Bendi)",
   telehandler:    "Telehandler",
   scissor_lift:   "Scissor Lift",
   order_picker:   "Order Picker",

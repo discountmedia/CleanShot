@@ -198,7 +198,7 @@ class EnhanceRequest(BaseModel):
     # display name in the master goal ("USED forklift" / "USED scissor
     # lift" / "USED telehandler"). Defaults to forklift for backward
     # compatibility with callers that don't pass it.
-    equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "order_picker", "pallet_jack", "walkie_stacker"] = "forklift"
+    equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "turret_truck", "articulated_forklift", "order_picker", "pallet_jack", "walkie_stacker"] = "forklift"
     # Optional custom prompt — when present, overrides the toggle-derived
     # prompt and is passed to the model verbatim. The frontend's
     # "Custom prompt (advanced)" section produces this; the toggles
@@ -625,7 +625,7 @@ class EnhanceTaskPayload(BaseModel):
     provider: Literal["gemini", "openai", "grok"] = "gemini"
     # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
     # Ignored when custom_prompt is set (the operator's verbatim text wins).
-    equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "order_picker", "pallet_jack", "walkie_stacker"] = "forklift"
+    equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "turret_truck", "articulated_forklift", "order_picker", "pallet_jack", "walkie_stacker"] = "forklift"
     # Optional verbatim prompt override. Set by either:
     #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or
     #   • Enhance tab "Custom prompt (advanced)" textarea.

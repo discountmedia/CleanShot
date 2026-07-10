@@ -93,7 +93,7 @@ export async function enqueueEnhance(params: {
   provider?: "gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve";
   /** Equipment category — drives the backend's per-type anatomy block.
    * Defaults to "forklift" server-side if omitted. */
-  equipmentType?: "forklift" | "rough_terrain" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
+  equipmentType?: "forklift" | "rough_terrain" | "scissor_lift" | "telehandler" | "reach_truck" | "turret_truck" | "articulated_forklift" | "order_picker" | "pallet_jack" | "walkie_stacker";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
   /** Per-card master-prompt selection from the Enhance "Prompt:" dropdown.
