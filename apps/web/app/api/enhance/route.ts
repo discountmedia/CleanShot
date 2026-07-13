@@ -1,12 +1,10 @@
 // apps/web/app/api/enhance/route.ts
 // BFF Route Handler — POST /api/enhance
 // Proxies to FastAPI's POST /api/v1/enhance. Translates camel→snake on the
-// way in. We forward the bits the worker actually uses (provider, toggles,
-// equipmentType, customPrompt) PLUS make/model/year from forkliftMeta —
-// those anchor the enhance prompt to the real machine so the model doesn't
-// normalise the unit toward a generic one (silent drift, e.g. resized
-// forks). The remaining project meta (tireType/capacity/fuelType) is still
-// committed separately through /api/projects/save.
+// way in. `forkliftMeta` is project-side state and is committed later
+// through /api/projects/save (export endpoints require it); we accept it
+// here for caller convenience but only forward the bits the worker
+// actually uses (provider, toggles, equipmentType, customPrompt).
 //
 // Operator-driven multi-provider selection — the EnhancePanel ProviderRow
 // fans out one POST per selected provider per source image; we forward
@@ -25,8 +23,8 @@ interface ClientRequest {
   sessionId: string;
   assetId: string;
   toggles: Record<string, boolean>;
-  /** make/model/year are forwarded (prompt identity anchor); the rest
-   *  (tireType/capacity/fuelType) lands via /api/projects/save. */
+  /** Accepted for caller convenience; we don't forward it. Project meta
+   *  lands via /api/projects/save instead. */
   forkliftMeta?: Record<string, string>;
   provider?: "gemini" | "openai" | "grok";
   /**
@@ -64,12 +62,6 @@ export async function POST(request: NextRequest) {
       toggles:         body.toggles,            // already camelCase; Pydantic aliases handle it
       provider:        body.provider ?? "gemini",
       ...(body.equipmentType ? { equipment_type: body.equipmentType } : {}),
-      // Identity anchor for the prompt — forward make/model/year when the
-      // operator filled them in on the MetaCard. Blank fields stay off the
-      // wire so FastAPI keeps its None defaults.
-      ...(body.forkliftMeta?.make?.trim()  ? { make:  body.forkliftMeta.make.trim() }  : {}),
-      ...(body.forkliftMeta?.model?.trim() ? { model: body.forkliftMeta.model.trim() } : {}),
-      ...(body.forkliftMeta?.year?.trim()  ? { year:  body.forkliftMeta.year.trim() }  : {}),
       // Only forward custom_prompt when non-empty; omitting lets FastAPI
       // use its `None` default and the worker falls through to toggles.
       ...(body.customPrompt?.trim() ? { custom_prompt: body.customPrompt } : {}),

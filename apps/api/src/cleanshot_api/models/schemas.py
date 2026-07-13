@@ -213,15 +213,6 @@ class EnhanceRequest(BaseModel):
     # procedural spine; toggles + guardrails are still appended on top.
     # custom_prompt still outranks this.
     prompt_choice: str | None = None
-    # Equipment identity from the MetaCard. Threaded into the enhance
-    # prompt's GUARDRAILS block so the model anchors to the REAL machine
-    # (e.g. a 2019 Toyota 8FGU25) instead of normalising toward a
-    # training-data average — the root cause of silent drift like forks
-    # being resized. All optional; the prompt falls back to a generic
-    # "preserve identity" line when blank.
-    make: str | None = None
-    model: str | None = None
-    year: str | None = None
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -648,12 +639,6 @@ class EnhanceTaskPayload(BaseModel):
     # None/"auto" → procedural builder; "generic:<author>" / "tailored:<author>"
     # → resolved via workers/master_prompts.py and used as the spine override.
     prompt_choice: str | None = None
-    # Equipment identity (make/model/year) carried through from
-    # EnhanceRequest → injected into the GUARDRAILS identity anchor in
-    # _build_enhance_prompt. Optional; blank → generic identity line.
-    make: str | None = None
-    model: str | None = None
-    year: str | None = None
 
 
 class ScanTaskPayload(BaseModel):

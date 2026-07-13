@@ -306,19 +306,9 @@ def _build_enhance_prompt(
     toggles: EnhanceToggles,
     equipment_type: str = "forklift",
     spine_override: str | None = None,
-    make: str | None = None,
-    model: str | None = None,
-    year: str | None = None,
 ) -> str:
     """
     Build the enhance prompt.
-
-    `make` / `model` / `year` — optional equipment identity from the
-    MetaCard. When supplied, the GUARDRAILS block names the actual machine
-    (e.g. "2019 Toyota 8FGU25") so the model anchors to the real unit
-    instead of normalising toward a training-data average — the root cause
-    of silent drift such as forks being resized. Blank → generic identity
-    line (behaviour unchanged from before these params existed).
 
     SPINE — refined operator-authored single-paragraph scene description
     (image-gen models respond better to declarative scene prose than to
@@ -600,27 +590,9 @@ def _build_enhance_prompt(
         )
 
     # ── Hard guardrails (scene + anatomy preservation) ─────────────────
-    # Equipment identity anchor — when the operator filled in make/model/year
-    # on the MetaCard, name the actual machine so the model preserves the REAL
-    # unit's configuration instead of drifting toward a generic one. Falls back
-    # to the original generic line when the meta fields are blank.
-    ident_bits = [b.strip() for b in (year, make, model) if b and b.strip()]
-    if ident_bits:
-        ident_line = (
-            f"This unit is a {' '.join(ident_bits)}. Preserve its exact "
-            f"make/model identity and factory configuration. {eq_anatomy}"
-        )
-    else:
-        ident_line = f"Make, model, year, trim level. {eq_anatomy}"
-
     sections.append(
         f"GUARDRAILS — hard constraints:\n"
-        f"• {ident_line}\n"
-        f"• PRESERVE EXACT DIMENSIONS AND PROPORTIONS: fork length and "
-        f"thickness, mast height and number of sections, wheel count and "
-        f"diameter, counterweight size, and the size relationships between "
-        f"all parts must match the source EXACTLY. Do not lengthen, shorten, "
-        f"widen, shrink, or re-scale any component.\n"
+        f"• Make, model, year, trim level. {eq_anatomy}\n"
         f"• Do NOT add lamps, beacons, mirrors, antennas, attachments, or "
         f"any bolt-on hardware that is not already in the source.\n"
         f"• Do not introduce damage, dents, broken parts, or wear that "
@@ -724,8 +696,7 @@ def _build_kontext_prompt(
         lines.append(
             "Paint only the two fork blades Discount Forklift red with "
             "safety-yellow tips — red on the shank and roughly the first "
-            "80% of each blade, yellow on the outer ~15-20 cm (~6-8 inches) "
-            "tip. Leave the "
+            "80% of each blade, yellow on the outer ~15 cm tip. Leave the "
             "carriage, mast, and the black load-back-rest cage unpainted."
         )
     if toggles.remove_people:
@@ -1764,9 +1735,6 @@ async def _run_enhance(
                 payload.toggles,
                 equipment_type=payload.equipment_type,
                 spine_override=spine_override,
-                make=payload.make,
-                model=payload.model,
-                year=payload.year,
             )
 
         # Attribution suffix for the usage-event `model` label — lets the
