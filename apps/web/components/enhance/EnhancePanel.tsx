@@ -47,7 +47,6 @@ import {
   ENHANCE_PROVIDERS,
   ENHANCE_PROVIDER_LABELS,
   type EnhanceProvider,
-  type PromptChoice,
 } from "../../lib/types-enhance";
 import type { UserRestriction } from "../../lib/access-control";
 
@@ -293,38 +292,9 @@ export function EnhancePanel({
     () => new Set<EnhanceProvider>([restriction?.model ?? "gemini"]),
   );
 
-  // Per-card master-prompt selection (the "Prompt:" dropdown on each
-  // provider card). Every card defaults to "auto" → backend procedural
-  // builder → today's exact behavior. The operator opts into an authored
-  // master prompt per card; the bulk "Set all" helper writes every entry.
-  const [promptChoices, setPromptChoices] = useState<Record<EnhanceProvider, PromptChoice>>(
-    () =>
-      ENHANCE_PROVIDERS.reduce(
-        (acc, p) => ({ ...acc, [p]: "auto" as PromptChoice }),
-        {} as Record<EnhanceProvider, PromptChoice>,
-      ),
-  );
-
-  const handlePromptChoiceChange = useCallback(
-    (provider: EnhanceProvider, choice: PromptChoice) => {
-      setPromptChoices((prev) => ({ ...prev, [provider]: choice }));
-    },
-    [],
-  );
-
-  // Bulk helper — apply one choice to every currently-selected provider.
-  // The bulk dropdown only offers Auto + generics, so it can never set an
-  // invalid combo on a card.
-  const handleBulkPromptChoice = useCallback(
-    (choice: PromptChoice) => {
-      setPromptChoices((prev) => {
-        const next = { ...prev };
-        for (const p of selectedProviders) next[p] = choice;
-        return next;
-      });
-    },
-    [selectedProviders],
-  );
+  // The per-provider master-prompt "Prompt:" dropdown was removed — every
+  // enhance flows through the single built-in prompt. No prompt_choice is
+  // sent, so the backend resolves to its procedural builder.
 
   // Custom prompt auto-expands for restricted (custom-prompt-only) users.
   const [customPromptOpen, setCustomPromptOpen] = useState(restriction?.customPromptOnly ?? false);
@@ -674,7 +644,6 @@ export function EnhancePanel({
           provider: p,
           equipmentType: meta.equipmentType ?? "forklift",
           customPrompt: customPromptActive ? customPrompt : undefined,
-          promptChoice: promptChoices[p],
           idempotencyKey: `enhance-${id}-${p}`,
         });
         perProviderJobIds.set(p, jobId);
@@ -720,7 +689,6 @@ export function EnhancePanel({
           provider,
           equipmentType:  meta.equipmentType ?? "forklift",
           customPrompt:   customPromptActive ? customPrompt : undefined,
-          promptChoice:   promptChoices[provider],
           idempotencyKey: `enhance-${file.id}-${provider}-regen-${++regenSeqRef.current}`,
         });
 
@@ -763,7 +731,7 @@ export function EnhancePanel({
         setGlobalError(msg);
       }
     },
-    [sessionId, toggles, meta, customPromptActive, customPrompt, promptChoices],
+    [sessionId, toggles, meta, customPromptActive, customPrompt],
   );
 
   const handleEnhanceAll = async () => {
@@ -890,7 +858,6 @@ export function EnhancePanel({
               provider:       p,
               equipmentType:  meta.equipmentType ?? "forklift",
               customPrompt:   customPromptActive ? customPrompt : undefined,
-              promptChoice:   promptChoices[p],
               idempotencyKey: `re-enhance-${file.id}-${p}-${++regenSeqRef.current}`,
             });
             perProviderJobIds.set(p, jobId);
@@ -923,7 +890,6 @@ export function EnhancePanel({
     meta,
     customPromptActive,
     customPrompt,
-    promptChoices,
     onClearPipeline,
   ]);
 
@@ -1529,9 +1495,6 @@ export function EnhancePanel({
         selected={selectedProviders}
         onToggle={toggleProvider}
         onSelectAll={selectAllProviders}
-        promptChoices={promptChoices}
-        onPromptChoiceChange={handlePromptChoiceChange}
-        onBulkPromptChoice={handleBulkPromptChoice}
       />
 
       {/* ── Advanced (toggles + custom prompt) ── */}

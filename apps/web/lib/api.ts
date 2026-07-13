@@ -96,10 +96,6 @@ export async function enqueueEnhance(params: {
   equipmentType?: "forklift" | "rough_terrain" | "scissor_lift" | "telehandler" | "reach_truck" | "turret_truck" | "articulated_forklift" | "order_picker" | "pallet_jack" | "walkie_stacker";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
-  /** Per-card master-prompt selection from the Enhance "Prompt:" dropdown.
-   * "auto" | "generic:<author>" | "tailored:<author>". "auto"/omitted → the
-   * backend's procedural builder. Resolved server-side in master_prompts.py. */
-  promptChoice?: string;
   idempotencyKey: string;
 }): Promise<{ jobId: string }> {
   return post("/api/enhance", params);
