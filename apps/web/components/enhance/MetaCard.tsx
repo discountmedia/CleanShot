@@ -121,95 +121,100 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
         </div>
       </header>
 
-      <div className="px-5 py-4 flex items-end gap-4 flex-wrap">
-        {/* Equipment type — toggle-card style matching the Advanced
-            emphasis toggles (blue selected / dark unselected, radio-dot
-            indicator). Driven from EQUIPMENT_GROUPS so the warehouse-
-            forks cluster and the aerial cluster stay separated by a
-            visible gap. Single-select, so a radio dot rather than a
-            pill switch. */}
-        <div className="flex flex-col gap-1.5">
+      <div className="px-5 py-4 space-y-5">
+        {/* Equipment type — single-select toggle-cards laid out on a
+            fixed-column grid so the chips line up in clean, equal-width
+            columns (content-width flex-wrap read ragged). Driven from
+            EQUIPMENT_GROUPS: each cluster (warehouse forks / aerial) gets
+            its own labelled sub-grid sharing the same column template, so
+            columns stay aligned across groups. Selected card pops with a
+            blue gradient + ring + shadow; unselected cards lift on hover. */}
+        <div className="flex flex-col gap-2">
           <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
             Equipment
           </span>
-          <div className="flex flex-wrap items-stretch gap-x-4 gap-y-2">
+          <div className="space-y-3">
             {EQUIPMENT_GROUPS.map((group) => (
               <div
                 key={group.label ?? group.members.join("-")}
-                className="flex flex-wrap gap-2"
                 role="group"
                 aria-label={group.label}
               >
-                {group.members.map((t) => {
-                  const selected = t === equipmentType;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      onClick={() => update("equipmentType", t)}
-                      aria-pressed={selected}
-                      className={`flex items-center gap-2.5 px-3 py-2.5 rounded-lg border-2 text-left transition-colors ${
-                        selected
-                          ? "bg-blue-950 border-blue-500 text-white"
-                          : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"
-                      }`}
-                    >
-                      <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 ${selected ? "border-blue-400" : "border-zinc-600"}`}>
-                        {selected && <span className="w-2 h-2 rounded-full bg-blue-400" />}
-                      </span>
-                      <span className="text-sm uppercase tracking-[0.12em] font-bold">
-                        {EQUIPMENT_TYPE_LABELS[t]}
-                      </span>
-                    </button>
-                  );
-                })}
+                {group.label && (
+                  <span className="block text-[11px] uppercase tracking-[0.2em] font-semibold text-zinc-500 mb-1.5">
+                    {group.label}
+                  </span>
+                )}
+                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
+                  {group.members.map((t) => {
+                    const selected = t === equipmentType;
+                    return (
+                      <button
+                        key={t}
+                        type="button"
+                        onClick={() => update("equipmentType", t)}
+                        aria-pressed={selected}
+                        className={`group flex items-center gap-2.5 w-full px-3.5 py-3 rounded-lg border-2 text-left transition-all duration-150 ${
+                          selected
+                            ? "bg-linear-to-b from-blue-600/30 to-blue-700/10 border-blue-400 text-white shadow-lg shadow-blue-900/40 ring-1 ring-blue-400/40"
+                            : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-100"
+                        }`}
+                      >
+                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${selected ? "border-blue-300" : "border-zinc-600 group-hover:border-zinc-400"}`}>
+                          {selected && <span className="w-2 h-2 rounded-full bg-blue-300" />}
+                        </span>
+                        <span className="text-sm uppercase tracking-[0.08em] font-bold leading-tight">
+                          {EQUIPMENT_TYPE_LABELS[t]}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             ))}
           </div>
         </div>
 
         {!hideMeta && (
-        <div className="flex-1 min-w-50">
-          <label
-            htmlFor="meta-make"
-            className="flex items-center gap-1 text-sm uppercase tracking-[0.16em] font-bold text-zinc-100 mb-1.5"
+        <div className="flex items-end gap-4 flex-wrap">
+          <div className="flex-1 min-w-50">
+            <label
+              htmlFor="meta-make"
+              className="flex items-center gap-1 text-sm uppercase tracking-[0.16em] font-bold text-zinc-100 mb-1.5"
+            >
+              Make <span className="text-red-400" aria-label="required">*</span>
+            </label>
+            <input
+              id="meta-make"
+              type="text"
+              value={makeValue}
+              onChange={(e) => update("make", e.target.value)}
+              placeholder="e.g. Toyota"
+              aria-required
+              aria-invalid={!makeValid || undefined}
+              className={`w-full bg-zinc-900 border rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:border-transparent transition ${
+                makeValid
+                  ? "border-zinc-700 focus:ring-red-500"
+                  : "border-red-900 focus:ring-red-500"
+              }`}
+            />
+          </div>
+
+          <button
+            type="button"
+            onClick={() => onExpand(!expanded)}
+            aria-expanded={expanded}
+            className="text-xs uppercase tracking-[0.16em] font-semibold text-zinc-200 hover:text-white transition-colors px-3 py-2.5 border border-zinc-700 hover:border-zinc-500 rounded mb-px"
           >
-            Make <span className="text-red-400" aria-label="required">*</span>
-          </label>
-          <input
-            id="meta-make"
-            type="text"
-            value={makeValue}
-            onChange={(e) => update("make", e.target.value)}
-            placeholder="e.g. Toyota"
-            aria-required
-            aria-invalid={!makeValid || undefined}
-            className={`w-full bg-zinc-900 border rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:border-transparent transition ${
-              makeValid
-                ? "border-zinc-700 focus:ring-red-500"
-                : "border-red-900 focus:ring-red-500"
-            }`}
-          />
+            {expanded ? "− Hide details" : "+ More details"}
+          </button>
+
+          <span
+            className={`text-sm ml-auto mb-2 ${makeValid ? "text-green-400" : "text-amber-300"}`}
+          >
+            {makeValid ? "✓ Ready to enhance" : "Enter the Make to continue"}
+          </span>
         </div>
-        )}
-
-        {!hideMeta && (
-        <button
-          type="button"
-          onClick={() => onExpand(!expanded)}
-          aria-expanded={expanded}
-          className="text-xs uppercase tracking-[0.16em] font-semibold text-zinc-200 hover:text-white transition-colors px-3 py-2.5 border border-zinc-700 hover:border-zinc-500 rounded mb-px"
-        >
-          {expanded ? "− Hide details" : "+ More details"}
-        </button>
-        )}
-
-        {!hideMeta && (
-        <span
-          className={`text-sm ml-auto mb-2 ${makeValid ? "text-green-400" : "text-amber-300"}`}
-        >
-          {makeValid ? "✓ Ready to enhance" : "Enter the Make to continue"}
-        </span>
         )}
       </div>
 
