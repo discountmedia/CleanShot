@@ -1,285 +1,1434 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>CleanShot — Discount Forklift's AI Photo Studio</title>
-<style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="CleanShot — AI-powered forklift image processing platform. Internal B2B tool for Discount Forklift.">
+  <title>CleanShot — Project Documentation</title>
+  <style>
+:root {
+  --bg: #ffffff;
+  --bg-soft: #f7f8fa;
+  --border: #e3e6ea;
+  --border-soft: #eef0f3;
+  --text: #1f2328;
+  --text-soft: #57606a;
+  --text-dim: #8c959f;
+  --link: #0969da;
+  --link-hover: #0860c7;
+  --accent: #0969da;
+  --code-bg: #f4f5f7;
+  --code-text: #1f2328;
+  --table-stripe: #f9fafb;
+  --shadow: 0 1px 2px rgba(31, 35, 40, 0.04);
+}
+
+@media (prefers-color-scheme: dark) {
   :root {
-    --bg:        #0a0a0a;
-    --bg-card:   #18181b;
-    --bg-soft:   #111114;
-    --border:    #27272a;
-    --border-2:  #3f3f46;
-    --text:      #fafafa;
-    --text-2:    #d4d4d8;
-    --text-dim:  #a1a1aa;
-    --accent:    #ef4444;
-    --good:      #22c55e;
-    --info:      #38bdf8;
-    --warn:      #facc15;
+    --bg: #0d1117;
+    --bg-soft: #161b22;
+    --border: #30363d;
+    --border-soft: #21262d;
+    --text: #e6edf3;
+    --text-soft: #9198a1;
+    --text-dim: #6e7681;
+    --link: #4493f8;
+    --link-hover: #58a6ff;
+    --accent: #4493f8;
+    --code-bg: #161b22;
+    --code-text: #e6edf3;
+    --table-stripe: #161b22;
+    --shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
   }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    padding: 0;
-    background: var(--bg);
-    color: var(--text);
-    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-    line-height: 1.6;
-    font-size: 16px;
-  }
-  .wrap { max-width: 900px; margin: 0 auto; padding: 48px 32px 96px; }
-  header.hero {
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 24px;
-    margin-bottom: 40px;
-  }
-  .brand {
-    display: inline-block;
-    background: var(--accent);
-    color: white;
-    padding: 4px 12px;
-    border-radius: 4px;
-    font-size: 12px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    font-weight: 700;
-    margin-bottom: 16px;
-  }
-  h1 {
-    font-size: 40px;
-    line-height: 1.15;
-    margin: 0 0 8px;
-    font-weight: 800;
-    letter-spacing: -0.02em;
-  }
-  .tagline {
-    font-size: 20px;
-    color: var(--text-2);
-    margin: 0;
-    font-weight: 400;
-  }
-  h2 {
-    font-size: 26px;
-    margin: 56px 0 16px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 8px;
-  }
-  h3 {
-    font-size: 18px;
-    margin: 24px 0 8px;
-    font-weight: 700;
-    color: var(--text);
-  }
-  p { margin: 0 0 16px; color: var(--text-2); }
-  strong { color: var(--text); font-weight: 600; }
-  a { color: var(--info); text-decoration: none; }
-  a:hover { text-decoration: underline; }
+}
 
-  .card {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    padding: 20px 24px;
-    margin: 16px 0;
-  }
-  .card.accent  { border-color: var(--accent); }
-  .card.good    { border-color: var(--good); }
-  .card.warn    { border-color: var(--warn); }
+* { box-sizing: border-box; }
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+  scroll-padding-top: 24px;
+}
 
-  ul.checks { list-style: none; padding: 0; margin: 16px 0; }
-  ul.checks li {
-    padding: 8px 0 8px 32px;
-    position: relative;
-    color: var(--text-2);
-  }
-  ul.checks li::before {
-    content: "\2713";
-    position: absolute;
-    left: 0;
-    top: 8px;
-    color: var(--good);
-    font-weight: 800;
-    font-size: 18px;
-  }
-  ul.bullets { margin: 8px 0 16px; padding-left: 24px; color: var(--text-2); }
-  ul.bullets li { margin: 4px 0; }
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Helvetica, Arial, sans-serif;
+  font-size: 16px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
 
-  .step-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 16px;
-    margin: 24px 0;
-  }
-  .step {
-    background: var(--bg-soft);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 18px 20px;
-    position: relative;
-  }
-  .step .num {
-    display: inline-block;
-    width: 28px;
-    height: 28px;
-    line-height: 28px;
-    text-align: center;
-    background: var(--accent);
-    color: white;
-    border-radius: 50%;
-    font-weight: 800;
-    margin-bottom: 8px;
-    font-size: 14px;
-  }
-  .step h4 { margin: 0 0 4px; font-size: 16px; font-weight: 700; }
-  .step p { margin: 0; font-size: 14px; }
+/* Sticky-sidebar layout */
+.layout {
+  display: grid;
+  grid-template-columns: 260px minmax(0, 1fr);
+  gap: 48px;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 32px 32px 96px;
+}
 
-  table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 15px; }
-  th, td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-  th {
-    color: var(--text-dim);
-    text-transform: uppercase;
-    font-size: 11px;
-    letter-spacing: 0.14em;
-    font-weight: 700;
-  }
-  tr:last-child td { border-bottom: none; }
+.sidebar {
+  position: sticky;
+  top: 32px;
+  align-self: start;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding-right: 12px;
+  border-right: 1px solid var(--border-soft);
+}
 
-  .pill {
-    display: inline-block;
-    background: var(--bg-soft);
-    border: 1px solid var(--border-2);
-    color: var(--text-2);
-    padding: 2px 8px;
-    border-radius: 4px;
-    font-size: 12px;
-    font-weight: 600;
-  }
-  .pill.good { color: var(--good); border-color: var(--good); }
-  .pill.warn { color: var(--warn); border-color: var(--warn); }
-  .pill.info { color: var(--info); border-color: var(--info); }
+.sidebar::-webkit-scrollbar { width: 8px; }
+.sidebar::-webkit-scrollbar-track { background: transparent; }
+.sidebar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}
+.sidebar::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
 
-  footer {
-    margin-top: 80px;
-    padding-top: 24px;
-    border-top: 1px solid var(--border);
-    color: var(--text-dim);
-    font-size: 13px;
+.sidebar-title {
+  font-size: 0.72em;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  margin: 0 0 14px 8px;
+  font-weight: 700;
+}
+
+.sidebar .toc > ul,
+.sidebar nav.toc > ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: 0.88em;
+}
+
+.sidebar .toc ul ul,
+.sidebar nav.toc ul ul {
+  list-style: none;
+  padding-left: 12px;
+  margin: 2px 0 6px 8px;
+  border-left: 1px solid var(--border-soft);
+}
+
+.sidebar .toc li,
+.sidebar nav.toc li { margin: 1px 0; }
+
+.sidebar .toc a,
+.sidebar nav.toc a {
+  color: var(--text-soft);
+  display: block;
+  padding: 4px 10px;
+  border-radius: 5px;
+  text-decoration: none;
+  line-height: 1.4;
+  transition: background 120ms, color 120ms;
+}
+
+.sidebar .toc a:hover,
+.sidebar nav.toc a:hover {
+  background: var(--bg-soft);
+  color: var(--link);
+}
+
+.main { min-width: 0; }
+
+@media (max-width: 960px) {
+  .layout {
+    grid-template-columns: 1fr;
+    gap: 0;
+    padding: 24px 18px 64px;
   }
+  .sidebar {
+    position: static;
+    max-height: none;
+    border-right: none;
+    border-bottom: 1px solid var(--border-soft);
+    padding: 0 0 20px;
+    margin-bottom: 24px;
+  }
+  .sidebar-title { margin-left: 0; }
+}
+
+/* Typography */
+h1, h2, h3, h4, h5, h6 {
+  margin-top: 2em;
+  margin-bottom: 0.6em;
+  line-height: 1.25;
+  font-weight: 600;
+  color: var(--text);
+}
+
+h1 {
+  font-size: 2.25em;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.4em;
+  margin-top: 0;
+}
+
+h2 {
+  font-size: 1.55em;
+  border-bottom: 1px solid var(--border-soft);
+  padding-bottom: 0.3em;
+}
+
+h3 { font-size: 1.22em; }
+h4 { font-size: 1.05em; }
+
+p { margin: 0.85em 0; }
+
+a { color: var(--link); text-decoration: none; }
+a:hover { color: var(--link-hover); text-decoration: underline; }
+
+ul, ol { padding-left: 1.6em; margin: 0.85em 0; }
+li { margin: 0.25em 0; }
+li > p { margin: 0.4em 0; }
+
+hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2.5em 0;
+}
+
+blockquote {
+  margin: 1em 0;
+  padding: 0.6em 1.1em;
+  border-left: 4px solid var(--accent);
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  border-radius: 0 6px 6px 0;
+}
+
+blockquote p:first-child { margin-top: 0; }
+blockquote p:last-child  { margin-bottom: 0; }
+
+strong { font-weight: 600; color: var(--text); }
+em { font-style: italic; }
+
+code {
+  font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  font-size: 0.88em;
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 0.18em 0.4em;
+  border-radius: 4px;
+  border: 1px solid var(--border-soft);
+}
+
+pre {
+  background: var(--code-bg);
+  color: var(--code-text);
+  padding: 16px 18px;
+  border-radius: 8px;
+  border: 1px solid var(--border-soft);
+  overflow-x: auto;
+  margin: 1em 0;
+  box-shadow: var(--shadow);
+  font-size: 0.86em;
+  line-height: 1.55;
+}
+
+pre code {
+  background: transparent;
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  color: inherit;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.2em 0;
+  font-size: 0.94em;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+thead { background: var(--bg-soft); }
+
+th, td {
+  padding: 9px 14px;
+  text-align: left;
+  border-bottom: 1px solid var(--border-soft);
+  vertical-align: top;
+}
+
+th {
+  font-weight: 600;
+  color: var(--text);
+  border-bottom: 2px solid var(--border);
+}
+
+tbody tr:nth-child(even) { background: var(--table-stripe); }
+tbody tr:last-child td { border-bottom: none; }
+tbody td code { font-size: 0.85em; }
+
+img { max-width: 100%; height: auto; border-radius: 6px; }
+
+.codehilite { background: var(--code-bg); border-radius: 8px; overflow: hidden; margin: 1em 0; }
+.codehilite pre { margin: 0; border: 1px solid var(--border-soft); border-radius: 8px; }
+
+.cover {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.cover-meta {
+  color: var(--text-dim);
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, monospace;
+}
+
+.cover-meta strong { color: var(--text-soft); font-weight: 500; }
+
+.banner {
+  background: linear-gradient(135deg, rgba(9, 105, 218, 0.08) 0%, rgba(9, 105, 218, 0.02) 100%);
+  border: 1px solid var(--border-soft);
+  border-radius: 8px;
+  padding: 16px 20px;
+  margin: 18px 0 28px;
+  font-size: 0.95em;
+  color: var(--text-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  .banner {
+    background: linear-gradient(135deg, rgba(68, 147, 248, 0.10) 0%, rgba(68, 147, 248, 0.03) 100%);
+  }
+}
+
+/* Pygments tokens */
+.codehilite .c, .codehilite .c1, .codehilite .cm { color: #6a737d; font-style: italic; }
+.codehilite .k, .codehilite .kn, .codehilite .kd { color: #d73a49; font-weight: 600; }
+.codehilite .s, .codehilite .s1, .codehilite .s2 { color: #032f62; }
+.codehilite .n, .codehilite .nv { color: var(--text); }
+.codehilite .nf, .codehilite .nc { color: #6f42c1; font-weight: 600; }
+.codehilite .mi, .codehilite .mf { color: #005cc5; }
+.codehilite .o { color: #d73a49; }
+.codehilite .p { color: var(--text-soft); }
+
+@media (prefers-color-scheme: dark) {
+  .codehilite .c, .codehilite .c1, .codehilite .cm { color: #8b949e; }
+  .codehilite .k, .codehilite .kn, .codehilite .kd { color: #ff7b72; }
+  .codehilite .s, .codehilite .s1, .codehilite .s2 { color: #a5d6ff; }
+  .codehilite .nf, .codehilite .nc { color: #d2a8ff; }
+  .codehilite .mi, .codehilite .mf { color: #79c0ff; }
+  .codehilite .o { color: #ff7b72; }
+}
+
+/* Scroll-spy active state on sidebar TOC links */
+.sidebar .toc a.is-active,
+.sidebar nav.toc a.is-active {
+  background: rgba(9, 105, 218, 0.10);
+  color: var(--link);
+  font-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  .sidebar .toc a.is-active,
+  .sidebar nav.toc a.is-active {
+    background: rgba(68, 147, 248, 0.15);
+  }
+}
 </style>
 </head>
 <body>
-<div class="wrap">
-
-<header class="hero">
-  <span class="brand">Internal &middot; Discount Forklift</span>
-  <h1>CleanShot</h1>
-  <p class="tagline">An AI-powered photo studio for our used-equipment listings. One operator, four clicks, marketplace-ready images.</p>
-</header>
-
-<h2>What it is, in one paragraph</h2>
-<p>
-CleanShot is an internal web app that takes the rough photos our sales team shoots on the lot &mdash; sometimes lit well, sometimes not, sometimes with a busy yard background &mdash; and turns them into clean, professional, marketplace-ready listing images. The operator uploads photos, the AI cleans them up, a second AI checks each result for problems, the operator picks the best version, the app crops them to the size each marketplace wants, and they're ready to publish. The whole pipeline happens in the browser. <strong>No Photoshop. No outsourcing. No per-seat license.</strong>
-</p>
-
-<h2>Who uses it</h2>
-<p>
-Internal employees only. The sales team that lists used material-handling equipment on marketplaces &mdash; forklifts, telehandlers, scissor lifts, reach trucks, order pickers, pallet jacks, and walkie stackers. Authentication is Microsoft SSO (single sign-on) tied to our Microsoft 365 tenant, so the people who use it are the same people who already have company email. No external customer access &mdash; this is a tool for our operations team, not a product we sell.
-</p>
-
-<h2>The operator's day, in five clicks</h2>
-<div class="step-grid">
-  <div class="step">
-    <span class="num">1</span>
-    <h4>Upload</h4>
-    <p>Drag in photos straight from the phone or computer. Up to 10 per batch. The app auto-converts to JPEG and uploads to our cloud storage.</p>
-  </div>
-  <div class="step">
-    <span class="num">2</span>
-    <h4>Enhance</h4>
-    <p>AI cleans up each photo &mdash; fixes lighting, removes background clutter, preserves real wear and dents. The operator picks the best version out of up to six AI takes per photo.</p>
-  </div>
-  <div class="step">
-    <span class="num">3</span>
-    <h4>Scan</h4>
-    <p>A second AI inspects each cleaned photo for problems &mdash; missing parts, wrong colors, weird artifacts &mdash; and either approves it or flags it for a re-do.</p>
-  </div>
-  <div class="step">
-    <span class="num">4</span>
-    <h4>Modify <span class="pill">optional</span></h4>
-    <p>Darkroom-style brightness / contrast / saturation / crop / straighten. Instant, no AI. Skip if the AI got it right; tweak per-photo if it didn't.</p>
-  </div>
-  <div class="step">
-    <span class="num">5</span>
-    <h4>Resize &amp; Publish</h4>
-    <p>One click crops to the size marketplaces want, optionally stamps an "AI-enhanced" disclaimer, and composes a branded multi-image collage. Download or save to library.</p>
-  </div>
+  <div class="layout">
+    <aside class="sidebar">
+      <p class="sidebar-title">Contents</p>
+      <div class="toc">
+<ul>
+<li><a href="#what-it-does">What It Does</a></li>
+<li><a href="#architecture-overview">Architecture Overview</a></li>
+<li><a href="#repository-layout">Repository Layout</a></li>
+<li><a href="#tech-stack">Tech Stack</a></li>
+<li><a href="#ai-models">AI Models</a></li>
+<li><a href="#prerequisites">Prerequisites</a></li>
+<li><a href="#local-development">Local Development</a><ul>
+<li><a href="#1-clone-and-install">1. Clone and install</a></li>
+<li><a href="#2-start-local-services-postgres-17-valkey-9">2. Start local services (Postgres 17 + Valkey 9)</a></li>
+<li><a href="#3-configure-environment">3. Configure environment</a></li>
+<li><a href="#4-start-the-backend">4. Start the backend</a></li>
+<li><a href="#5-start-the-frontend">5. Start the frontend</a></li>
+</ul>
+</li>
+<li><a href="#environment-variables">Environment Variables</a><ul>
+<li><a href="#frontend-appsweb-vercel">Frontend (apps/web / Vercel)</a></li>
+<li><a href="#backend-appsapi-cloud-run-set-secrets">Backend (apps/api / Cloud Run --set-secrets)</a></li>
+</ul>
+</li>
+<li><a href="#auth-setup-microsoft-sso">Auth Setup (Microsoft SSO)</a></li>
+<li><a href="#database-setup">Database Setup</a></li>
+<li><a href="#gcs-bucket-setup">GCS Bucket Setup</a></li>
+<li><a href="#cloud-tasks-setup">Cloud Tasks Setup</a></li>
+<li><a href="#deploying-to-production">Deploying to Production</a></li>
+<li><a href="#the-workflow">The Workflow</a><ul>
+<li><a href="#enhance-tab">Enhance tab</a></li>
+<li><a href="#erase-tool-per-variant">Erase tool (per-variant)</a></li>
+<li><a href="#scan-tab">Scan tab</a></li>
+<li><a href="#resize-tab">Resize tab</a></li>
+</ul>
+</li>
+<li><a href="#image-history-30-day-storage">Image History &amp; 30-Day Storage</a></li>
+<li><a href="#adding-authorized-users">Adding Authorized Users</a></li>
+<li><a href="#troubleshooting">Troubleshooting</a></li>
+<li><a href="#cost-reference-510-internal-users">Cost Reference (5–10 internal users)</a><ul>
+<li><a href="#scenario-a-light-usage-5-users-500-imagesmonth">Scenario A — Light usage (5 users, ~500 images/month)</a></li>
+<li><a href="#scenario-b-moderate-usage-8-users-2000-imagesmonth">Scenario B — Moderate usage (8 users, ~2,000 images/month)</a></li>
+<li><a href="#scenario-c-high-usage-10-users-3600-imagesmonth">Scenario C — High usage (10 users, ~3,600 images/month)</a></li>
+<li><a href="#notes-for-the-bill-payer">Notes for the bill payer</a></li>
+</ul>
+</li>
+<li><a href="#license">License</a></li>
+</ul>
 </div>
 
-<h2>What we pay for (and what we don't)</h2>
-<div class="card">
-  <h3>What's free</h3>
-  <p>
-    No per-seat license. No subscription tier per employee. No external customer billing &mdash; the tool isn't sold; it's used internally. Adding another employee costs us $0 in software.
-  </p>
-  <h3 style="margin-top:20px;">What's metered</h3>
-  <p>
-    AI vendor costs are per-image. Each photo that runs through Enhance costs us roughly a few cents in AI compute (Gemini, OpenAI, Grok, Flux-Kontext, Ideogram, or Reve, depending on which model is used). Scanning is similarly per-image. Resizing, exporting, and the Modify (darkroom) tab cost effectively nothing &mdash; those are local image operations on our own server. All vendor spend is tracked per-user in the admin dashboard so we can see exactly where the budget goes.
-  </p>
-  <h3 style="margin-top:20px;">Roughly</h3>
-  <p>
-    A typical forklift listing (5 photos) runs through the full pipeline for under a dollar in vendor costs end-to-end. The savings vs. outsourcing the same work is the entire point.
-  </p>
-</div>
+    </aside>
+    <main class="main">
+      <div class="cover">
+        <span class="cover-meta"><strong>Internal documentation</strong> · Discount Forklift</span>
+      </div>
+      <div class="banner">
+        This is the standalone HTML snapshot of <code>README.md</code> from the CleanShot repository. Generated for sharing; the canonical source lives in the private GitHub repo.
+      </div>
+      <h1 id="cleanshot">CleanShot</h1>
+<p>AI-powered forklift image processing platform. Upload raw forklift photos, enhance them with Gemini, scan for quality issues across three AI providers, resize to marketplace specs, and export — all in a single workflow.</p>
+<blockquote>
+<p><strong>Current-state note (updated 2026-07-13).</strong> Some sections below have drifted from the live app. The corrections that matter:
+- <strong>Enhance providers: 3 live</strong> — Gemini, OpenAI (gpt-5 + image tool), Grok. Kontext / Ideogram / Reve were retired as <em>generators</em> (Kontext &amp; Ideogram survive only as per-variant edit tools; Flux is the Erase tool). References to &ldquo;4 providers&rdquo; below are stale.
+- <strong>Tabs: <code>Enhance → Scan → Your Photo Library</code></strong> — there is no standalone Resize or Modify tab anymore. Modify is embedded in Enhance; resize/export is the embedded <code>ExportControls</code>.
+- <strong>Scan is now differential (before/after):</strong> it compares the enhanced output against the original and flags <em>unintended</em> changes (shrunk forks, added parts, altered text) — not just isolated defects.
+- <strong>10 equipment types</strong> — added Turret Truck (VNA) + Articulated (Bendi) alongside forklift / rough-terrain / reach truck / order picker / walkie stacker / pallet jack / telehandler / scissor lift.
+- <strong>Photo-library storage is indefinite</strong>, not 30 days (GCS lifecycle rule removed 2026-05-26).
+- <strong>Auto-advance removed;</strong> the per-provider prompt dropdown removed (2026-07-13) — one built-in prompt now.
+- Live bucket names are <code>cleanshot-originals-prod</code> / <code>cleanshot-derivatives-prod</code> (the <code>-493512</code> names below are illustrative).</p>
+<p><strong><code>CLAUDE.md</code> is the canonical, continuously-updated project briefing — trust it over this README where they disagree.</strong></p>
+</blockquote>
+<hr>
 
-<h2>What's working today</h2>
-<ul class="checks">
-  <li><strong>Microsoft SSO login</strong> &mdash; same credentials as company email; no separate password to manage.</li>
-  <li><strong>AI Enhance with 6 model options</strong> &mdash; Gemini, OpenAI, Grok, Flux-Kontext, Ideogram, and Reve. The operator can pick any subset (or hit "Select all"); the system runs each chosen model in parallel and shows them side-by-side for the operator to pick the best.</li>
-  <li><strong>AI Scan with 3-vendor consensus</strong> &mdash; Gemini, OpenAI, and Anthropic all review each photo independently. If two of three flag a problem, the system warns the operator before publishing.</li>
-  <li><strong>Darkroom (Modify tab)</strong> &mdash; brightness, contrast, saturation, crop, and straighten controls between Scan and Resize. Non-AI; instant. Optional &mdash; an operator can skip straight to Resize, or use Modify standalone on raw uploads without running Enhance first.</li>
-  <li><strong>Per-variant fix tools</strong> &mdash; if one corner of one photo is wrong, the operator can paint over it (Erase / Inpaint) or type a sentence (Tweak / Edit) to fix just that part without redoing the whole photo. Four backend tools: Gemini, Flux, and two Ideogram tools tuned for repairing brand decals and model numbers.</li>
-  <li><strong>Branded collage</strong> &mdash; composes our standard 1-hero-plus-4-thumbs marketing layout in one click. Operator picks the equipment category (7 supported &mdash; forklift, reach truck, telehandler, scissor lift, order picker, pallet jack, walkie stacker) and downloads a marketplace-ready collage. Matches the existing company template.</li>
-  <li><strong>AI-disclaimer watermark</strong> &mdash; optional checkbox burns a tiny, semi-transparent line into the bottom-right corner of every exported image so customers know it's an AI-cleaned representation.</li>
-  <li><strong>Admin dashboard</strong> &mdash; usage stats per employee, support ticket inbox, photo library with searchable downloads.</li>
-  <li><strong>Photo library</strong> &mdash; every approved photo set is archived under the operator's account and kept indefinitely. Re-download any past listing's photos at any time.</li>
+<hr>
+<h2 id="what-it-does">What It Does</h2>
+<p>CleanShot takes raw forklift photos and runs them through a four-step pipeline:</p>
+<ol>
+<li><strong>Enhance</strong> — Operator picks any subset of <strong>4 image-edit providers</strong> (Google Gemini Nano Banana, OpenAI gpt-5 + image_generation tool, xAI Grok Imagine, BFL Flux Kontext Max via RunComfy) and gets side-by-side variants per source image. A toggle row drives the curated treatment (paint refresh, rust removal, decal restoration, rental-branding strip, etc.). A per-variant <strong>Erase tool</strong> opens a mask-drawing canvas for surgical removal of stickers, scratches, or background clutter via BFL&rsquo;s <code>flux-tools/erase-v1</code>.</li>
+<li><strong>Scan</strong> — Up to three AI providers (Gemini Flash, GPT-5.4, Claude Sonnet/Opus) each give a pass/fail verdict with confidence scores and an anomaly list. Per-provider failures are isolated — one vendor&rsquo;s 429 no longer cancels the others. Failed images can be regenerated in-place without starting over.</li>
+<li><strong>Resize</strong> — Auto-crops to 1024×731 (7:5), zoom-to-fill, JPEG compressed to ≤99 KB. Ready for auction platforms and dealer inventory systems.</li>
+<li><strong>Export</strong> — Individual downloads, ZIP batch, or PRO preset exports. Approved sets are saved to each user&rsquo;s GCS library for 60 days.</li>
+</ol>
+<hr>
+<h2 id="architecture-overview">Architecture Overview</h2>
+<div class="codehilite"><pre><span></span><code>Browser
+  │
+  ├── Next.js 16 (Vercel Pro)
+  │     ├── proxy.ts         ← Auth gate (Better Auth + Microsoft SSO)
+  │     ├── App Router        ← Enhance / Scan / Resize / Export / History tabs
+  │     └── Route Handlers    ← BFF layer — never exposes FastAPI key to browser
+  │
+  └── FastAPI (Cloud Run Service)
+        ├── /api/v1/*         ← REST API (sessions, jobs, assets, approvals, history)
+        ├── /worker/*         ← Cloud Tasks HTTP targets (enhance, scan, cleanup)
+        └── Lifespan          ← Gemini (Vertex AI ADC), OpenAI, Anthropic, Valkey, asyncpg
+
+Cloud Infrastructure (GCP — cleanshot-493512, us-central1)
+  ├── Cloud Run Service       ← FastAPI (min-instances=1, concurrency=80)
+  ├── Cloud Run Worker Pools  ← Image worker, Video worker (Phase 4.5)
+  ├── Cloud Tasks             ← cleanshot-image-gen (0.1 dps), cleanshot-image-scan (0.5 dps)
+  ├── Cloud SQL Postgres 17   ← sessions, jobs, assets, scan_results, approvals, auth
+  ├── Memorystore Valkey 9.0  ← job poll cache (3s TTL), batch tracking
+  └── GCS (2 buckets)
+        ├── cleanshot-originals-493512    ← uploads, versioned, indefinite retention
+        └── cleanshot-derivatives-493512  ← enhanced/scanned/approved, lifecycle rules
+              └── approved/{email}/{YYYY-MM-DD}_{make}_{model}/   ← 30-day lifecycle
+</code></pre></div>
+
+<p><strong>Key design decisions:</strong></p>
+<ul>
+<li>The browser never touches FastAPI directly. All calls go through Next.js Route Handlers (BFF layer), which inject <code>FASTAPI_INTERNAL_KEY</code> server-side.</li>
+<li>The API pod never receives image bytes. Browsers upload directly to GCS via V4 signed PUT URLs. Workers read from GCS URIs.</li>
+<li>AI work is fully async. API endpoints enqueue Cloud Tasks and return a job ID immediately. Frontend polls at adaptive intervals (3s/10s/15s).</li>
+<li>Three-layer IPM throttle: Cloud Tasks dispatch rate + Cloud Run max-instances + asyncio.Semaphore(2) per instance.</li>
 </ul>
+<hr>
+<h2 id="repository-layout">Repository Layout</h2>
+<div class="codehilite"><pre><span></span><code>cleanshot/
+├── apps/
+│   ├── api/                          # FastAPI backend (Cloud Run Service)
+│   │   ├── src/cleanshot_api/
+│   │   │   ├── core/                 # Config, security, Cloud Tasks auth
+│   │   │   ├── db/                   # asyncpg pool, migrations, queries
+│   │   │   ├── models/               # Pydantic v2 schemas
+│   │   │   ├── routers/              # sessions, jobs, operations, upload,
+│   │   │   │                         #   projects, export, approvals, scan_results
+│   │   │   ├── services/             # GCS signed URLs, Cloud Tasks enqueue, pyvips
+│   │   │   └── workers/              # enhance, scan (multi-model), cleanup
+│   │   ├── Dockerfile
+│   │   ├── pyproject.toml
+│   │   └── docker-compose.dev.yml    # Postgres 17 + Valkey 9 for local dev
+│   │
+│   └── web/                          # Next.js 16 frontend (Vercel)
+│       ├── app/
+│       │   ├── api/                  # Route Handlers (BFF layer)
+│       │   │   ├── auth/[...all]/    # Better Auth catch-all
+│       │   │   ├── approvals/        # POST — save approved set to GCS
+│       │   │   ├── history/          # GET  — 30-day approval history
+│       │   │   ├── enhance/          # POST — enqueue enhance job
+│       │   │   ├── enhance/regen/    # POST — single-image regen from Scan tab
+│       │   │   ├── scan/batch/       # POST — enqueue scan batch
+│       │   │   ├── scan/results/     # GET  — per-provider scan results
+│       │   │   ├── jobs/[id]/        # GET  — poll job status
+│       │   │   ├── sessions/[id]/    # GET  — full session state
+│       │   │   ├── upload/signed-url/# POST — mint GCS signed PUT URL
+│       │   │   ├── assets/[id]/url/  # GET  — mint GCS signed GET URL
+│       │   │   └── export/           # fullsize, pro, custom, zip
+│       │   ├── login/                # Microsoft SSO page
+│       │   ├── unauthorized/         # Domain/email gate failure page
+│       │   ├── history/              # 30-day image history
+│       │   └── session/[sessionId]/  # Main workspace
+│       ├── components/
+│       │   ├── auth/                 # LoginButton, UserMenu
+│       │   ├── enhance/              # EnhancePanel, toggles, thumbnails
+│       │   ├── scan/                 # ScanPanel, ApproveAllButton, per-provider cards
+│       │   ├── resize/               # ResizePanel
+│       │   └── history/              # HistoryList, ApprovalSetCard
+│       ├── lib/
+│       │   ├── auth.ts               # Better Auth server config
+│       │   ├── auth-client.ts        # Better Auth client instance
+│       │   ├── api.ts                # Typed BFF fetch wrappers
+│       │   ├── compress.ts           # Client-side compression (&gt;4.5 MB)
+│       │   ├── polling.ts            # useJobPoller adaptive hook
+│       │   └── types.ts              # Shared TypeScript types
+│       ├── proxy.ts                  # Next.js 16 auth gate (was middleware.ts)
+│       └── package.json
+│
+├── packages/
+│   └── types/                        # Shared TS interfaces (OpenAPI-generated)
+│
+├── infra/
+│   └── terraform/                    # GCP resources
+│
+├── .github/workflows/
+│   ├── deploy-api.yml                # WIF → Docker build → Cloud Run deploy
+│   ├── deploy-worker-image.yml
+│   └── ci.yml
+│
+├── ENTRA_SETUP.md                    # Step-by-step Microsoft App Registration
+├── pnpm-workspace.yaml
+└── README.md
+</code></pre></div>
 
-<h2>What's coming next</h2>
-<ul class="bullets">
-  <li><strong>Per-AI-model prompt tuning.</strong> Each AI model is best at slightly different things. Tailoring the instructions per model is the single biggest quality lever left.</li>
-  <li><strong>Faster batch dispatch.</strong> A queue setting tweak (1 command) will let large intake days push through ~10&times; faster end-to-end.</li>
-  <li><strong>Deeper usage analytics.</strong> Per-user cost breakdowns and quality trend dashboards in the admin tab.</li>
-</ul>
-
-<h2>Operational notes</h2>
+<hr>
+<h2 id="tech-stack">Tech Stack</h2>
 <table>
-  <tr><th>Item</th><th>Value</th></tr>
-  <tr><td>Live URL</td><td><a href="https://cleanshot.vercel.app">cleanshot.vercel.app</a> (custom domain pending DNS cutover)</td></tr>
-  <tr><td>Auth</td><td>Microsoft SSO &mdash; company email account required</td></tr>
-  <tr><td>Hosting</td><td>Web on Vercel &middot; API on Google Cloud Run &middot; Storage on Google Cloud Storage</td></tr>
-  <tr><td>Uptime</td><td>Auto-scaling; no operator action needed on traffic spikes</td></tr>
-  <tr><td>Data retention</td><td>Photo library kept indefinitely &mdash; every approved set stays under the operator's account; nothing is auto-deleted. Raw uploads are still garbage-collected after a session ends.</td></tr>
-  <tr><td>Status</td><td><span class="pill good">In production</span></td></tr>
+<thead>
+<tr>
+<th>Layer</th>
+<th>Technology</th>
+<th>Version</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Frontend framework</td>
+<td>Next.js</td>
+<td>16.2.6</td>
+</tr>
+<tr>
+<td>UI runtime</td>
+<td>React</td>
+<td>19.2.6</td>
+</tr>
+<tr>
+<td>Styling</td>
+<td>Tailwind CSS</td>
+<td>4.3.0</td>
+</tr>
+<tr>
+<td>Language (frontend)</td>
+<td>TypeScript</td>
+<td>6.0.3</td>
+</tr>
+<tr>
+<td>Auth</td>
+<td>Better Auth</td>
+<td>1.6.11</td>
+</tr>
+<tr>
+<td>Identity provider</td>
+<td>Microsoft OAuth (Entra ID)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Frontend hosting</td>
+<td>Vercel Pro</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Backend framework</td>
+<td>FastAPI</td>
+<td>0.136.1</td>
+</tr>
+<tr>
+<td>Backend language</td>
+<td>Python</td>
+<td>3.12</td>
+</tr>
+<tr>
+<td>Backend hosting</td>
+<td>Cloud Run (gen2)</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Database</td>
+<td>Cloud SQL Postgres 17</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Cache</td>
+<td>Memorystore Valkey 9.0</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Job queue</td>
+<td>Cloud Tasks HTTP Target</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Image storage</td>
+<td>Google Cloud Storage</td>
+<td>—</td>
+</tr>
+<tr>
+<td>Image processing</td>
+<td>pyvips / libvips</td>
+<td>≥8.18</td>
+</tr>
+<tr>
+<td>Package manager</td>
+<td>pnpm</td>
+<td>9.x</td>
+</tr>
+<tr>
+<td>Node.js</td>
+<td>LTS</td>
+<td>22.11.0</td>
+</tr>
+<tr>
+<td>CI/CD auth</td>
+<td>Workload Identity Federation</td>
+<td>—</td>
+</tr>
+</tbody>
 </table>
+<hr>
+<h2 id="ai-models">AI Models</h2>
+<p>The Enhance tab offers <strong>4 generation providers</strong> (operator picks any subset per image) plus a <strong>per-variant Erase tool</strong> (mask-drawing canvas for surgical object removal). Scan uses up to 3 vision models with consensus voting.</p>
+<table>
+<thead>
+<tr>
+<th>Operation</th>
+<th>Model</th>
+<th>Provider / Endpoint</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enhance</td>
+<td><code>gemini-3.1-flash-image-preview</code></td>
+<td>Google AI Studio (<code>x-goog-api-key</code>)</td>
+<td>Preview models live on AI Studio, not Vertex</td>
+</tr>
+<tr>
+<td>Enhance</td>
+<td><code>gpt-5</code> + <code>image_generation</code> tool</td>
+<td>OpenAI Responses API</td>
+<td>gpt-5 reads input + dispatches the image tool (forced via <code>tool_choice</code>)</td>
+</tr>
+<tr>
+<td>Enhance</td>
+<td><code>grok-imagine-image-quality</code></td>
+<td>xAI <code>/v1/images/edits</code></td>
+<td>OpenAI-compatible image-edit API</td>
+</tr>
+<tr>
+<td>Enhance</td>
+<td><code>flux-1-kontext/max/edit</code></td>
+<td>RunComfy proxy → BFL Kontext Max</td>
+<td>Async submit/poll/result; identity-preserving</td>
+</tr>
+<tr>
+<td>Erase tool</td>
+<td><code>flux-tools/erase-v1</code></td>
+<td>BFL direct (<code>x-key</code>)</td>
+<td>Mask-based object removal, async polling</td>
+</tr>
+<tr>
+<td>Cleanup / Regen</td>
+<td><code>gemini-3.1-flash-image-preview</code></td>
+<td>Google AI Studio</td>
+<td>Same model as enhance</td>
+</tr>
+<tr>
+<td>Scan — primary</td>
+<td><code>gemini-2.5-flash</code></td>
+<td>Vertex AI (ADC)</td>
+<td>Always active</td>
+</tr>
+<tr>
+<td>Scan — optional</td>
+<td><code>gpt-5.4</code></td>
+<td>OpenAI Responses API</td>
+<td>Enable: <code>SCAN_PROVIDER_OPENAI=true</code></td>
+</tr>
+<tr>
+<td>Scan — optional</td>
+<td><code>claude-sonnet-4-6</code></td>
+<td>Anthropic Messages API</td>
+<td>Enable: <code>SCAN_PROVIDER_ANTHROPIC=true</code></td>
+</tr>
+<tr>
+<td>Scan — hard cases</td>
+<td><code>claude-opus-4-7</code></td>
+<td>Anthropic</td>
+<td>Auto-routed when confidence &lt; 0.6</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Why two Gemini clients?</strong> Scan uses the Vertex backend (<code>app.state.genai</code> — IAM auth, can read GCS URIs directly). Enhance + Cleanup use the AI Studio backend (<code>app.state.genai_aistudio</code> — static API key, image input must be inlined via <code>Part.from_bytes</code>). Preview image-gen models like <code>gemini-3.1-flash-image-preview</code> ship to AI Studio first; the dual-client setup is the workaround.</p>
+<p><strong>Critical API format differences</strong> (do not mix up — each provider requires a different image input format):</p>
+<ul>
+<li><strong>Gemini (Vertex, scan):</strong> <code>Part.from_uri("gs://...")</code> directly — no base64 transfer.</li>
+<li><strong>Gemini (AI Studio, enhance):</strong> <code>Part.from_bytes(image_bytes, mime_type=...)</code> after a GCS download — Studio backend can&rsquo;t read GCS URIs.</li>
+<li><strong>OpenAI (enhance):</strong> <code>responses.create</code> with <code>tools=[{"type":"image_generation"}]</code> + <code>tool_choice={"type":"image_generation"}</code>. Result PNG is base64 on the <code>image_generation_call</code> output item.</li>
+<li><strong>OpenAI (scan):</strong> <code>responses.parse(..., text_format=ScanResult)</code> — let the SDK do the strict-mode JSON schema conversion (Pydantic&rsquo;s <code>model_json_schema()</code> is missing <code>additionalProperties: false</code> and gets rejected).</li>
+<li><strong>Anthropic (scan):</strong> Raw base64 <strong>without</strong> any prefix, structured output via the tool-call pattern (<code>tools=[{name, input_schema}]</code> + <code>tool_choice={"type":"tool", "name":...}</code>). No <code>output_config</code> parameter — it 400s.</li>
+<li><strong>BFL (Kontext via RunComfy):</strong> Image passed as <code>image_url</code> (singular HTTPS string, NOT <code>images</code> array). Provider prefix is <code>blackforestlabs</code> (collapsed, no hyphens).</li>
+<li><strong>BFL (Erase tool, direct):</strong> <code>x-key</code> header, <code>{ image: base64, mask: base64, prompt? }</code>. Mask must match source dimensions exactly — the backend runs the source through <code>pyvips.autorot()</code> + nearest-neighbour mask resize to handle EXIF orientation mismatches.</li>
+</ul>
+<hr>
+<h2 id="prerequisites">Prerequisites</h2>
+<ul>
+<li>Node.js 22.11.0+ and pnpm 9.x</li>
+<li>Python 3.12+</li>
+<li>Docker (for local backend)</li>
+<li>GCP project with billing enabled (<code>cleanshot-493512</code>)</li>
+<li><code>gcloud</code> CLI authenticated</li>
+<li>A Microsoft account (for SSO setup — see <a href="#auth-setup-microsoft-sso">Auth Setup</a>)</li>
+</ul>
+<hr>
+<h2 id="local-development">Local Development</h2>
+<h3 id="1-clone-and-install">1. Clone and install</h3>
+<div class="codehilite"><pre><span></span><code>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/discountmedia/CleanShot
+<span class="nb">cd</span><span class="w"> </span>CleanShot
+pnpm<span class="w"> </span>install
+</code></pre></div>
 
-<h2>If something breaks</h2>
-<div class="card warn">
-  <p>
-    Every page in the app has a built-in <strong>Support</strong> form. Any ticket submitted goes straight to the admin inbox; the operator who filed it gets an email reply when it's resolved.
-  </p>
-  <p style="margin-bottom:0;">
-    For deeper issues (auth fails, uploads stuck, vendor outage), the engineering team monitors Cloud Run logs and gets paged on errors. There's a separate engineering README for the technical details.
-  </p>
-</div>
+<h3 id="2-start-local-services-postgres-17-valkey-9">2. Start local services (Postgres 17 + Valkey 9)</h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>apps/api
+docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>docker-compose.dev.yml<span class="w"> </span>up<span class="w"> </span>-d
+</code></pre></div>
 
-<footer>
-  CleanShot &middot; Internal tool for Discount Forklift / AI App Integrations LLC &middot; Built by Stephen Cunningham &middot; 2026
-</footer>
+<h3 id="3-configure-environment">3. Configure environment</h3>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Frontend</span>
+cp<span class="w"> </span>apps/web/.env.example<span class="w"> </span>apps/web/.env.local
 
-</div>
+<span class="c1"># Backend</span>
+cp<span class="w"> </span>apps/api/.env.example<span class="w"> </span>apps/api/.env
+</code></pre></div>
+
+<p>Edit both files. Minimum required for local dev:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># apps/api/.env</span>
+<span class="nv">DATABASE_URL</span><span class="o">=</span>postgresql://cleanshot:password@localhost:5432/cleanshot
+<span class="nv">GCS_BUCKET_ORIGINALS</span><span class="o">=</span>cleanshot-originals-493512
+<span class="nv">GCS_BUCKET_DERIVATIVES</span><span class="o">=</span>cleanshot-derivatives-493512
+<span class="nv">TASKS_OIDC_SA</span><span class="o">=</span>cleanshot-tasks@cleanshot-493512.iam.gserviceaccount.com
+<span class="nv">WORKER_URL</span><span class="o">=</span>http://localhost:8080
+<span class="nv">API_KEY</span><span class="o">=</span>local-dev-key
+<span class="nv">ENVIRONMENT</span><span class="o">=</span><span class="nb">local</span>
+
+<span class="c1"># apps/web/.env.local</span>
+<span class="nv">FASTAPI_INTERNAL_URL</span><span class="o">=</span>http://localhost:8080
+<span class="nv">FASTAPI_INTERNAL_KEY</span><span class="o">=</span>local-dev-key
+<span class="nv">AUTH_ENABLED</span><span class="o">=</span><span class="nb">false</span><span class="w">   </span><span class="c1"># Bypasses all auth — app works without Microsoft credentials</span>
+</code></pre></div>
+
+<h3 id="4-start-the-backend">4. Start the backend</h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>apps/api
+pip<span class="w"> </span>install<span class="w"> </span>uv
+uv<span class="w"> </span>pip<span class="w"> </span>install<span class="w"> </span>--system<span class="w"> </span>.
+uvicorn<span class="w"> </span>cleanshot_api.main:app<span class="w"> </span>--reload<span class="w"> </span>--port<span class="w"> </span><span class="m">8080</span>
+</code></pre></div>
+
+<p>Schema migrations run automatically on first startup when <code>ENVIRONMENT=local</code>.</p>
+<h3 id="5-start-the-frontend">5. Start the frontend</h3>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>apps/web
+pnpm<span class="w"> </span>dev
+</code></pre></div>
+
+<p>Open <a href="http://localhost:3000">http://localhost:3000</a>.</p>
+<p>With <code>AUTH_ENABLED=false</code>, you land directly in the workspace — no login required.</p>
+<hr>
+<h2 id="environment-variables">Environment Variables</h2>
+<h3 id="frontend-appsweb-vercel">Frontend (<code>apps/web</code> / Vercel)</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>FASTAPI_INTERNAL_URL</code></td>
+<td>Yes</td>
+<td>Cloud Run service URL</td>
+</tr>
+<tr>
+<td><code>FASTAPI_INTERNAL_KEY</code></td>
+<td>Yes</td>
+<td>Internal API key (server-only — never in browser)</td>
+</tr>
+<tr>
+<td><code>AUTH_ENABLED</code></td>
+<td>Yes</td>
+<td><code>"false"</code> = bypass auth; <code>"true"</code> = Microsoft SSO enforced</td>
+</tr>
+<tr>
+<td><code>BETTER_AUTH_SECRET</code></td>
+<td>When auth enabled</td>
+<td>Generate: <code>openssl rand -hex 32</code></td>
+</tr>
+<tr>
+<td><code>MICROSOFT_CLIENT_ID</code></td>
+<td>When auth enabled</td>
+<td>From Entra App Registration</td>
+</tr>
+<tr>
+<td><code>MICROSOFT_CLIENT_SECRET</code></td>
+<td>When auth enabled</td>
+<td>From Entra App Registration</td>
+</tr>
+<tr>
+<td><code>MICROSOFT_TENANT_ID</code></td>
+<td>When auth enabled</td>
+<td><code>"common"</code> for any MS account</td>
+</tr>
+<tr>
+<td><code>ALLOWED_DOMAINS</code></td>
+<td>When auth enabled</td>
+<td>Comma-separated domains, e.g. <code>acme.com,partner.org</code></td>
+</tr>
+<tr>
+<td><code>ALLOWED_EMAILS</code></td>
+<td>When auth enabled</td>
+<td>Comma-separated individual emails</td>
+</tr>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>Yes</td>
+<td>Postgres 17 connection string</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Setting <code>ALLOWED_DOMAINS</code> and <code>ALLOWED_EMAILS</code> in Vercel:</strong></p>
+<p>Go to your Vercel project → Settings → Environment Variables. Add them as plain text — no quotes needed. Set per-environment values if your staging and production allowlists differ.</p>
+<div class="codehilite"><pre><span></span><code>ALLOWED_DOMAINS    acme.com,partner.org
+ALLOWED_EMAILS     contractor@outlook.com,freelancer@gmail.com
+</code></pre></div>
+
+<p>Changes take effect on the next deployment. For immediate effect without a deploy, use the Postgres <code>authorization</code> table (see <a href="#adding-authorized-users">Adding Authorized Users</a>).</p>
+<h3 id="backend-appsapi-cloud-run-set-secrets">Backend (<code>apps/api</code> / Cloud Run <code>--set-secrets</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Variable</th>
+<th>Required</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>DATABASE_URL</code></td>
+<td>Yes</td>
+<td>Cloud SQL Postgres 17 connection string</td>
+</tr>
+<tr>
+<td><code>GCS_BUCKET_ORIGINALS</code></td>
+<td>Yes</td>
+<td>GCS bucket for uploaded originals</td>
+</tr>
+<tr>
+<td><code>GCS_BUCKET_DERIVATIVES</code></td>
+<td>Yes</td>
+<td>GCS bucket for processed images + approved sets</td>
+</tr>
+<tr>
+<td><code>VALKEY_URL</code></td>
+<td>Yes</td>
+<td>Memorystore Valkey private IP URL</td>
+</tr>
+<tr>
+<td><code>TASKS_OIDC_SA</code></td>
+<td>Yes</td>
+<td>Service account email for Cloud Tasks OIDC</td>
+</tr>
+<tr>
+<td><code>WORKER_URL</code></td>
+<td>Yes</td>
+<td>Cloud Run service URL (used as OIDC audience)</td>
+</tr>
+<tr>
+<td><code>API_KEY</code></td>
+<td>Yes</td>
+<td>Internal key checked by <code>X-Api-Key</code> header</td>
+</tr>
+<tr>
+<td><code>API_KEY_PREV</code></td>
+<td>No</td>
+<td>Previous key — kept during rotation window</td>
+</tr>
+<tr>
+<td><code>OPENAI_API_KEY</code></td>
+<td>Yes</td>
+<td>Powers both enhance (gpt-5 + image_generation tool) AND scan (gpt-5.4). Both share the same <code>/v1/responses</code> quota — bump tier if you see 429s.</td>
+</tr>
+<tr>
+<td><code>ANTHROPIC_API_KEY</code></td>
+<td>When scan enabled</td>
+<td>Only needed if <code>SCAN_PROVIDER_ANTHROPIC=true</code></td>
+</tr>
+<tr>
+<td><code>GEMINI_API_KEY</code></td>
+<td>Yes</td>
+<td>Google AI Studio key for enhance/cleanup (<code>gemini-3.1-flash-image-preview</code>). Scan uses Vertex IAM (no key) on a separate client.</td>
+</tr>
+<tr>
+<td><code>BFL_API_KEY</code></td>
+<td>Yes</td>
+<td>Black Forest Labs — powers the per-variant <strong>Erase tool</strong> (<code>flux-tools/erase-v1</code>). No longer used for generation (Flux was retired as a generator).</td>
+</tr>
+<tr>
+<td><code>XAI_API_KEY</code></td>
+<td>Yes</td>
+<td>xAI Grok image-edit (<code>grok-imagine-image-quality</code>).</td>
+</tr>
+<tr>
+<td><code>RUNCOMFY_API_KEY</code></td>
+<td>Yes</td>
+<td>RunComfy proxy — powers the <strong>Kontext</strong> generator (BFL <code>flux-1-kontext/max/edit</code>).</td>
+</tr>
+<tr>
+<td><code>SCAN_PROVIDER_OPENAI</code></td>
+<td>No</td>
+<td><code>"true"</code> to activate GPT-5.4 scan</td>
+</tr>
+<tr>
+<td><code>SCAN_PROVIDER_ANTHROPIC</code></td>
+<td>No</td>
+<td><code>"true"</code> to activate Claude scan</td>
+</tr>
+<tr>
+<td><code>GCP_PROJECT</code></td>
+<td>No</td>
+<td>Defaults to <code>cleanshot-493512</code></td>
+</tr>
+<tr>
+<td><code>ENVIRONMENT</code></td>
+<td>No</td>
+<td><code>"local"</code> runs auto-migrations on startup</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Removed:</strong> <code>REVE_API_KEY</code> was retired alongside the Reve provider on 2026-05-20. The <code>cleanshot-reve-key</code> secret can be deleted from Secret Manager whenever you&rsquo;re sure nothing else references it.</p>
+<hr>
+<h2 id="auth-setup-microsoft-sso">Auth Setup (Microsoft SSO)</h2>
+<p>See <code>ENTRA_SETUP.md</code> for the complete step-by-step guide. The short version:</p>
+<ol>
+<li>Register an app in <a href="https://entra.microsoft.com">entra.microsoft.com</a> → Identity → Applications → App registrations</li>
+<li>Set redirect URI: <code>https://your-domain.com/api/auth/callback/microsoft</code></li>
+<li>Copy Client ID, Client Secret, Tenant ID into Vercel env vars</li>
+<li>Set <code>AUTH_ENABLED=true</code> in Vercel</li>
+<li>Set <code>ALLOWED_DOMAINS</code> to your company domain(s)</li>
+</ol>
+<p><strong>Auth flow:</strong></p>
+<div class="codehilite"><pre><span></span><code>User visits CleanShot
+    │
+    ├── AUTH_ENABLED=false → app loads directly (dev/testing mode)
+    │
+    └── AUTH_ENABLED=true
+          │
+          ├── Has session cookie? → yes → App loads
+          │
+          └── no → /login
+                     │
+                     └── &quot;Sign in with Microsoft&quot; → Microsoft OAuth
+                                                       │
+                                                  checkAuthorization(email)
+                                                  1. ALLOWED_DOMAINS env var
+                                                  2. ALLOWED_EMAILS env var
+                                                  3. Postgres authorization table
+                                                       │
+                                              pass → session cookie set → App loads
+                                              fail → /unauthorized
+</code></pre></div>
+
+<hr>
+<h2 id="database-setup">Database Setup</h2>
+<p>CleanShot uses Cloud SQL Postgres 17. The schema is split into two migrations:</p>
+<p><strong>Core schema</strong> (<code>apps/api/src/cleanshot_api/db/migrate.py</code>) — runs automatically when <code>ENVIRONMENT=local</code>:</p>
+<ul>
+<li><code>sessions</code>, <code>projects</code>, <code>assets</code>, <code>jobs</code>, <code>scan_results</code>, <code>consensus_results</code></li>
+</ul>
+<p><strong>Auth + approval schema</strong> (<code>apps/api/src/cleanshot_api/db/migrate_auth.py</code>):</p>
+<ul>
+<li><code>authorization</code> — domain/email allowlist for runtime additions</li>
+<li><code>approval_sets</code> — one row per &ldquo;Approve All&rdquo; click, with 30-day expiry</li>
+<li><code>approval_set_assets</code> — images in each approval set</li>
+</ul>
+<p><strong>Better Auth tables</strong> — run once via CLI:</p>
+<div class="codehilite"><pre><span></span><code><span class="nb">cd</span><span class="w"> </span>apps/web
+pnpm<span class="w"> </span>dlx<span class="w"> </span>@better-auth/cli<span class="w"> </span>migrate
+</code></pre></div>
+
+<p>This creates <code>user</code>, <code>session</code>, <code>account</code>, <code>verification</code> tables.</p>
+<p><strong>Production migration order:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># 1. Apply core schema</span>
+psql<span class="w"> </span><span class="nv">$DATABASE_URL</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;\i apps/api/src/cleanshot_api/db/migrate.py&quot;</span>
+<span class="c1"># (or trigger via API startup with ENVIRONMENT=local on first boot)</span>
+
+<span class="c1"># 2. Apply auth/approval schema</span>
+psql<span class="w"> </span><span class="nv">$DATABASE_URL</span><span class="w"> </span>&lt;<span class="w"> </span>apps/api/src/cleanshot_api/db/migrate_auth.sql
+
+<span class="c1"># 3. Apply Better Auth schema</span>
+<span class="nb">cd</span><span class="w"> </span>apps/web<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>pnpm<span class="w"> </span>dlx<span class="w"> </span>@better-auth/cli<span class="w"> </span>migrate
+
+<span class="c1"># 4. Enable pgcrypto (if not already enabled)</span>
+psql<span class="w"> </span><span class="nv">$DATABASE_URL</span><span class="w"> </span>-c<span class="w"> </span><span class="s2">&quot;CREATE EXTENSION IF NOT EXISTS pgcrypto;&quot;</span>
+</code></pre></div>
+
+<blockquote>
+<p><strong>Vercel note:</strong> You do not need to enable any Postgres extension in Vercel. Vercel holds the <code>DATABASE_URL</code> connection string as an environment variable pointing at your GCP Cloud SQL instance. All schema setup happens on the Cloud SQL side.</p>
+</blockquote>
+<hr>
+<h2 id="gcs-bucket-setup">GCS Bucket Setup</h2>
+<p>Two buckets in <code>us-central1</code>:</p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Originals — versioned, indefinite retention</span>
+gcloud<span class="w"> </span>storage<span class="w"> </span>buckets<span class="w"> </span>create<span class="w"> </span>gs://cleanshot-originals-493512<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--location<span class="o">=</span>us-central1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--uniform-bucket-level-access
+
+gcloud<span class="w"> </span>storage<span class="w"> </span>buckets<span class="w"> </span>update<span class="w"> </span>gs://cleanshot-originals-493512<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--versioning
+
+<span class="c1"># Derivatives — unversioned, lifecycle rules</span>
+gcloud<span class="w"> </span>storage<span class="w"> </span>buckets<span class="w"> </span>create<span class="w"> </span>gs://cleanshot-derivatives-493512<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--location<span class="o">=</span>us-central1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--uniform-bucket-level-access
+
+<span class="c1"># Disable soft-delete on derivatives (it&#39;s ON by default — silent billing risk)</span>
+gcloud<span class="w"> </span>storage<span class="w"> </span>buckets<span class="w"> </span>update<span class="w"> </span>gs://cleanshot-derivatives-493512<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--no-soft-delete
+
+<span class="c1"># No GCS lifecycle rules — photo library is stored indefinitely</span>
+<span class="c1"># (operator decision 2026-05-26). If an old lifecycle rule was</span>
+<span class="c1"># previously applied, clear it:</span>
+gcloud<span class="w"> </span>storage<span class="w"> </span>buckets<span class="w"> </span>update<span class="w"> </span>gs://cleanshot-derivatives-493512<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--clear-lifecycle
+</code></pre></div>
+
+<hr>
+<h2 id="cloud-tasks-setup">Cloud Tasks Setup</h2>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Image generation / enhance / cleanup queue</span>
+gcloud<span class="w"> </span>tasks<span class="w"> </span>queues<span class="w"> </span>create<span class="w"> </span>cleanshot-image-gen<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--location<span class="o">=</span>us-central1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-dispatches-per-second<span class="o">=</span><span class="m">0</span>.1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-concurrent-dispatches<span class="o">=</span><span class="m">10</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-attempts<span class="o">=</span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--min-backoff<span class="o">=</span>10s<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-backoff<span class="o">=</span>300s
+
+<span class="c1"># Scan queue (faster dispatch — scan is cheaper per call)</span>
+gcloud<span class="w"> </span>tasks<span class="w"> </span>queues<span class="w"> </span>create<span class="w"> </span>cleanshot-image-scan<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--location<span class="o">=</span>us-central1<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-dispatches-per-second<span class="o">=</span><span class="m">0</span>.5<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-concurrent-dispatches<span class="o">=</span><span class="m">5</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-attempts<span class="o">=</span><span class="m">3</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--min-backoff<span class="o">=</span>10s<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-backoff<span class="o">=</span>300s
+</code></pre></div>
+
+<hr>
+<h2 id="deploying-to-production">Deploying to Production</h2>
+<p>Deployment is fully automated via GitHub Actions with Workload Identity Federation — no JSON service account keys exist anywhere.</p>
+<p><strong>First-time setup:</strong></p>
+<ol>
+<li>Configure WIF pool and provider (see <code>infra/terraform/</code>)</li>
+<li>Set <code>GCP_PROJECT_NUMBER</code> in GitHub repository secrets</li>
+<li>Push to <code>main</code> — GitHub Actions handles the rest</li>
+</ol>
+<p><strong>Deploy triggers:</strong></p>
+<ul>
+<li><code>apps/api/**</code> changed → <code>deploy-api.yml</code> → builds Docker image, pushes to Artifact Registry, deploys to Cloud Run</li>
+<li><code>apps/web/**</code> changed → Vercel native GitHub integration deploys automatically</li>
+</ul>
+<p><strong>Rollback:</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1"># Backend — Cloud Run revision traffic</span>
+gcloud<span class="w"> </span>run<span class="w"> </span>services<span class="w"> </span>update-traffic<span class="w"> </span>cleanshot-api<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--to-revisions<span class="o">=</span><span class="nv">PREVIOUS_REVISION</span><span class="o">=</span><span class="m">100</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--region<span class="o">=</span>us-central1
+
+<span class="c1"># Frontend — Vercel dashboard → Deployments → Promote previous deployment</span>
+</code></pre></div>
+
+<hr>
+<h2 id="the-workflow">The Workflow</h2>
+<h3 id="enhance-tab">Enhance tab</h3>
+<ol>
+<li>Drop up to 10 images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.</li>
+<li>Pick the equipment type (forklift / scissor lift / telehandler) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest also pre-fills the Resize tab&rsquo;s Save Project form.</li>
+<li><strong>Pick one or more AI providers</strong> from the provider chips: Gemini, OpenAI (gpt-5), Grok, Kontext. Each selected provider runs as an independent variant per source image.</li>
+<li>Open the <strong>Advanced</strong> section to toggle curated treatment emphasis (paint refresh, rust removal, decal restoration, fork colours, lighting, rental-branding strip), or open the <strong>Custom prompt</strong> field for full prompt override (bypasses all toggles).</li>
+<li>Click <strong>Enhance</strong> — images upload to GCS, enhance jobs enqueue per provider, the SourceCompareCard grid renders with one card per source image and a column for each variant.</li>
+<li><strong>Pick a winner</strong> from each card&rsquo;s variants and either let auto-advance ship them to Scan or hit <strong>Send N to Scan →</strong> manually.</li>
+<li><strong>Per-variant tools</strong> sit on each completed thumbnail: ↻ to regenerate with a different roll of the same provider, or the eraser icon to open the <strong>Erase dialog</strong> for mask-based surgical removal of stickers, scratches, or background objects.</li>
+</ol>
+<h3 id="erase-tool-per-variant">Erase tool (per-variant)</h3>
+<p>Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), optionally type a one-line hint for what should fill the cleaned area, and submit. Routes through BFL&rsquo;s <code>flux-tools/erase-v1</code>. On accept, the cleaned image replaces the variant in-place — the winner-pick + sent-to-Scan state stays coherent.</p>
+<h3 id="scan-tab">Scan tab</h3>
+<ol>
+<li>Images arrive automatically after enhancement completes (or operator can use the Skip-Scan→Resize shortcut to bypass).</li>
+<li>Each image shows results from up to three AI providers with verdict chips, confidence bars, and anomaly lists. Per-provider failures are isolated and surfaced as &ldquo;provider — failed&rdquo; instead of hanging on &ldquo;pending&rdquo; forever.</li>
+<li>Failed images show a <strong>Regenerate</strong> button with an auto-generated prompt built from the detected anomalies — edit the prompt or use it as-is, pick which provider runs the regen.</li>
+<li><strong>Bulk-approve undecided</strong> advances every image without an explicit reject; or hit Save Project from the Resize tab once you&rsquo;re done curating.</li>
+</ol>
+<h3 id="resize-tab">Resize tab</h3>
+<ol>
+<li>Images are automatically cropped to 1024×731 (7:5 aspect ratio)</li>
+<li>Zoom-to-fill — no letterboxing, forklift centred and maximised in frame</li>
+<li>Each image compressed to ≤99 KB JPEG</li>
+<li>Download individually or as a ZIP</li>
+</ol>
+<hr>
+<h2 id="image-history-30-day-storage">Image History &amp; 30-Day Storage</h2>
+<p>Every time a user clicks <strong>Approve All</strong>, the approved images are copied to:</p>
+<div class="codehilite"><pre><span></span><code>gs://cleanshot-derivatives-493512/approved/{email}/{YYYY-MM-DD}_{make}_{model}/{filename}
+</code></pre></div>
+
+<p>Examples:</p>
+<div class="codehilite"><pre><span></span><code>approved/john_acme_com/2026-05-14_toyota_8fgu25/forklift_01.jpg
+approved/john_acme_com/2026-05-14_toyota_8fgu25/forklift_02.jpg
+approved/sarah_partner_org/2026-05-15_hyster_h50ft/unit_front.jpg
+</code></pre></div>
+
+<p>Images are stored for <strong>30 days</strong> then deleted automatically via a GCS lifecycle rule. The <code>/history</code> page shows all sets from the last 30 days with thumbnails, download links, and days-remaining indicators (yellow warning at ≤5 days).</p>
+<p>Each user only sees their own history — the backend filters by authenticated email.</p>
+<hr>
+<h2 id="adding-authorized-users">Adding Authorized Users</h2>
+<p>Three ways to add users, in order of speed:</p>
+<p><strong>1. Vercel env vars (requires redeploy — ~2 minutes)</strong></p>
+<p>Update <code>ALLOWED_DOMAINS</code> or <code>ALLOWED_EMAILS</code> in Vercel project settings and trigger a redeploy.</p>
+<p><strong>2. Postgres <code>authorization</code> table (instant — no redeploy)</strong></p>
+<div class="codehilite"><pre><span></span><code><span class="c1">-- Add a whole domain</span>
+<span class="k">INSERT</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="n">authorizations</span><span class="w"> </span><span class="p">(</span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="n">note</span><span class="p">)</span>
+<span class="k">VALUES</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;domain&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;newclient.com&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;Added 2026-05-14 by admin&#39;</span><span class="p">);</span>
+
+<span class="c1">-- Add a specific personal email (e.g. freelancer with @gmail.com)</span>
+<span class="k">INSERT</span><span class="w"> </span><span class="k">INTO</span><span class="w"> </span><span class="n">authorizations</span><span class="w"> </span><span class="p">(</span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="n">note</span><span class="p">)</span>
+<span class="k">VALUES</span><span class="w"> </span><span class="p">(</span><span class="s1">&#39;email&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;photographer@gmail.com&#39;</span><span class="p">,</span><span class="w"> </span><span class="s1">&#39;Freelance contractor&#39;</span><span class="p">);</span>
+
+<span class="c1">-- Remove access</span>
+<span class="k">DELETE</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">authorizations</span><span class="w"> </span><span class="k">WHERE</span><span class="w"> </span><span class="n">value</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s1">&#39;expartner.com&#39;</span><span class="p">;</span>
+
+<span class="c1">-- View current allowlist</span>
+<span class="k">SELECT</span><span class="w"> </span><span class="k">type</span><span class="p">,</span><span class="w"> </span><span class="n">value</span><span class="p">,</span><span class="w"> </span><span class="n">note</span><span class="p">,</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="k">FROM</span><span class="w"> </span><span class="n">authorizations</span><span class="w"> </span><span class="k">ORDER</span><span class="w"> </span><span class="k">BY</span><span class="w"> </span><span class="n">created_at</span><span class="w"> </span><span class="k">DESC</span><span class="p">;</span>
+</code></pre></div>
+
+<p><strong>3. Rotate out a user</strong></p>
+<p>Revoking a domain/email takes effect on the next sign-in attempt. Existing sessions remain valid until they expire (7 days). To force immediate logout, delete the user&rsquo;s row from the Better Auth <code>session</code> table.</p>
+<hr>
+<h2 id="troubleshooting">Troubleshooting</h2>
+<p><strong>App redirects to /login even with AUTH_ENABLED=false</strong></p>
+<p>Check that <code>AUTH_ENABLED</code> is set to the string <code>"false"</code>, not a boolean. Environment variables are always strings. Verify in Vercel dashboard → Settings → Environment Variables.</p>
+<p><strong>&ldquo;Compression failed&rdquo; on upload</strong></p>
+<p>The browser needs a <code>&lt;canvas&gt;</code> element to compress images. This fails in some headless environments. In normal browsers it should never occur — if it does, reduce the source image before uploading.</p>
+<p><strong>Enhance job stuck at &ldquo;queued&rdquo; for more than 2 minutes</strong></p>
+<p>Cloud Tasks dispatches enhance jobs at the rate configured on the <code>cleanshot-image-gen</code> queue&rsquo;s <code>max-dispatches-per-second</code> setting. A batch of 10 images at 0.1 dps takes ~100s to fully dispatch; at 1.0 dps it&rsquo;s ~10s. Check the current queue rate with <code>gcloud tasks queues describe cleanshot-image-gen --location=us-central1</code> and raise it with <code>gcloud tasks queues update ... --max-dispatches-per-second=N</code> if batches feel slow. The QueueStatusBar shows estimated time remaining. If a job is stuck for more than 10 minutes, check Cloud Run logs for quota errors (429s) from the active image-gen provider.</p>
+<p><strong>Scan shows no results after job completes</strong></p>
+<p>The scan results endpoint (<code>GET /api/scan/results/:jobId</code>) is called after the poll returns <code>status=complete</code>. If it returns empty, check that <code>scan_results</code> rows were written — the scan worker may have failed after the quick-acknowledge HTTP 200. Check Cloud Run worker logs for the specific job ID.</p>
+<p><strong>Microsoft sign-in succeeds but lands on /unauthorized</strong></p>
+<p>Your email or domain is not in the allowlist. Add it via the Postgres <code>authorization</code> table (instant) or update <code>ALLOWED_DOMAINS</code>/<code>ALLOWED_EMAILS</code> in Vercel env vars (requires redeploy). See <a href="#adding-authorized-users">Adding Authorized Users</a>.</p>
+<p><strong>GCS signed URLs return 403</strong></p>
+<p>The Cloud Run service account (<code>forklift-api@cleanshot-493512.iam.gserviceaccount.com</code>) needs <code>roles/iam.serviceAccountTokenCreator</code> on itself to sign URLs. Grant it:</p>
+<div class="codehilite"><pre><span></span><code>gcloud<span class="w"> </span>iam<span class="w"> </span>service-accounts<span class="w"> </span>add-iam-policy-binding<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>forklift-api@cleanshot-493512.iam.gserviceaccount.com<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--member<span class="o">=</span><span class="s2">&quot;serviceAccount:forklift-api@cleanshot-493512.iam.gserviceaccount.com&quot;</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--role<span class="o">=</span><span class="s2">&quot;roles/iam.serviceAccountTokenCreator&quot;</span>
+</code></pre></div>
+
+<p><strong>pyvips ImportError in Cloud Run</strong></p>
+<p><code>libvips</code> must be installed as a system library in the Docker image. The Dockerfile installs <code>libvips42 libvips-dev librsvg2-common fontconfig</code>. Do not use Alpine base images — fontconfig and librsvg have known issues on Alpine that cause SVG rasterization failures.</p>
+<hr>
+<h2 id="cost-reference-510-internal-users">Cost Reference (5–10 internal users)</h2>
+<p>CleanShot is sized for a small in-house team — Discount Forklift&rsquo;s listing operators, not a public SaaS. The three scenarios below assume roughly 5 forklifts per user per workday with 4–6 photos per unit, which is the actual cadence Discount Forklift&rsquo;s listing flow produces.</p>
+<p><strong>Per-call rates that drive <code>usage_events.cost_estimate_usd</code></strong> (placeholders in <a href="apps/api/src/cleanshot_api/services/pricing.py">services/pricing.py</a>; refine from real invoices):</p>
+<table>
+<thead>
+<tr>
+<th>Model</th>
+<th>Type</th>
+<th>Rate</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>gemini-3.1-flash-image-preview</code> (enhance, default)</td>
+<td>per image</td>
+<td>$0.039</td>
+</tr>
+<tr>
+<td><code>gpt-5</code> + image_generation tool (enhance)</td>
+<td>per image</td>
+<td>$0.080</td>
+</tr>
+<tr>
+<td><code>grok-imagine-image-quality</code> (enhance)</td>
+<td>per image</td>
+<td>$0.070</td>
+</tr>
+<tr>
+<td><code>flux-1-kontext-max-edit</code> via RunComfy (enhance)</td>
+<td>per image</td>
+<td>$0.080</td>
+</tr>
+<tr>
+<td><code>flux-erase-v1</code> (per-variant erase tool)</td>
+<td>per use</td>
+<td>$0.040</td>
+</tr>
+<tr>
+<td><code>gemini-2.5-flash</code> (scan, primary)</td>
+<td>per token</td>
+<td>$0.075 in / $0.30 out per M</td>
+</tr>
+<tr>
+<td><code>gpt-5.4</code> (scan, optional)</td>
+<td>per token</td>
+<td>$5.00 in / $15.00 out per M</td>
+</tr>
+<tr>
+<td><code>claude-sonnet-4-6</code> (scan, optional)</td>
+<td>per token</td>
+<td>$3.00 in / $15.00 out per M</td>
+</tr>
+<tr>
+<td><code>claude-opus-4-7</code> (scan, hard cases)</td>
+<td>per token</td>
+<td>$15.00 in / $75.00 out per M</td>
+</tr>
+</tbody>
+</table>
+<p><strong>Fixed monthly infrastructure floor</strong> (incurred regardless of usage — this is the bigger lever at small user counts):</p>
+<table>
+<thead>
+<tr>
+<th>Line item</th>
+<th>Monthly</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Cloud Run API + Worker (min-instances=2)</td>
+<td>~$33</td>
+</tr>
+<tr>
+<td>Memorystore Valkey 1 GiB</td>
+<td>~$36</td>
+</tr>
+<tr>
+<td>Cloud SQL Postgres 17 (db-f1-micro)</td>
+<td>~$25</td>
+</tr>
+<tr>
+<td>GCS storage + egress (modest volume)</td>
+<td>~$15</td>
+</tr>
+<tr>
+<td>Vercel Pro</td>
+<td>~$40</td>
+</tr>
+<tr>
+<td><strong>Infra floor</strong></td>
+<td><strong>~$150</strong></td>
+</tr>
+</tbody>
+</table>
+<h3 id="scenario-a-light-usage-5-users-500-imagesmonth">Scenario A — Light usage (5 users, ~500 images/month)</h3>
+<p>5 users × ~5 forklifts/workday × 5 photos × ~20 workdays = ~2,500 source images/month, of which ~500 actually run through the enhance pipeline (most photos don&rsquo;t need touch-up; the rest are pass-through to Resize).</p>
+<table>
+<thead>
+<tr>
+<th>Line item</th>
+<th>Monthly</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enhance (~1.5 providers picked per image avg, ~$0.06/img blended)</td>
+<td>~$30</td>
+</tr>
+<tr>
+<td>Scan (3 providers, ~$0.03/img blended)</td>
+<td>~$15</td>
+</tr>
+<tr>
+<td>Erase tool (~15% of enhanced images)</td>
+<td>~$3</td>
+</tr>
+<tr>
+<td><strong>AI subtotal</strong></td>
+<td><strong>~$48</strong></td>
+</tr>
+<tr>
+<td>Infra floor (from above)</td>
+<td>$150</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>~$198/month</strong> (~$40/user)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scenario-b-moderate-usage-8-users-2000-imagesmonth">Scenario B — Moderate usage (8 users, ~2,000 images/month)</h3>
+<p>8 users at the same per-user pace, all generators slightly more utilised (operators picking 2 providers per image on average for comparison).</p>
+<table>
+<thead>
+<tr>
+<th>Line item</th>
+<th>Monthly</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enhance (~2 providers per image, ~$0.06/img blended)</td>
+<td>~$120</td>
+</tr>
+<tr>
+<td>Scan (3 providers)</td>
+<td>~$60</td>
+</tr>
+<tr>
+<td>Erase tool (~15% of enhanced images)</td>
+<td>~$12</td>
+</tr>
+<tr>
+<td><strong>AI subtotal</strong></td>
+<td><strong>~$192</strong></td>
+</tr>
+<tr>
+<td>Infra floor</td>
+<td>$150</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>~$342/month</strong> (~$43/user)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="scenario-c-high-usage-10-users-3600-imagesmonth">Scenario C — High usage (10 users, ~3,600 images/month)</h3>
+<p>Full team running heavy comparison batches — typically 2–3 providers selected per image, with hero shots running all 4.</p>
+<table>
+<thead>
+<tr>
+<th>Line item</th>
+<th>Monthly</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Enhance (~2.5 providers per image avg)</td>
+<td>~$270</td>
+</tr>
+<tr>
+<td>Scan (3 providers)</td>
+<td>~$108</td>
+</tr>
+<tr>
+<td>Erase tool (~20% of enhanced images)</td>
+<td>~$29</td>
+</tr>
+<tr>
+<td><strong>AI subtotal</strong></td>
+<td><strong>~$407</strong></td>
+</tr>
+<tr>
+<td>Infra floor</td>
+<td>$150</td>
+</tr>
+<tr>
+<td><strong>Total</strong></td>
+<td><strong>~$557/month</strong> (~$56/user)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="notes-for-the-bill-payer">Notes for the bill payer</h3>
+<ul>
+<li><strong>Infra dominates at the low end.</strong> At 5 users, the fixed ~$150/month infra floor is 3× the AI spend. If you ever want to drop the bill significantly at light usage, the lever is infra (downsize Cloud SQL, drop Memorystore Valkey and use in-memory caching, etc.) — not AI throttling.</li>
+<li><strong>Per-provider selection is the AI lever.</strong> Selecting all 4 generators per image roughly <strong>quadruples</strong> the enhance cost vs picking 1. Default operator behaviour should be 1–2 providers for routine work, all 4 only for hero shots that justify the $0.27/image splurge.</li>
+<li><strong>Scan cost is dominated by the optional OpenAI + Anthropic providers.</strong> If <code>SCAN_PROVIDER_OPENAI=false</code> and <code>SCAN_PROVIDER_ANTHROPIC=false</code>, scan drops to Gemini-only at roughly $0.001/image — and the totals above shrink by ~$15 / ~$60 / ~$108 across the three scenarios.</li>
+<li><strong>Real invoices will diverge from these placeholders.</strong> The per-image rates are educated estimates pending the first 30 days of production data; revisit <code>services/pricing.py</code> and this section once Cloud Billing exports are accurate enough to back out the true per-call cost.</li>
+</ul>
+<hr>
+<h2 id="license">License</h2>
+<p>Proprietary — AI App Integrations LLC - designed for Discount Forklift. All rights reserved.</p>
+    </main>
+  </div>
+  
+<script>
+(function() {
+  var links = Array.prototype.slice.call(
+    document.querySelectorAll('.sidebar .toc a, .sidebar nav.toc a')
+  );
+  if (!links.length) return;
+
+  var pairs = links
+    .map(function(a) {
+      var href = a.getAttribute('href') || '';
+      if (href.charAt(0) !== '#') return null;
+      var t = document.querySelector(href);
+      return t ? { link: a, target: t } : null;
+    })
+    .filter(Boolean);
+  if (!pairs.length) return;
+
+  var setActive = function(id) {
+    links.forEach(function(l) {
+      l.classList.toggle('is-active', l.getAttribute('href') === '#' + id);
+    });
+  };
+
+  var io = new IntersectionObserver(function(entries) {
+    var visible = entries
+      .filter(function(e) { return e.isIntersecting; })
+      .sort(function(a, b) {
+        return a.boundingClientRect.top - b.boundingClientRect.top;
+      });
+    if (visible.length) setActive(visible[0].target.id);
+  }, { rootMargin: '-10% 0px -75% 0px', threshold: 0 });
+
+  pairs.forEach(function(p) { io.observe(p.target); });
+})();
+</script>
+
 </body>
 </html>

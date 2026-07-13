@@ -2,6 +2,17 @@
 
 AI-powered forklift image processing platform. Upload raw forklift photos, enhance them with Gemini, scan for quality issues across three AI providers, resize to marketplace specs, and export — all in a single workflow.
 
+> **Current-state note (updated 2026-07-13).** Some sections below have drifted from the live app. The corrections that matter:
+> - **Enhance providers: 3 live** — Gemini, OpenAI (gpt-5 + image tool), Grok. Kontext / Ideogram / Reve were retired as *generators* (Kontext & Ideogram survive only as per-variant edit tools; Flux is the Erase tool). References to "4 providers" below are stale.
+> - **Tabs: `Enhance → Scan → Your Photo Library`** — there is no standalone Resize or Modify tab anymore. Modify is embedded in Enhance; resize/export is the embedded `ExportControls`.
+> - **Scan is now differential (before/after):** it compares the enhanced output against the original and flags *unintended* changes (shrunk forks, added parts, altered text) — not just isolated defects.
+> - **10 equipment types** — added Turret Truck (VNA) + Articulated (Bendi) alongside forklift / rough-terrain / reach truck / order picker / walkie stacker / pallet jack / telehandler / scissor lift.
+> - **Photo-library storage is indefinite**, not 30 days (GCS lifecycle rule removed 2026-05-26).
+> - **Auto-advance removed;** the per-provider prompt dropdown removed (2026-07-13) — one built-in prompt now.
+> - Live bucket names are `cleanshot-originals-prod` / `cleanshot-derivatives-prod` (the `-493512` names below are illustrative).
+>
+> **`CLAUDE.md` is the canonical, continuously-updated project briefing — trust it over this README where they disagree.**
+
 ---
 
 ## Table of Contents
