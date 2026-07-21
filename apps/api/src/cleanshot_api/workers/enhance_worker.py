@@ -801,6 +801,226 @@ async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
     return await asyncio.to_thread(_download_and_downsize)
 
 
+# ── Auto-pick "best of N" judge ──────────────────────────────────────────────
+#
+# One Claude vision call ranks the enhance variants for a single source image
+# against the operator's calibrated listing-readiness rubric and names a winner.
+#
+# The rubric is ported VERBATIM from scripts/holistic_judge.py, which measured
+# ~70% agreement with the operator's hand labels. Two hard rules:
+#   • Do NOT retune this rubric here without re-running that calibration harness
+#     — the agreement number stops meaning anything otherwise.
+#   • Pin JUDGE_MODEL to the SAME id the harness measured (claude-sonnet-4-6).
+#     A different model silently invalidates the calibration.
+#
+# Candidates are labeled NEUTRALLY ("CANDIDATE 1/2/3") — the provider name is
+# never shown to the model so brand priors can't bias the pick. The caller maps
+# the winning candidate number back to its provider by index.
+JUDGE_MODEL = "claude-sonnet-4-6"
+
+JUDGE_RUBRIC = """You are the final quality-control reviewer for a USED-forklift dealer's
+online listing photos. You are shown the ORIGINAL real photo of a machine, then
+one or more AI-ENHANCED CANDIDATE versions of the SAME machine, each intended to
+go on the sales listing. Score every candidate and pick the single best one.
+
+The enhancer is ONLY allowed to: lightly respray the BODY in its OWN existing colour,
+paint the FORKS red with yellow tips, keep the load-backrest black, clean/soften the
+background and floor, and improve lighting. Nothing else about the machine may change.
+
+A candidate FAILS if it shows ANY of these vs the ORIGINAL — these are the exact
+defects the dealer rejects:
+- COMPONENT RECOLOURED to a CLEARLY DIFFERENT HUE: a part changed to a different colour
+  family than the original — especially the CAB / operator compartment, the MAST, the
+  body, or a panel (e.g. yellow→red, grey→blue, orange→charcoal). This is a real defect.
+  NOT a defect: a cleaner/brighter version of the SAME colour, or darkening a frame /
+  fork-carriage / load-backrest / overhead-guard toward BLACK (that black treatment is
+  intended). Only flag a genuine hue SWAP, not darkening or same-colour freshening.
+- DESATURATED / WASHED-OUT: components look greyed, faded, or less saturated than the
+  original.
+- WHEELS OR PARTS ADDED/REMOVED: a wheel, axle, or part appears that was not in the
+  original (or a real part is gone), changing the machine's configuration.
+- RESHAPED: the machine's overall shape, structure, or silhouette has been redrawn so it
+  no longer matches the real unit's proportions (a "completely different look").
+- OBVIOUSLY AI-GENERATED: melted, warped, plasticky, smeared, or nonsensical structure.
+- MODEL TEXT WRONG: a legible model-number or capacity plate is SIGNIFICANTLY wrong (a
+  1-2 character difference on a small marking is fine).
+
+A candidate PASSES only if NONE of the above apply — it still looks like the same real
+unit, changed only in the allowed ways. Tolerate: same-colour body respray, red/yellow
+forks, black load-backrest, cleaned background/floor, better lighting, subtle harmless
+differences, tiny text differences, and filling in parts that were merely hard to see.
+
+Scoring: give each candidate a listing-readiness score from 0-100. A passing candidate
+scores 60-100 (higher = cleaner, more believable, better lighting/background). A failing
+candidate scores 0-59 (lower = more/worse defects). Rank all candidates and name the ONE
+you would list. If several pass, pick the most believable and best-presented. If NONE
+pass, still name the least-bad candidate as the winner.
+
+If no original photo is provided, judge each candidate on listing-readiness alone:
+believable real machine, clean presentation, no obvious AI artefacts."""
+
+
+async def judge_variants(
+    anthropic_client: Any,
+    candidates: list[tuple[str, uuid.UUID, str]],
+    original_gcs_uri: str | None,
+    equipment_type: str | None = None,
+    make: str | None = None,
+) -> dict[str, Any]:
+    """Rank N enhance variants of one source image; return the winner + per-candidate
+    scores. `candidates` is [(provider, asset_id, gcs_uri), ...] in caller order.
+
+    Returns a dict matching EnhanceJudgeResponse's fields (winner_provider,
+    winner_asset_id, all_pass, any_pass, rankings). Mirrors the scan worker's
+    tool-forced-JSON Anthropic pattern (hard-won lesson #6 — no output_config).
+    """
+    # Download all images concurrently (original first if present).
+    load_targets: list[str] = ([original_gcs_uri] if original_gcs_uri else []) + [
+        uri for _p, _a, uri in candidates
+    ]
+    loaded = await asyncio.gather(*(_load_image_bytes(u) for u in load_targets))
+
+    content: list[dict[str, Any]] = []
+    idx = 0
+    if original_gcs_uri:
+        obytes, oct = loaded[0]
+        content.append({"type": "text", "text": "ORIGINAL — the real photo of the machine:"})
+        content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": oct,
+                    "data": base64.b64encode(obytes).decode(),
+                },
+            }
+        )
+        idx = 1
+
+    for i, (_provider, _asset_id, _uri) in enumerate(candidates, start=1):
+        cbytes, cct = loaded[idx]
+        idx += 1
+        content.append({"type": "text", "text": f"CANDIDATE {i} — an AI-enhanced version:"})
+        content.append(
+            {
+                "type": "image",
+                "source": {
+                    "type": "base64",
+                    "media_type": cct,
+                    "data": base64.b64encode(cbytes).decode(),
+                },
+            }
+        )
+
+    n = len(candidates)
+    content.append(
+        {
+            "type": "text",
+            "text": (
+                f"Score all {n} candidate(s) and report the ranking. "
+                "Return the assessment via the report_ranking tool only."
+            ),
+        }
+    )
+
+    # Equipment context (mirrors the scan tab's KNOWN EQUIPMENT CONTEXT block)
+    # so the judge weighs anatomy against the right machine.
+    system_prompt = JUDGE_RUBRIC
+    if equipment_type or make:
+        ctx = "\n\nKNOWN EQUIPMENT CONTEXT — the machine is a "
+        ctx += " ".join(x for x in [make, (equipment_type or "").replace("_", " ")] if x).strip()
+        ctx += ". Judge its anatomy against this type."
+        system_prompt += ctx
+
+    tool_schema = {
+        "type": "object",
+        "properties": {
+            "rankings": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "candidate": {
+                            "type": "integer",
+                            "description": f"Candidate number, 1-{n}.",
+                        },
+                        "verdict": {"type": "string", "enum": ["pass", "fail"]},
+                        "score": {
+                            "type": "integer",
+                            "description": "Listing-readiness 0-100 (pass=60-100, fail=0-59).",
+                        },
+                        "reason": {"type": "string"},
+                    },
+                    "required": ["candidate", "verdict", "score", "reason"],
+                },
+            },
+            "winner": {
+                "type": "integer",
+                "description": f"Candidate number (1-{n}) you would list.",
+            },
+        },
+        "required": ["rankings", "winner"],
+    }
+
+    response = await anthropic_client.messages.create(
+        model=JUDGE_MODEL,
+        max_tokens=1024,
+        system=system_prompt,
+        tools=[
+            {
+                "name": "report_ranking",
+                "description": "Submit the ranked listing-readiness assessment.",
+                "input_schema": tool_schema,
+            }
+        ],
+        tool_choice={"type": "tool", "name": "report_ranking"},
+        messages=[{"role": "user", "content": content}],
+    )
+    tool_block = next(b for b in response.content if b.type == "tool_use")
+    result = tool_block.input  # dict
+
+    # Map candidate numbers (1-based) back to providers/assets. Defensive
+    # against an out-of-range or missing winner from the model.
+    by_num: dict[int, dict[str, Any]] = {}
+    rankings_out: list[dict[str, Any]] = []
+    for r in result.get("rankings", []):
+        num = int(r.get("candidate", 0))
+        if not (1 <= num <= n):
+            continue
+        provider, asset_id, _uri = candidates[num - 1]
+        verdict = "pass" if r.get("verdict") == "pass" else "fail"
+        score = max(0, min(100, int(r.get("score", 0))))
+        entry = {
+            "provider": provider,
+            "asset_id": asset_id,
+            "verdict": verdict,
+            "score": score,
+            "reason": str(r.get("reason", ""))[:400],
+        }
+        by_num[num] = entry
+        rankings_out.append(entry)
+
+    # Winner: trust the model's pick if valid, else fall back to the highest
+    # score we parsed, else the first candidate.
+    winner_num = int(result.get("winner", 0))
+    if winner_num in by_num:
+        winner = by_num[winner_num]
+    elif rankings_out:
+        winner = max(rankings_out, key=lambda e: e["score"])
+    else:
+        provider, asset_id, _uri = candidates[0]
+        winner = {"provider": provider, "asset_id": asset_id, "verdict": "fail", "score": 0, "reason": ""}
+
+    verdicts = [e["verdict"] for e in rankings_out] or ["fail"]
+    return {
+        "winner_provider": winner["provider"],
+        "winner_asset_id": winner["asset_id"],
+        "all_pass": all(v == "pass" for v in verdicts),
+        "any_pass": any(v == "pass" for v in verdicts),
+        "rankings": rankings_out,
+    }
+
+
 async def _enhance_with_gemini(
     genai_client: Any,
     gcs_uri: str,

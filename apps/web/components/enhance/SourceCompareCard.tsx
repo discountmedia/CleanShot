@@ -16,6 +16,7 @@ import {
   type EnhanceProvider,
 } from "../../lib/types-enhance";
 import { ENHANCE_PROVIDER_DURATION_S } from "../../lib/pricing";
+import type { JudgeResult } from "../../lib/api";
 import type { JobRecord, UploadFile } from "../../lib/types";
 
 /** One provider's slice of state for a single source image. */
@@ -38,6 +39,11 @@ interface SourceCompareCardProps {
   sent: boolean;
   /** Monotonic-ish ms tick used for the per-variant progress estimate. */
   nowMs: number;
+  /** Auto-pick "best of N" ranking for this source, once the judge has run.
+   *  Null when there was nothing to judge (single provider) or it hasn't run. */
+  judgeResult: JudgeResult | null;
+  /** True while the judge call for this source is in flight. */
+  judging: boolean;
 
   onChoose: (provider: EnhanceProvider | null) => void;
   onToggleHold: () => void;
@@ -59,6 +65,8 @@ export function SourceCompareCard({
   held,
   sent,
   nowMs,
+  judgeResult,
+  judging,
   onChoose,
   onToggleHold,
   onRetry,
@@ -92,7 +100,18 @@ export function SourceCompareCard({
   );
 
   const showWorking = !allDone && totalCount > 0;
-  const showPickPrompt = allDone && chosen === null && !held;
+  // Suppress the "pick a winner" nudge while the auto-judge is deciding — it
+  // will set the winner itself in a moment. If the judge errors (judgeResult
+  // stays null, chosen stays null), the nudge reappears as the manual fallback.
+  const showPickPrompt = allDone && chosen === null && !held && !judging;
+
+  // Auto-pick badge: show when the judge has run AND the current winner pick
+  // is still the one it chose (an operator override clears the badge, since
+  // the pick is no longer the judge's). winnerRank carries the score + reason.
+  const winnerRank =
+    judgeResult?.rankings.find((r) => r.provider === judgeResult.winnerProvider) ?? null;
+  const showJudgeBadge =
+    judgeResult !== null && chosen !== null && chosen === judgeResult.winnerProvider;
 
   const filename = file.uploadedFilename ?? file.file.name;
 
@@ -126,6 +145,37 @@ export function SourceCompareCard({
           {showWorking && (
             <span className="text-xs uppercase tracking-[0.16em] font-bold text-blue-200 bg-blue-950/40 border border-blue-700 px-2.5 py-1 rounded">
               working
+            </span>
+          )}
+          {judging && (
+            <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.16em] font-bold text-sky-200 bg-sky-950/40 border border-sky-700 px-2.5 py-1 rounded">
+              <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              judging
+            </span>
+          )}
+          {showJudgeBadge && (
+            <span
+              title={
+                winnerRank
+                  ? `Auto-picked best of ${judgeResult.rankings.length}` +
+                    ` — ${ENHANCE_PROVIDER_LABELS[judgeResult.winnerProvider as EnhanceProvider] ?? judgeResult.winnerProvider}` +
+                    ` (${winnerRank.score}/100${winnerRank.verdict === "fail" ? ", would not list" : ""}).` +
+                    (winnerRank.reason ? ` ${winnerRank.reason}` : "") +
+                    " — click any variant to override."
+                  : undefined
+              }
+              className={`flex items-center gap-1 text-xs uppercase tracking-[0.16em] font-bold px-2.5 py-1 rounded border ${
+                judgeResult.anyPass
+                  ? "text-emerald-200 bg-emerald-950/40 border-emerald-700"
+                  : "text-amber-200 bg-amber-950/40 border-amber-600"
+              }`}
+            >
+              ★ Best of {judgeResult.rankings.length}
+              {winnerRank ? ` · ${winnerRank.score}` : ""}
+              {!judgeResult.anyPass ? " · review" : ""}
             </span>
           )}
           {showPickPrompt && (

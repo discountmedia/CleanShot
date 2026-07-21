@@ -262,6 +262,60 @@ class EnhanceResponse(BaseModel):
     job_id: uuid.UUID
 
 
+class EnhanceJudgeCandidate(BaseModel):
+    """One enhanced variant to be judged. `provider` is opaque to the
+    judge (it's never revealed to the model — candidates are labeled
+    neutrally so brand identity can't bias the pick); it's only used to
+    map the winner back to the frontend's per-file provider slot."""
+
+    provider: str
+    asset_id: uuid.UUID
+
+
+class EnhanceJudgeRequest(BaseModel):
+    """
+    Auto-pick "best of N" — synchronous. The frontend fires this once
+    per source image after that image's multi-provider enhance batch
+    goes terminal with >= 2 successful variants. A single Claude vision
+    call ranks the candidates against the operator's calibrated
+    listing-readiness rubric and names a winner. Read-only: no new asset
+    or job is created.
+    """
+
+    session_id: uuid.UUID
+    # The ORIGINAL pre-enhance photo. When present the judge runs
+    # DIFFERENTIAL (original vs each candidate) — the calibrated mode that
+    # catches drift from the real machine. Optional: standalone runs (no
+    # original) fall back to judging listing-readiness on the candidate
+    # alone.
+    original_asset_id: uuid.UUID | None = None
+    candidates: list[EnhanceJudgeCandidate] = Field(..., min_length=1)
+    # Optional equipment context so the judge weighs anatomy against the
+    # right machine (mirrors the scan tab's KNOWN EQUIPMENT CONTEXT block).
+    equipment_type: str | None = None
+    make: str | None = None
+
+
+class EnhanceJudgeRanking(BaseModel):
+    provider: str
+    asset_id: uuid.UUID
+    # Would the dealer list this candidate? (holistic rubric verdict)
+    verdict: Literal["pass", "fail"]
+    # 0-100 listing-readiness — the ranking key. Higher is better.
+    score: int
+    reason: str
+
+
+class EnhanceJudgeResponse(BaseModel):
+    winner_provider: str
+    winner_asset_id: uuid.UUID
+    # True when EVERY candidate passed the rubric; when False the winner
+    # is the least-bad option and the UI should flag "review recommended".
+    all_pass: bool
+    any_pass: bool
+    rankings: list[EnhanceJudgeRanking]
+
+
 class EraseRequest(BaseModel):
     """
     BFF → FastAPI request body for mask-based object erase.

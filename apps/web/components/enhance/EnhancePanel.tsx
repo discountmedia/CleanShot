@@ -40,7 +40,9 @@ import {
   enqueueEnhance,
   getAssetUrl,
   getSignedUploadUrl,
+  judgeVariants,
   uploadToGcs,
+  type JudgeResult,
 } from "../../lib/api";
 import { useJobPoller } from "../../lib/polling";
 import {
@@ -330,6 +332,21 @@ export function EnhancePanel({
   const [chosenByFile, setChosenByFile] = useState<Map<string, EnhanceProvider>>(new Map());
   const [heldFiles, setHeldFiles] = useState<Set<string>>(new Set());
 
+  // Auto-pick "best of N" judge state.
+  //   • judgeByFile   — the completed ranking per source file (drives the
+  //                     "★ Best of N" winner badge + the judge's reason).
+  //   • judgingFiles  — files whose judge call is in flight (drives the
+  //                     transient "judging…" badge).
+  //   • judgeStartedRef — one-shot guard so the auto-judge effect fires the
+  //                     judge EXACTLY once per file. A ref (not state) because
+  //                     the effect re-runs on every job-state change and we
+  //                     must not re-fire; refs also don't trigger re-renders.
+  //                     Reset alongside the other batch state on re-enhance /
+  //                     clear so a fresh batch judges cleanly.
+  const [judgeByFile, setJudgeByFile] = useState<Map<string, JudgeResult>>(new Map());
+  const [judgingFiles, setJudgingFiles] = useState<Set<string>>(new Set());
+  const judgeStartedRef = useRef<Set<string>>(new Set());
+
   // Mirror of enhanceJobs so handleJobComplete (memoized with stable
   // deps so the poller's callback identity stays steady across re-
   // renders) can read the AT-SUBMIT-TIME per-file provider count from
@@ -510,6 +527,105 @@ export function EnhancePanel({
     },
     [updateJobState],
   );
+
+  // ─── Auto-pick "best of N" ─────────────────────────────────────────────
+  //
+  // Once a MULTI-provider batch for a source image goes terminal, ask the
+  // judge to rank the surviving variants and auto-select the winner. This is
+  // the whole point of fanning out to N providers — the operator sees one
+  // vetted image instead of grading three. Everything downstream (Darkroom,
+  // Export, Send-to-Scan) already filters to `chosenByFile`, so setting the
+  // winner here is all that's needed to collapse the choice.
+  //
+  // Single-provider files are handled in handleJobComplete (trivial winner).
+  // We only act when >= 2 providers were enqueued. Failure is soft: if the
+  // judge errors or is unavailable (503), we leave the file for a manual pick
+  // — exactly today's behaviour.
+  useEffect(() => {
+    for (const f of files) {
+      if (judgeStartedRef.current.has(f.id)) continue;   // one-shot per file
+      if (chosenByFile.has(f.id)) continue;              // pick already exists
+      const fileJobs = enhanceJobs.get(f.id);
+      if (!fileJobs || fileJobs.size < 2) continue;      // single-provider → handleJobComplete
+
+      // Ready = every job terminal AND every completed job has its asset URL
+      // resolved (handleJobComplete populates `completed` a beat after the
+      // status flips to "complete" — waiting for it closes that race so we
+      // never judge a partial candidate set).
+      let ready = true;
+      const survivors: Array<{ provider: EnhanceProvider; assetId: string }> = [];
+      for (const [provider, jobId] of fileJobs) {
+        const status = jobStateMap.get(jobId)?.status;
+        if (status !== "complete" && status !== "failed" && status !== "cancelled") {
+          ready = false;
+          break;
+        }
+        if (status === "complete") {
+          const item = completed.get(jobId);
+          if (!item) { ready = false; break; }
+          survivors.push({ provider, assetId: item.outputAssetId });
+        }
+      }
+      if (!ready) continue;
+
+      // Mark started BEFORE any async work so a re-render mid-flight (or
+      // React strict-mode double-invoke) can't double-fire the judge.
+      judgeStartedRef.current.add(f.id);
+
+      if (survivors.length === 0) continue;              // all failed — nothing to pick
+      if (survivors.length === 1) {
+        // Only one provider survived → trivially the winner, no judge call.
+        const only = survivors[0];
+        // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: one-shot per file (judgeStartedRef) + prev.has() guard, so no cascade.
+        setChosenByFile((prev) =>
+          prev.has(f.id) ? prev : new Map(prev).set(f.id, only.provider),
+        );
+        continue;
+      }
+
+      // >= 2 survivors → judge.
+      setJudgingFiles((prev) => new Set(prev).add(f.id));
+      judgeVariants({
+        sessionId,
+        originalAssetId: f.assetId ?? undefined,
+        candidates: survivors.map((s) => ({ provider: s.provider, assetId: s.assetId })),
+        equipmentType: meta.equipmentType ?? undefined,
+        make: meta.make?.trim() || undefined,
+      })
+        .then((result) => {
+          setJudgeByFile((prev) => new Map(prev).set(f.id, result));
+          // Respect an operator pick made while the judge was thinking.
+          setChosenByFile((prev) =>
+            prev.has(f.id)
+              ? prev
+              : new Map(prev).set(f.id, result.winnerProvider as EnhanceProvider),
+          );
+        })
+        .catch((err: Error) => {
+          console.warn(
+            "[enhance] variant judge failed — leaving winner for manual pick",
+            err,
+          );
+        })
+        .finally(() => {
+          setJudgingFiles((prev) => {
+            if (!prev.has(f.id)) return prev;
+            const next = new Set(prev);
+            next.delete(f.id);
+            return next;
+          });
+        });
+    }
+  }, [
+    files,
+    enhanceJobs,
+    jobStateMap,
+    completed,
+    chosenByFile,
+    sessionId,
+    meta.equipmentType,
+    meta.make,
+  ]);
 
   // ─── Provider checkbox ─────────────────────────────────────────────────
 
@@ -781,6 +897,9 @@ export function EnhancePanel({
         setJobStateMap(new Map());
         setChosenByFile(new Map());
         setHeldFiles(new Set());
+        setJudgeByFile(new Map());
+        setJudgingFiles(new Set());
+        judgeStartedRef.current = new Set();
         // onClearPipeline wipes Workspace's enhancedAssets + resizeAssets +
         // resizeResults, which is what causes the Scan tab to reset.
         onClearPipeline();
@@ -834,6 +953,9 @@ export function EnhancePanel({
     setJobStateMap(new Map());
     setChosenByFile(new Map());
     setHeldFiles(new Set());
+    setJudgeByFile(new Map());
+    setJudgingFiles(new Set());
+    judgeStartedRef.current = new Set();
     onClearPipeline();
     setTogglesDirty(false);
     resetDoneForBatchRef.current = false;
@@ -1298,6 +1420,9 @@ export function EnhancePanel({
     setJobStateMap(new Map());
     setChosenByFile(new Map());
     setHeldFiles(new Set());
+    setJudgeByFile(new Map());
+    setJudgingFiles(new Set());
+    judgeStartedRef.current = new Set();
     onClearPipeline();
     setGlobalError(null);
     setTogglesDirty(false);
@@ -1774,6 +1899,8 @@ export function EnhancePanel({
                   held={heldFiles.has(f.id)}
                   sent={isSent}
                   nowMs={nowMs}
+                  judgeResult={judgeByFile.get(f.id) ?? null}
+                  judging={judgingFiles.has(f.id)}
                   onChoose={(provider) => chooseWinner(f.id, provider)}
                   onToggleHold={() => toggleHold(f.id)}
                   onRetry={(provider) => retryProvider(f, provider)}

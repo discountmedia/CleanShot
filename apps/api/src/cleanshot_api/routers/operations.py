@@ -13,6 +13,8 @@ from cleanshot_api.models.schemas import (
     CleanupBatchRequest,
     CleanupBatchResponse,
     CleanupTaskPayload,
+    EnhanceJudgeRequest,
+    EnhanceJudgeResponse,
     EnhanceRequest,
     EnhanceResponse,
     EnhanceTaskPayload,
@@ -35,6 +37,7 @@ from cleanshot_api.services.tasks import (
     enqueue_scan,
     enqueue_tweak,
 )
+from cleanshot_api.workers.enhance_worker import judge_variants
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -187,6 +190,62 @@ async def enqueue_tweak_job(
         await queries.set_job_tasks_name(conn, job.id, tasks_name)
 
     return TweakResponse(job_id=job.id)
+
+
+@router.post(
+    "/enhance/judge",
+    response_model=EnhanceJudgeResponse,
+    dependencies=[Depends(require_api_key)],
+)
+async def judge_enhance_variants(
+    body: EnhanceJudgeRequest,
+    request: Request,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> EnhanceJudgeResponse:
+    """
+    Auto-pick "best of N" — SYNCHRONOUS (not a Cloud Tasks job). Given the
+    completed enhance variants for one source image, run a single Claude
+    vision call that ranks them against the operator's calibrated
+    listing-readiness rubric and names a winner. Read-only: no asset or job
+    row is written, so we return the ranking inline rather than a job_id.
+
+    503s when the Anthropic client isn't configured so the frontend can fall
+    back to a manual winner pick without treating it as a hard error.
+    """
+    anthropic_client = request.app.state.anthropic
+    if anthropic_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Variant judge unavailable (Anthropic client not configured)",
+        )
+
+    async with pool.acquire() as conn:
+        # Resolve the ORIGINAL (optional — differential mode when present).
+        original_gcs_uri: str | None = None
+        if body.original_asset_id:
+            original = await queries.get_asset(conn, body.original_asset_id)
+            if original is not None and original.session_id == body.session_id:
+                original_gcs_uri = original.gcs_uri
+
+        # Resolve every candidate's GCS URI, enforcing session ownership.
+        resolved: list[tuple[str, uuid.UUID, str]] = []
+        for cand in body.candidates:
+            asset = await queries.get_asset(conn, cand.asset_id)
+            if asset is None or asset.session_id != body.session_id:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Candidate asset {cand.asset_id} not found",
+                )
+            resolved.append((cand.provider, cand.asset_id, asset.gcs_uri))
+
+    result = await judge_variants(
+        anthropic_client,
+        resolved,
+        original_gcs_uri,
+        equipment_type=body.equipment_type,
+        make=body.make,
+    )
+    return EnhanceJudgeResponse(**result)
 
 
 @router.post(

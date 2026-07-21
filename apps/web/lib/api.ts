@@ -101,6 +101,42 @@ export async function enqueueEnhance(params: {
   return post("/api/enhance", params);
 }
 
+// ─── Enhance: auto-pick "best of N" judge ──────────────────────────────────
+
+export interface JudgeRanking {
+  provider: string;
+  assetId: string;
+  verdict: "pass" | "fail";
+  /** 0-100 listing-readiness. Higher is better. */
+  score: number;
+  reason: string;
+}
+
+export interface JudgeResult {
+  winnerProvider: string;
+  winnerAssetId: string;
+  /** True when EVERY candidate passed the rubric. */
+  allPass: boolean;
+  anyPass: boolean;
+  rankings: JudgeRanking[];
+}
+
+/**
+ * Rank the completed enhance variants for one source image and return the
+ * winner. Synchronous on the backend (a single Claude vision call), so this
+ * resolves with the ranking directly rather than a job to poll.
+ */
+export async function judgeVariants(params: {
+  sessionId: string;
+  /** The original pre-enhance photo — enables differential judging. */
+  originalAssetId?: string;
+  candidates: Array<{ provider: string; assetId: string }>;
+  equipmentType?: string;
+  make?: string;
+}): Promise<JudgeResult> {
+  return post("/api/enhance/judge", params);
+}
+
 // ─── Jobs ────────────────────────────────────────────────────────────────────
 
 export async function pollJob(jobId: string, signal?: AbortSignal): Promise<JobRecord> {
