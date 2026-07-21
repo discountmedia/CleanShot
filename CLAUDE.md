@@ -41,7 +41,21 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 
 ---
 
-## Latest session (2026-07-13) — differential scan, equipment types, enhance-quality investigation
+## Latest session (2026-07-21) — best-of-N auto-pick, Grok dormant, prompt-first Enhance
+
+Three shipped Enhance-tab changes (all live in prod):
+
+**1. Best-of-N auto-pick** (`9d268ab` + fixes `98c6027`). When a multi-provider (≥2) enhance batch goes terminal, a single Claude vision call ranks the variants and auto-selects the winner into `chosenByFile` — the operator sees ONE vetted image instead of grading N. Sync endpoint `POST /api/v1/enhance/judge` ([operations.py](apps/api/src/cleanshot_api/routers/operations.py)) → `judge_variants()` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py); rubric ported VERBATIM from `scripts/holistic_judge.py`, model pinned to `claude-sonnet-4-6` (**do not swap — it invalidates the ~70% operator-agreement calibration**). Candidates labeled neutrally ("CANDIDATE 1/2/3") so brand can't bias the pick; tool-forced JSON (lesson #6). Green "★ Best of N · {score}" badge (amber "review" if none pass); manual override stays one click; soft-fails to manual pick on 503/error. A post-ship adversarial review found + fixed a HIGH race — a re-enhance/clear during an in-flight judge wrote the OLD batch's winner onto the reused file id (new batch never judged; could silently drop an image from Export) — via a `judgeEpochRef` + `judgeStartedRef.has(fileId)` guard on the async continuations, plus `retryProvider` clearing the file's judge state, backend `_as_int()` guarding model-supplied numerics, and candidate-number dedup. **Deferred:** judge spend not logged to `usage_events` (needs `OperationEnum.judge` + `ALTER TYPE`, lesson #12); no rate limiter on the judge's Anthropic calls (shares scan's `claude-sonnet-4-6` tier).
+
+**2. Grok made DORMANT** (`fb4e24a`). Operator cut Grok from the mix. Dropped `"grok"` from `ENHANCE_PROVIDERS` ([lib/types-enhance.ts](apps/web/lib/types-enhance.ts)) so it's gone from the picker / select-all / default — but left in the `EnhanceProvider` union + every Record + the backend `gemini|openai|grok` Literal + `_enhance_with_grok` as dead-but-harmless code (one-line restore). **The LIVE picker is now Gemini + OpenAI only** (same dormant pattern as kontext/ideogram/reve).
+
+**3. Prompt-first Enhance** (`e7afc09`). The one-size built-in prompt was shoehorning operator intent (the "N=4→3→2 providers" prose); operators get better results writing their own prompts. The prompt box is now the **PRIMARY, REQUIRED** input under the provider row (Enhance disabled until non-empty). **"Insert recommended prompt"** drops an equipment-aware, editable starter ([lib/recommended-prompt.ts](apps/web/lib/recommended-prompt.ts) — forklift fork-line vs scissor-lift platform-line, optional make/model/year anchor). **Toggles now AUGMENT the prompt** instead of overriding it: `_run_enhance` routes `custom_prompt` as the `spine_override` into `_build_enhance_prompt`, so the user's prompt is the SPINE and the paint-forks block + ON-toggle add-ons + always-on guardrails append on top. Toggles are always enabled now (dropped the "disabled while custom prompt active" logic + the verbatim-warning). **Behavior change:** custom prompts now get the safety guardrails appended (make/model/decals/anatomy preservation, no bolt-ons, no reframe) — previously verbatim. The one-size built-in survives only as a dormant backend fallback (`spine_override=None`). Iterative follow-up prompts ("change it more" without starting over) stay **Phase 2** — the per-variant Tweak tool already covers the core. **Post-ship review fix:** the reroute would have double-appended guardrails (and a forklift-default guardrail) to the **Scan-tab Regenerate** path — `buildRegenPrompt` sends a COMPLETE prompt, not a spine. Fixed with a `prompt_is_complete` flag on `EnhanceTaskPayload` (set by `enqueue_regen`) that keeps regen on the verbatim path while the Enhance-tab stays spine-first. So: **Enhance-tab prompt = spine (builder augments); Scan-regen prompt = verbatim.**
+
+**Supersedes the 2026-07-13 note below:** the "single built-in prompt / prompt_choice removed" statement is now itself superseded — the built-in prompt is a dormant fallback; the operator's typed prompt is the primary path.
+
+---
+
+## Previous session (2026-07-13) — differential scan, equipment types, enhance-quality investigation
 
 **Shipped & live:**
 - **Differential (before/after) scan** (`3a90e77`) — see the Scan section below. Compares the enhanced output against the ORIGINAL pre-enhance photo and flags UNINTENDED machine changes (shrunk forks, added parts, altered text, added damage), with an `intended_edits` whitelist so deliberate edits aren't flagged. Auto-fires on every enhance; manual scan-batch threads originals too; standalone uploads fall back to the isolated scan.
@@ -63,7 +77,7 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 
 ## Image-gen providers — what's wired and which model
 
-The Enhance tab picker is **3 providers** (`gemini | openai | grok`) — narrowed 2026-06-05; the `EnhanceRequest`/`EnhanceTaskPayload` provider Literals enforce it. `kontext | ideogram | reve` remain as dead-but-harmless worker code, unreachable from the picker. (The per-provider master-prompt dropdown was also removed 2026-07-13 — see Latest session.) All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`. The table below documents all six worker helpers; only the first three are live.
+The Enhance tab picker is now **2 live providers** (`gemini | openai`) — narrowed to 3 on 2026-06-05, then **Grok made dormant 2026-07-21** (see Latest session). The `EnhanceRequest`/`EnhanceTaskPayload` provider Literals still allow `gemini|openai|grok` (grok kept as dormant code). `grok | kontext | ideogram | reve` all remain as dead-but-harmless worker code, unreachable from the picker. All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`. The table below documents all six worker helpers; only `gemini` + `openai` are live.
 
 | Provider | Model ID | SDK / endpoint | Key |
 |---|---|---|---|
@@ -76,6 +90,7 @@ The Enhance tab picker is **3 providers** (`gemini | openai | grok`) — narrowe
 
 **Removed / repositioned providers (don't reintroduce as primary generators without reading why):**
 
+- `grok` — made **DORMANT 2026-07-21** (`fb4e24a`; operator cut it from the mix). Removed from `ENHANCE_PROVIDERS` (the picker roster in `lib/types-enhance.ts`) so it can't be selected / defaulted-to / fanned-out-to — but kept in the `EnhanceProvider` union + every Record + the backend `gemini|openai|grok` Literal + `_enhance_with_grok`. Re-enable = uncomment the one array entry. `cleanshot-xai-key` left in place.
 - `recraft` — wired end-to-end on 2026-05-26 (commits `b03032a` through `b21e9eb`), then **gutted same day** after the operator preferred Reve's output on quality. The known footguns are captured in hard-won lesson #21 (secret-value contamination) and the per-model-prompts work item (the 1000-byte prompt cap meant Gemini-tuned prose got hard-truncated, which is most of what made the output ugly). If reintroducing: restore via the cherry-picks of `b03032a`/`9fd8df1`/`b39da9b`/`d903430`/`fe826e8`/`b98f1f1`, AND write `_build_recraft_prompt` before judging quality. `cleanshot-recraft-key` secret left in place pending operator decision on full delete.
 - `seedream` — operator tested 2026-05-26 and rejected on quality grounds. Not wired.
 - `flux` (as generator) — repositioned as the **Erase tool only**, not a generation provider. See "Per-variant edit tools" below.
