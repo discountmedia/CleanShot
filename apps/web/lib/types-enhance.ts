@@ -13,7 +13,11 @@
  * Narrowed to Gemini / OpenAI / Grok 2026-06-05 — Kontext (BFL Flux
  * Kontext Max via RunComfy), Ideogram (3.0 /v1/edit), and Reve
  * (latest-fast /v1/image/edit) were removed from the user-facing
- * picker. Note: Ideogram is still wired internally for the per-variant
+ * picker. Grok was then made DORMANT 2026-07-21 (operator cut it from
+ * the mix), so the LIVE picker is now Gemini / OpenAI only — grok stays
+ * in this union + all Records + the backend _enhance_with_grok helper as
+ * dead-but-harmless code (removed only from ENHANCE_PROVIDERS below).
+ * Note: Ideogram is still wired internally for the per-variant
  * Tweak ("T cyan Edit") + Inpaint ("🖌 rose") tools — those tools have
  * their own `tool` Literal separate from this primary-provider union.
  * Likewise the BFL erase tool (`⌫ purple`) uses its own BFL_API_KEY
@@ -26,7 +30,11 @@ export type EnhanceProvider = "gemini" | "openai" | "grok";
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
-  "grok",
+  // "grok" — made DORMANT 2026-07-21 (operator cut Grok from the mix). Kept
+  // out of the picker roster so it can't be selected, defaulted to, or
+  // fanned-out to — but left in the EnhanceProvider union + every Record below
+  // + the backend _enhance_with_grok helper so re-enabling is a one-line
+  // restore. Joins kontext/ideogram/reve as unreachable-from-picker code.
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {
