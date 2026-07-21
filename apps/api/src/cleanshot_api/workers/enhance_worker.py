@@ -1959,21 +1959,29 @@ async def _run_enhance(
                 ),
             )
 
-        if payload.custom_prompt:
-            prompt = payload.custom_prompt
-        elif payload.provider == "kontext":
+        # Prompt-first Enhance (2026-07-21). The operator's own prompt is now
+        # the PRIMARY input, and it becomes the SPINE — the paint-forks block,
+        # toggle add-ons, and hard guardrails still append on top via the
+        # builder, so toggles AUGMENT the user's prompt instead of being
+        # overridden by it (the old `custom_prompt` = verbatim path). When no
+        # prompt is supplied we fall back to the master-prompt spine_override
+        # (dormant) or, failing that, the procedural built-in spine — a dormant
+        # safety net now that the UI requires a prompt (older callers / the
+        # Scan-regen path may still omit one).
+        effective_spine = payload.custom_prompt or spine_override
+        if payload.provider == "kontext":
             # Kontext is an identity-preserving edit model — give it the
             # terse imperative prompt, not the long Gemini scene prose.
             prompt = _build_kontext_prompt(
                 payload.toggles,
                 equipment_type=payload.equipment_type,
-                spine_override=spine_override,
+                spine_override=effective_spine,
             )
         else:
             prompt = _build_enhance_prompt(
                 payload.toggles,
                 equipment_type=payload.equipment_type,
-                spine_override=spine_override,
+                spine_override=effective_spine,
             )
 
         # Attribution suffix for the usage-event `model` label — lets the

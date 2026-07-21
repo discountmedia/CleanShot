@@ -44,6 +44,7 @@ import {
   uploadToGcs,
   type JudgeResult,
 } from "../../lib/api";
+import { buildRecommendedPrompt } from "../../lib/recommended-prompt";
 import { useJobPoller } from "../../lib/polling";
 import {
   ENHANCE_PROVIDERS,
@@ -298,8 +299,8 @@ export function EnhancePanel({
   // enhance flows through the single built-in prompt. No prompt_choice is
   // sent, so the backend resolves to its procedural builder.
 
-  // Custom prompt auto-expands for restricted (custom-prompt-only) users.
-  const [customPromptOpen, setCustomPromptOpen] = useState(restriction?.customPromptOnly ?? false);
+  // The operator's prompt — now the PRIMARY, required Enhance input
+  // (2026-07-21 prompt-first redesign). Always visible; no collapse.
   const [customPrompt, setCustomPrompt] = useState("");
 
   // Both default OPEN: operators wanted the full Make/Model/Year row and
@@ -313,9 +314,13 @@ export function EnhancePanel({
 
   const makeValid = Boolean(meta.make?.trim());
   const customPromptActive = customPrompt.trim().length > 0;
-  // Restricted (custom-prompt-only) users have no Make field, so the
-  // enhance gate becomes "has a custom prompt" instead of "has Make".
-  const metaGate = restriction?.customPromptOnly ? customPromptActive : makeValid;
+  // Prompt-first (2026-07-21): a non-empty prompt is now REQUIRED to enhance,
+  // alongside Make. (Restricted custom-prompt-only users have no Make field, so
+  // their gate stays prompt-only — inert now that access-control is defanged,
+  // kept for shape.)
+  const metaGate = restriction?.customPromptOnly
+    ? customPromptActive
+    : makeValid && customPromptActive;
 
   // Completed-jobs map and "have we already sent this to Scan?" set —
   // preserved from the prior implementation. Keyed by jobId so each
@@ -1661,7 +1666,7 @@ export function EnhancePanel({
         onSelectAll={selectAllProviders}
       />
 
-      {/* ── Advanced (toggles + custom prompt) ── */}
+      {/* ── Prompt (required) + optional toggle add-ons ── */}
       <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
         <button
           type="button"
@@ -1671,14 +1676,18 @@ export function EnhancePanel({
         >
           <div className="flex items-center gap-3 flex-wrap">
             <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
-              Advanced
+              Prompt
             </span>
             <span className="text-sm uppercase tracking-[0.16em] text-zinc-300">
-              Optional emphasis + custom prompt
+              Write your own — toggles fine-tune it
             </span>
-            {customPromptActive && (
-              <span className="text-xs uppercase tracking-[0.18em] font-bold text-amber-200 bg-amber-900/60 border border-amber-700 rounded px-2 py-0.5">
-                Prompt active
+            {customPromptActive ? (
+              <span className="text-xs uppercase tracking-[0.18em] font-bold text-emerald-200 bg-emerald-900/50 border border-emerald-700 rounded px-2 py-0.5">
+                ✓ Prompt set
+              </span>
+            ) : (
+              <span className="text-xs uppercase tracking-[0.18em] font-bold text-red-200 bg-red-900/50 border border-red-700 rounded px-2 py-0.5">
+                Required
               </span>
             )}
           </div>
@@ -1692,23 +1701,83 @@ export function EnhancePanel({
 
         {advancedOpen && (
           <div className="border-t border-zinc-900 p-5 space-y-5">
-            {/* Feature toggles — hidden only for restricted users whose
-                config disables them (the custom-prompt-only models: grok /
-                gemini / openai). Kontext (stephen) keeps toggles: they drive
-                _build_kontext_prompt's clauses under the new design. */}
+            {/* ── Your prompt — PRIMARY + required (prompt-first redesign,
+                2026-07-21). The operator's own words drive the result;
+                "Insert recommended prompt" gives unfamiliar users an
+                equipment-aware starting point they then edit. The toggles
+                below append to whatever ends up here, and the backend always
+                adds the safety guardrails on top (custom_prompt is now the
+                spine_override, not a verbatim override). */}
+            <div className="space-y-3">
+              <div className="flex items-baseline justify-between gap-3 flex-wrap">
+                <h3 className="text-lg font-semibold text-zinc-100">
+                  Your prompt <span className="text-red-400">*</span>
+                </h3>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCustomPrompt(
+                        buildRecommendedPrompt(meta.equipmentType ?? "forklift", {
+                          make:  meta.make,
+                          model: meta.model,
+                          year:  meta.year,
+                        }),
+                      );
+                      markUserToggleChange();
+                    }}
+                    className="text-sm font-bold text-sky-400 hover:text-sky-300 transition-colors"
+                  >
+                    {customPromptActive ? "Reset to recommended" : "Insert recommended prompt"}
+                  </button>
+                  {customPromptActive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCustomPrompt("");
+                        markUserToggleChange();
+                      }}
+                      className="text-sm text-zinc-300 hover:text-white transition-colors font-semibold"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              </div>
+              <p className="text-base text-zinc-200 leading-relaxed">
+                Describe how you want this machine to look, in your own words —{" "}
+                <span className="font-semibold text-yellow-300">your prompt drives the result</span>.
+                New to this? Click{" "}
+                <span className="font-semibold">Insert recommended prompt</span>{" "}
+                for a solid starting point and edit it to taste.
+              </p>
+              <textarea
+                value={customPrompt}
+                onChange={(e) => {
+                  setCustomPrompt(e.target.value);
+                  markUserToggleChange();
+                }}
+                placeholder="Example: Give this forklift a clean respray in its original orange, keep every decal, paint the forks red with yellow tips, glossy tire sidewalls, brighten the lighting, tidy the background."
+                rows={6}
+                className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition leading-relaxed"
+              />
+              <p className="text-sm text-zinc-400 leading-relaxed">
+                Your prompt is the base. The built-in safety guardrails (keep the
+                real make / model / decals / proportions, no bait-and-switch) are
+                always applied on top, and any toggles below append extra
+                instructions.
+              </p>
+            </div>
+
+            {/* ── Optional add-ons — toggles now AUGMENT the prompt above
+                (they append emphasis / actions) rather than being overridden
+                by it. Always enabled. (`disableToggles` guard is inert now that
+                access-control is defanged — kept for shape.) */}
             {!restriction?.disableToggles && (
-            <div
-              aria-disabled={customPromptActive || undefined}
-              className={customPromptActive ? "opacity-40 pointer-events-none" : ""}
-            >
+            <div className="border-t border-zinc-900 pt-5">
               <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
                 <h3 className="text-lg font-semibold text-zinc-100">
-                  Optional emphasis
-                  {customPromptActive && (
-                    <span className="ml-2 text-sm uppercase tracking-[0.16em] text-amber-300">
-                      disabled — custom prompt active
-                    </span>
-                  )}
+                  Optional add-ons
                 </h3>
                 <button
                   type="button"
@@ -1721,28 +1790,21 @@ export function EnhancePanel({
                   Reset
                 </button>
               </div>
-              <p className="text-lg text-zinc-200 mb-1.5 leading-relaxed">
-                The toggles below add{" "}
-                <span className="font-semibold text-yellow-300">extra emphasis</span>{" "}
-                on a specific area, or kick in a{" "}
-                <span className="font-semibold text-yellow-300">specific action</span>{" "}
-                like painting the forks red, or removing rental decals.
+              <p className="text-base text-zinc-200 mb-1.5 leading-relaxed">
+                These{" "}
+                <span className="font-semibold text-yellow-300">append to your prompt</span>{" "}
+                above — extra emphasis (paint, rust, tire shine) or a specific
+                action (paint forks red, remove rental decals).
               </p>
               <p className="text-base text-yellow-300 italic mb-4 leading-relaxed">
-                (Using the toggles may give unexpected results)
+                (Optional — leave them all off to let your prompt stand on its own.)
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
-                  // Equipment-conditional toggle visibility:
-                  //  • paintForksRedYellowTips — shown for every equipment
-                  //    type EXCEPT scissor_lift (everything else carries
-                  //    visible forks). Backend mirrors this in
-                  //    enhance_worker.py's paint_forks_on check.
-                  //  • threeWheel — shown ONLY when equipmentType is
-                  //    "forklift" (rough_terrain / telehandler / scissor
-                  //    lift / reach truck / order picker / pallet jack /
-                  //    walkie stacker are never 3-wheel layouts).
-                  // Keep these gates in lock-step with the backend.
+                  // Equipment-conditional toggle visibility — keep in lock-step
+                  // with the backend paint_forks_on / three_wheel gates:
+                  //  • paintForksRedYellowTips — every type EXCEPT scissor_lift.
+                  //  • threeWheel — ONLY when equipmentType is "forklift".
                   .filter((key) => {
                     const et = meta.equipmentType ?? "forklift";
                     if (key === "paintForksRedYellowTips") return et !== "scissor_lift";
@@ -1763,76 +1825,6 @@ export function EnhancePanel({
                     />
                   ))}
               </div>
-            </div>
-            )}
-
-            {/* Custom prompt — hidden for restricted users on the new
-                "equipment + toggles, no typed prompt" design (e.g. Kontext /
-                stephen). Kept for unrestricted power users and for
-                customPromptOnly users whose ONLY emphasis input it is
-                (brian / asia / aj). */}
-            {(!restriction || restriction.customPromptOnly) && (
-            <div className="border-t border-zinc-900 pt-5 space-y-3">
-              <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <button
-                  type="button"
-                  onClick={() => setCustomPromptOpen((v) => !v)}
-                  aria-expanded={customPromptOpen}
-                  className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100 hover:text-white transition-colors flex items-center gap-2"
-                >
-                  <svg
-                    className={`w-4 h-4 text-zinc-300 transition-transform ${customPromptOpen ? "rotate-180" : ""}`}
-                    fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                  >
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                  </svg>
-                  Custom prompt
-                </button>
-                <span className="text-sm text-zinc-300">
-                  Advanced — overrides every toggle above
-                </span>
-              </div>
-
-              {customPromptOpen && (
-                <>
-                  <div
-                    role="alert"
-                    className="flex items-start gap-3 rounded-lg border border-amber-900 bg-amber-950/30 px-4 py-3"
-                  >
-                    <svg
-                      className="w-5 h-5 text-amber-300 mt-0.5 shrink-0"
-                      fill="none" viewBox="0 0 24 24" stroke="currentColor"
-                    >
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
-                        d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-                    </svg>
-                    <p className="text-sm text-amber-100 leading-relaxed">
-                      <span className="font-semibold">Power-user only.</span> A
-                      custom prompt completely replaces the carefully-tuned
-                      default and is sent to the AI verbatim. The built-in
-                      safety clauses (preserve make / model / decals /
-                      proportions, keep used-character signs visible, avoid
-                      bait-and-switch) are <span className="font-semibold">NOT</span>{" "}
-                      automatically added — you have to write them in yourself
-                      if they matter. Results can be unpredictable. Use this
-                      only when you know exactly what you want and the toggles
-                      above can&apos;t express it.
-                    </p>
-                  </div>
-                  <textarea
-                    value={customPrompt}
-                    onChange={(e) => setCustomPrompt(e.target.value)}
-                    placeholder="Example: Repaint this forklift in matte black with red OSHA forks, keep all decals intact, soft studio lighting."
-                    rows={5}
-                    className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent transition font-mono leading-relaxed"
-                  />
-                  <p className="text-sm text-zinc-300">
-                    Clear the textarea above to re-enable the standard
-                    toggles. The textarea has to be empty (no trailing
-                    spaces) for the toggle path to kick back in.
-                  </p>
-                </>
-              )}
             </div>
             )}
           </div>
@@ -1861,8 +1853,10 @@ export function EnhancePanel({
         // When metaGate is unmet, the prompt differs by user type:
         // restricted users need a custom prompt; everyone else needs Make.
         const gatePrompt = restriction?.customPromptOnly
-          ? "Enter a custom prompt to continue"
-          : "Enter forklift Make to continue";
+          ? "Write or insert a prompt to continue"
+          : !makeValid
+            ? "Enter forklift Make to continue"
+            : "Write or insert a prompt to continue";
         return (
           <button
             onClick={onClick}
@@ -1879,15 +1873,11 @@ export function EnhancePanel({
               : pendingCount > 0
                 ? !metaGate
                   ? gatePrompt
-                  : customPromptActive
-                    ? `Enhance ${pendingCount} Image${pluralPending} (custom prompt)`
-                    : `Enhance ${pendingCount} Image${pluralPending}`
+                  : `Enhance ${pendingCount} Image${pluralPending}`
                 : canReEnhance
                   ? !metaGate
                     ? gatePrompt
-                    : customPromptActive
-                      ? `Re-enhance ${reEnhanceCount} Image${pluralReRun} (custom prompt)`
-                      : `Re-enhance ${reEnhanceCount} Image${pluralReRun} with new toggles`
+                    : `Re-enhance ${reEnhanceCount} Image${pluralReRun}`
                   : doneCount > 0
                     ? "All images processing"
                     : "Add images above"}
