@@ -860,6 +860,20 @@ If no original photo is provided, judge each candidate on listing-readiness alon
 believable real machine, clean presentation, no obvious AI artefacts."""
 
 
+def _as_int(value: Any, default: int = 0) -> int:
+    """Coerce a model-supplied value to int, falling back on anything unparseable.
+
+    Anthropic does NOT validate tool_use input against the declared schema
+    (unlike OpenAI strict mode — hard-won lesson #6), so a model that emits
+    score:null or "N/A" for a candidate it declines to grade would crash a bare
+    int(). This keeps one malformed field from 500-ing the whole judge (which
+    silently disables auto-pick for that image)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 async def judge_variants(
     anthropic_client: Any,
     candidates: list[tuple[str, uuid.UUID, str]],
@@ -984,12 +998,17 @@ async def judge_variants(
     by_num: dict[int, dict[str, Any]] = {}
     rankings_out: list[dict[str, Any]] = []
     for r in result.get("rankings", []):
-        num = int(r.get("candidate", 0))
-        if not (1 <= num <= n):
+        # _as_int guards against non-integer model output (Anthropic doesn't
+        # enforce tool-input types — lesson #6). The `num in by_num` guard drops
+        # duplicate candidate numbers so rankings_out stays one-per-candidate;
+        # without it a repeated candidate inflates the "Best of N" count shown to
+        # the operator and skews all_pass/any_pass over a duplicated verdict set.
+        num = _as_int(r.get("candidate"), 0)
+        if not (1 <= num <= n) or num in by_num:
             continue
         provider, asset_id, _uri = candidates[num - 1]
         verdict = "pass" if r.get("verdict") == "pass" else "fail"
-        score = max(0, min(100, int(r.get("score", 0))))
+        score = max(0, min(100, _as_int(r.get("score"), 0)))
         entry = {
             "provider": provider,
             "asset_id": asset_id,
@@ -1002,7 +1021,7 @@ async def judge_variants(
 
     # Winner: trust the model's pick if valid, else fall back to the highest
     # score we parsed, else the first candidate.
-    winner_num = int(result.get("winner", 0))
+    winner_num = _as_int(result.get("winner"), 0)
     if winner_num in by_num:
         winner = by_num[winner_num]
     elif rankings_out:

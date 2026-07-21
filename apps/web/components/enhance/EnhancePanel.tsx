@@ -346,6 +346,14 @@ export function EnhancePanel({
   const [judgeByFile, setJudgeByFile] = useState<Map<string, JudgeResult>>(new Map());
   const [judgingFiles, setJudgingFiles] = useState<Set<string>>(new Set());
   const judgeStartedRef = useRef<Set<string>>(new Set());
+  // Monotonic batch token, bumped on every batch reset (fresh enhance /
+  // re-enhance / clear). The auto-judge effect captures it before firing the
+  // async judge; its continuations no-op if it changed — so a judge still in
+  // flight when the operator resets can't write the OLD batch's winner onto the
+  // NEW batch (which reuses the same file ids). Paired with a
+  // judgeStartedRef.has(fileId) recheck that additionally covers a per-file
+  // Retry (retryProvider drops the file from judgeStartedRef).
+  const judgeEpochRef = useRef(0);
 
   // Mirror of enhanceJobs so handleJobComplete (memoized with stable
   // deps so the poller's callback identity stays steady across re-
@@ -583,7 +591,14 @@ export function EnhancePanel({
         continue;
       }
 
-      // >= 2 survivors → judge.
+      // >= 2 survivors → judge. Capture the batch token; if a reset (epoch
+      // bump) or a per-file Retry (drops f.id from judgeStartedRef) lands while
+      // this ~10s call is in flight, isStale() makes the continuations no-op so
+      // a stale winner/ranking can't be written onto a since-reset/retried
+      // batch (which reuses the same file id).
+      const epoch = judgeEpochRef.current;
+      const isStale = () =>
+        epoch !== judgeEpochRef.current || !judgeStartedRef.current.has(f.id);
       setJudgingFiles((prev) => new Set(prev).add(f.id));
       judgeVariants({
         sessionId,
@@ -593,6 +608,7 @@ export function EnhancePanel({
         make: meta.make?.trim() || undefined,
       })
         .then((result) => {
+          if (isStale()) return;   // batch reset / file retried mid-flight — drop
           setJudgeByFile((prev) => new Map(prev).set(f.id, result));
           // Respect an operator pick made while the judge was thinking.
           setChosenByFile((prev) =>
@@ -608,6 +624,7 @@ export function EnhancePanel({
           );
         })
         .finally(() => {
+          if (isStale()) return;   // reset/retry already cleared judgingFiles
           setJudgingFiles((prev) => {
             if (!prev.has(f.id)) return prev;
             const next = new Set(prev);
@@ -841,6 +858,25 @@ export function EnhancePanel({
             next.delete(file.id);
             return next;
           });
+          // A retry replaces one variant, so any prior best-of-N ranking for
+          // this file is stale. Drop it + re-arm the one-shot so the file is
+          // re-judged once the new variant lands (the effect still won't run
+          // until the pick is clear), and clear any in-flight "judging" spinner.
+          // Dropping f.id from judgeStartedRef also makes an in-flight judge's
+          // late continuation no-op (see the isStale() guard in the effect).
+          judgeStartedRef.current.delete(file.id);
+          setJudgeByFile((prev) => {
+            if (!prev.has(file.id)) return prev;
+            const next = new Map(prev);
+            next.delete(file.id);
+            return next;
+          });
+          setJudgingFiles((prev) => {
+            if (!prev.has(file.id)) return prev;
+            const next = new Set(prev);
+            next.delete(file.id);
+            return next;
+          });
         }
       } catch (err) {
         const msg = err instanceof Error ? err.message : "Failed to retry";
@@ -900,6 +936,7 @@ export function EnhancePanel({
         setJudgeByFile(new Map());
         setJudgingFiles(new Set());
         judgeStartedRef.current = new Set();
+        judgeEpochRef.current += 1;   // invalidate any in-flight judge from the prior batch
         // onClearPipeline wipes Workspace's enhancedAssets + resizeAssets +
         // resizeResults, which is what causes the Scan tab to reset.
         onClearPipeline();
@@ -956,6 +993,7 @@ export function EnhancePanel({
     setJudgeByFile(new Map());
     setJudgingFiles(new Set());
     judgeStartedRef.current = new Set();
+    judgeEpochRef.current += 1;   // invalidate any in-flight judge from the prior batch
     onClearPipeline();
     setTogglesDirty(false);
     resetDoneForBatchRef.current = false;
@@ -1423,6 +1461,7 @@ export function EnhancePanel({
     setJudgeByFile(new Map());
     setJudgingFiles(new Set());
     judgeStartedRef.current = new Set();
+    judgeEpochRef.current += 1;   // invalidate any in-flight judge from the prior batch
     onClearPipeline();
     setGlobalError(null);
     setTogglesDirty(false);
