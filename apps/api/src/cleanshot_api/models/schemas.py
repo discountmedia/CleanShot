@@ -680,15 +680,24 @@ class EnhanceTaskPayload(BaseModel):
     # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
     # Ignored when custom_prompt is set (the operator's verbatim text wins).
     equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "turret_truck", "articulated_forklift", "order_picker", "pallet_jack", "walkie_stacker"] = "forklift"
-    # Optional verbatim prompt override. Set by either:
-    #   • Scan tab "Regenerate Image" (anomaly-derived prompt), or
-    #   • Enhance tab "Custom prompt (advanced)" textarea.
-    # When present, the worker uses this prompt as-is and ignores toggles.
-    # (Pydantic ignores unknown extra keys by default, so old in-flight
-    # tasks that still use the legacy `regen_prompt_override` key during
-    # a deploy will silently lose the override and fall back to toggles —
-    # acceptable for the brief deploy window.)
+    # The operator's prompt. Set by either:
+    #   • Scan tab "Regenerate Image" (a COMPLETE anomaly-derived prompt), or
+    #   • Enhance tab prompt box (the PRIMARY input, prompt-first redesign
+    #     2026-07-21).
+    # Since 2026-07-21 the Enhance-tab value is treated as a SPINE (toggles +
+    # guardrails append on top via _build_enhance_prompt); the Scan-regen value
+    # is used VERBATIM (see prompt_is_complete below). Toggles no longer take a
+    # back seat to it on the Enhance path.
     custom_prompt: str | None = None
+    # True when custom_prompt is a COMPLETE, self-contained prompt that must be
+    # sent VERBATIM. Set by the Scan-tab "Regenerate" path (buildRegenPrompt
+    # already composes spine + issues + its own equipment-correct GUARDRAILS
+    # block). False (default = the Enhance-tab prompt-first path) means
+    # custom_prompt is a SPINE and _build_enhance_prompt appends the toggle
+    # add-ons + guardrails on top. Without this flag the 2026-07-21 prompt-first
+    # reroute double-appends guardrails to regen prompts and attaches a
+    # forklift-default guardrail to non-forklift regens.
+    prompt_is_complete: bool = False
     # Master-prompt selection key carried through from EnhanceRequest.
     # None/"auto" → procedural builder; "generic:<author>" / "tailored:<author>"
     # → resolved via workers/master_prompts.py and used as the spine override.

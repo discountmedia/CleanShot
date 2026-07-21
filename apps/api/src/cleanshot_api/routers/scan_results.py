@@ -129,9 +129,14 @@ async def enqueue_regen(
     Single-image regen triggered from the Scan tab.
     Uses the same enhance pipeline (default provider: gemini) but with an
     explicit regen_prompt instead of toggle-derived instructions, and an
-    operator-selected provider. The prompt flows through
-    EnhanceTaskPayload.custom_prompt; the worker treats that as a verbatim
-    override and skips _build_enhance_prompt.
+    operator-selected provider. regen_prompt is a COMPLETE, self-contained
+    prompt (buildRegenPrompt already composed spine + issues + an
+    equipment-correct guardrails block), so it flows through
+    EnhanceTaskPayload.custom_prompt with prompt_is_complete=True — the worker
+    sends it VERBATIM and skips _build_enhance_prompt. (Since the 2026-07-21
+    prompt-first reroute the Enhance-tab custom_prompt is a SPINE the builder
+    augments; the prompt_is_complete flag keeps regen on the old verbatim path
+    so its guardrails aren't double-appended.)
     """
     async with pool.acquire() as conn:
         asset = await queries.get_asset(conn, body.asset_id)
@@ -146,9 +151,9 @@ async def enqueue_regen(
             idempotency_key=body.idempotency_key,
         )
 
-    # Encode the regen prompt in the toggles field using a sentinel pattern.
-    # The enhance worker detects this and uses the prompt verbatim.
-    # All toggles are False — the prompt IS the instruction.
+    # regen_prompt is already a full, self-contained prompt — mark it complete
+    # so the worker sends it verbatim (no spine-builder augmentation). All
+    # toggles are False; the prompt IS the instruction.
     task_payload = EnhanceTaskPayload(
         job_id=job.id,
         session_id=body.session_id,
@@ -157,6 +162,7 @@ async def enqueue_regen(
         toggles=EnhanceToggles(),           # all False
         provider=body.provider,
         custom_prompt=body.regen_prompt,
+        prompt_is_complete=True,
     )
     tasks_name = enqueue_enhance(task_payload)
 

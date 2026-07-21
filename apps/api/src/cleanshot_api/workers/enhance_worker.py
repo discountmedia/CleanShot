@@ -1959,30 +1959,37 @@ async def _run_enhance(
                 ),
             )
 
-        # Prompt-first Enhance (2026-07-21). The operator's own prompt is now
-        # the PRIMARY input, and it becomes the SPINE — the paint-forks block,
-        # toggle add-ons, and hard guardrails still append on top via the
-        # builder, so toggles AUGMENT the user's prompt instead of being
-        # overridden by it (the old `custom_prompt` = verbatim path). When no
-        # prompt is supplied we fall back to the master-prompt spine_override
-        # (dormant) or, failing that, the procedural built-in spine — a dormant
-        # safety net now that the UI requires a prompt (older callers / the
-        # Scan-regen path may still omit one).
-        effective_spine = payload.custom_prompt or spine_override
-        if payload.provider == "kontext":
-            # Kontext is an identity-preserving edit model — give it the
-            # terse imperative prompt, not the long Gemini scene prose.
-            prompt = _build_kontext_prompt(
-                payload.toggles,
-                equipment_type=payload.equipment_type,
-                spine_override=effective_spine,
-            )
+        # Prompt routing (2026-07-21 prompt-first redesign):
+        #   • Scan-tab "Regenerate" sends a COMPLETE, self-contained prompt
+        #     (buildRegenPrompt already composed the spine + issues + an
+        #     equipment-correct GUARDRAILS block). prompt_is_complete=True →
+        #     send it VERBATIM, exactly as before this reroute. Routing it
+        #     through the builder would DOUBLE-append guardrails and attach a
+        #     forklift-default guardrail to non-forklift regens.
+        #   • Enhance-tab: the operator's prompt is the PRIMARY input and
+        #     becomes the SPINE — the paint-forks block + toggle add-ons + hard
+        #     guardrails append on top via the builder, so toggles AUGMENT the
+        #     prompt instead of overriding it. Falls back to the master-prompt
+        #     spine_override (dormant) or the procedural built-in when no prompt
+        #     is supplied (a dormant safety net — the Enhance UI now requires one).
+        if payload.custom_prompt and payload.prompt_is_complete:
+            prompt = payload.custom_prompt
         else:
-            prompt = _build_enhance_prompt(
-                payload.toggles,
-                equipment_type=payload.equipment_type,
-                spine_override=effective_spine,
-            )
+            effective_spine = payload.custom_prompt or spine_override
+            if payload.provider == "kontext":
+                # Kontext is an identity-preserving edit model — give it the
+                # terse imperative prompt, not the long Gemini scene prose.
+                prompt = _build_kontext_prompt(
+                    payload.toggles,
+                    equipment_type=payload.equipment_type,
+                    spine_override=effective_spine,
+                )
+            else:
+                prompt = _build_enhance_prompt(
+                    payload.toggles,
+                    equipment_type=payload.equipment_type,
+                    spine_override=effective_spine,
+                )
 
         # Attribution suffix for the usage-event `model` label — lets the
         # admin dashboard tell prompt-tuning variants apart (e.g.
