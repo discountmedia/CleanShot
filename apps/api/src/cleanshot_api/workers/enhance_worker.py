@@ -2238,10 +2238,19 @@ def _describe_intended_edits(
         edits.append("Rental-fleet branding/stickers may have been removed.")
     if toggles.showroom_floor:
         edits.append("The floor may be cleaned to a uniform studio finish.")
-    if custom_prompt:
+    if custom_prompt and custom_prompt.strip():
+        # Enhance went PROMPT-FIRST (2026-07-21): the operator types their
+        # intent ("repaint it, forks red with yellow tips") instead of using
+        # the toggles, so the toggle-derived lines above are often EMPTY and
+        # this is the only real record of what was requested. The old vague
+        # "operator supplied a custom instruction" line never named the actual
+        # edits, so the differential scanner flagged requested repaints as
+        # unintended colour changes. Pass the instruction through verbatim.
         edits.append(
-            "The operator supplied a custom instruction, so additional "
-            "reasonable edits they described are expected."
+            "The operator's own enhancement instruction for this image was: "
+            f'"{custom_prompt.strip()[:1500]}". Everything that instruction '
+            "asks for was deliberately requested — treat it as EXPECTED and "
+            "do not flag it."
         )
     return edits or None
 

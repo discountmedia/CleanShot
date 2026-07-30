@@ -66,6 +66,7 @@ DO NOT FLAG these — they are NOT failures, and you must NOT mention them at al
 - Minor or subtle warped geometry, slight asymmetry, or small perspective skew that still looks like a real machine. Only call out geometry when it is grossly, obviously broken.
 - Text that is slightly soft, slightly blurry, or only partially legible but still plausible. Only call out text when it is obvious scrambled nonsense.
 - Subtle colour shifts, reflections, or minor panel-tone differences.
+- Fresh paint or a glossy respray of any kind. Red or orange FORKS with YELLOW TIPS, a BLACK backrest / fork carriage / load guard, and a cleanly repainted body are all normal, real equipment finishes that this tool applies on purpose. Never flag paint.
 - ANY photography quality: lighting, angle, composition, exposure, focus, sharpness, framing, background choice, shadows, or how flattering the shot is. This is explicitly not your job and the operator does not want it.
 - Real dirt, wear, scratches, or rust actually on the used machine.
 - Anything that is merely "could be a little better" rather than "obviously broken or fake".
@@ -126,24 +127,34 @@ SCAN_DIFFERENTIAL_PROMPT_BASE = """You are the FINAL quality-control gate for AI
   • IMAGE 1 = the ORIGINAL real photo (the ground truth for what the machine actually looks like).
   • IMAGE 2 = the AI-ENHANCED output produced from Image 1.
 
-Your ONLY job is to detect UNINTENDED physical changes the AI made to the MACHINE ITSELF — cases where the enhancer silently altered the equipment instead of just cleaning up the photo. If Image 2 faithfully preserves the real machine, it PASSES.
+Image 2 is SUPPOSED to look different from Image 1 — it has been deliberately cleaned up and repainted for a sales listing. Your ONLY job is the narrow case where the AI misrepresented the MACHINE'S HARDWARE: it changed what the buyer is actually buying. If Image 2 shows the same machine with the same parts at the same size, it PASSES — no matter how much better it looks.
 
-CHANGES THAT ARE EXPECTED — never flag these:
-- Lighting, exposure, brightness, contrast, white balance, or overall colour grade.
+CHANGES THAT ARE EXPECTED — never flag these, and never mention them at all:
+- PAINT AND COLOUR. Fresh paint, a glossy respray, richer colour, and cleaner panels are the POINT of this tool. Always expected:
+    • Body, cab, or mast resprayed in the machine's own colour family — a brighter, cleaner, or slightly different shade of the same colour.
+    • FORKS painted RED (or orange, or black), with or without YELLOW TIPS.
+    • The backrest, fork carriage, or load guard rendered BLACK.
+    • Wheels, rims, counterweight, or trim repainted in normal equipment colours.
+  A repaint is NEVER a defect. Do not report any anomaly for paint.
+- Lighting, exposure, brightness, contrast, white balance, saturation, or overall colour grade.
 - Background, floor, or surroundings being cleaned, replaced, or simplified.
-- Reflections, shadows, glare, general cleanliness, removal of dirt/dust/scuffs.
+- Reflections, shadows, glare, general cleanliness, removal of dirt, dust, rust, or scuffs.
 - Sharpness, resolution, crop, or framing/zoom differences.
-- Any edit explicitly listed under "REQUESTED EDITS" below.
+- Small shape or proportion differences that still read as the same part — slight taper, thickness, edge, or angle variation. Only an obvious size change matters (see #1).
+- Model, capacity, or badge text that is slightly softer or off by a character or two but still reads as essentially the same marking.
+- Any edit listed under "REQUESTED EDITS" below.
 
-CHANGES THAT ARE DEFECTS — FLAG these when Image 2 differs from Image 1 in ways NOT requested:
-1. DIMENSIONS / PROPORTIONS altered — forks made shorter/longer/wider, mast made taller/shorter or gaining/losing sections, wheels resized, boom length changed, the machine's overall proportions distorted. This is the MOST IMPORTANT category: a buyer relies on the photo matching the real spec.
-2. PARTS added or removed — a fork, wheel, mirror, light, guard, hose, or attachment that appears or disappears versus the original.
-3. GEOMETRY altered — a part reshaped, bent, straightened, or restructured into a different form than the real one.
-4. DAMAGE or DEBRIS ADDED — new dents, rust, cracks, scratches, or clutter that were NOT present in the original. The enhancer must never make the machine look MORE damaged than it really is.
-5. TEXT / IDENTITY changed — model numbers, capacity plates, OEM badges, serial/spec text, or decals that now read as DIFFERENT digits/letters than the original (unless a restore was requested).
-6. COLOUR that misrepresents the machine — a panel or the whole unit painted a different colour than the real one, UNLESS a repaint was requested.
+CHANGES THAT ARE DEFECTS — flag these ONLY when they are obvious at a glance and would mislead a buyer:
+1. SIZE MISREPRESENTED — the forks, mast, boom, wheels, or platform are plainly a different size than the real ones (forks roughly half their real length, the mast gaining or losing a section, wheels obviously larger). A buyer relies on the photo matching the real spec, so an obvious size change is the single most important thing you catch. Clear, at-a-glance differences only — never subtle ones.
+2. PARTS ADDED OR REMOVED — a whole fork, wheel, mirror, light, guard, hose, seat, or attachment present in one image and absent in the other. An extra wheel or a missing fork is a defect; a small bracket you can barely make out is not.
+3. DAMAGE ADDED — new dents, cracks, holes, or heavy rust that were NOT on the real machine. The enhancer must never make the unit look MORE damaged than it is.
+4. MAJOR TEXT REPLACED — a clearly legible model number, capacity rating, or OEM badge that now reads as a genuinely DIFFERENT value (e.g. "8FGU25" became "8FGU45"; "5000 LB" became "9000 LB"). Only when the text is legible in BOTH images and the value truly differs. Never flag soft, partially-legible, or one-or-two-character differences.
+5. WRONG-MACHINE COLOUR — the body, cab, or mast is a plainly DIFFERENT colour than the real machine (an orange unit turned blue), or the whole machine is washed out and desaturated to look grey and lifeless. This is about misidentifying the machine, NOT about repainting it — see the paint rule above.
+6. HALLUCINATED OR MANGLED CONTENT — phantom objects fused onto the machine, a duplicated cab or mast, or a visible person with extra limbs or a distorted face.
 
-Compare the two images carefully, part by part. DEFAULT TO "pass"; only "fail" when there is at least one clear, consequential UNINTENDED change from the list above that a buyer would notice or be misled by. Phrase every flagged item as a difference FROM THE ORIGINAL (e.g. "forks appear ~40% shorter than in the original photo"). Do NOT critique photography or give tips. If the only differences are expected/requested edits, return "pass" with empty anomalies.
+Compare the two images part by part, then apply this test: "would a buyer who saw the real machine in person feel this photo misled them about the hardware?" If no, return "pass".
+
+DEFAULT TO "pass". Return "fail" only when at least one obvious defect above is present. Never report a change you had to look hard to notice. Never critique photography, composition, or how flattering the shot is, and never give advice or tips. If the only differences are cleanup, paint, or requested edits, return "pass" with empty anomalies.
 
 Return ONLY valid JSON matching the ScanResult schema. No preamble or explanation."""
 
@@ -181,11 +192,16 @@ def _build_differential_prompt(
             "flag them):\n" + edits
         )
     else:
+        # NOTE: this fallback must NOT be stricter than the base rubric. It
+        # fires on the manual Scan-tab re-scan (which sends no whitelist) and
+        # on prompt-first enhances where every toggle was left off — i.e. the
+        # common case, not the exception. The old wording here ("treat any
+        # change to the machine's physical form ... as unintended") is what
+        # turned every requested repaint into a colour_changed false positive.
         sections.append(
-            "REQUESTED EDITS: standard listing cleanup only (lighting, "
-            "background, and general cleanliness). Treat any change to the "
-            "machine's physical form, parts, dimensions, or identifying text "
-            "as unintended."
+            "REQUESTED EDITS: none itemised for this image. Standard listing "
+            "cleanup AND repainting are still assumed and expected — judge "
+            "only the hardware rules above."
         )
 
     return "\n\n".join(sections)
