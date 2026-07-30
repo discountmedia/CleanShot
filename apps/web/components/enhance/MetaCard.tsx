@@ -63,12 +63,12 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
   const equipmentType: EquipmentType = meta.equipmentType ?? "forklift";
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+    <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
       {/* Explanatory header — sets context for what these fields do. */}
-      <header className="px-5 py-4 border-b border-zinc-900 bg-zinc-900/30">
+      <header className="px-5 py-4 border-b border-line bg-panel/30">
         <div className="flex items-start gap-3">
           <svg
-            className="w-6 h-6 mt-0.5 text-blue-300 shrink-0"
+            className="w-6 h-6 mt-0.5 text-ink-soft shrink-0"
             fill="none"
             viewBox="0 0 24 24"
             stroke="currentColor"
@@ -85,11 +85,11 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
               aria-expanded={detailsOpen}
               className="w-full flex items-center justify-between gap-3 text-left"
             >
-              <h3 className="text-lg font-bold text-white uppercase tracking-[0.12em]">
+              <h3 className="font-display text-lg text-ink uppercase tracking-[0.12em]">
                 Equipment details — accuracy matters
               </h3>
               <span className={`shrink-0 transition-transform ${detailsOpen ? "rotate-180" : ""}`}>
-                <svg className="w-4 h-4 text-blue-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <svg className="w-4 h-4 text-ink-soft" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
                 </svg>
               </span>
@@ -97,20 +97,20 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
 
             {/* Headline rule — bright red callout so nobody misses it. */}
             {detailsOpen && (
-            <div className="rounded-lg border-2 border-red-600 bg-red-950/40 px-4 py-3">
-              <p className="text-base text-red-100 leading-relaxed font-bold">
+            <div className="rounded-lg border-2 border-danger-ink bg-panel px-4 py-3">
+              <p className="text-base text-danger-ink leading-relaxed font-bold">
                 Fill in as many of these fields as you can — but ONLY with
                 information you actually know is correct.
               </p>
-              <p className="text-base text-red-50 leading-relaxed mt-2">
-                <strong className="text-white">If you know it, enter it.</strong>{" "}
+              <p className="text-base text-ink leading-relaxed mt-2">
+                <strong className="text-ink">If you know it, enter it.</strong>{" "}
                 Wrong info is worse than no info — the AI will use whatever you
                 type to decide brand colours, decals, and anatomy. A typo in
                 &ldquo;Make&rdquo; can mean a Toyota photo gets painted in Hyster
                 yellow.
               </p>
-              <p className="text-base text-red-50 leading-relaxed mt-2">
-                <strong className="text-white">If you don&apos;t know, leave it blank.</strong>{" "}
+              <p className="text-base text-ink leading-relaxed mt-2">
+                <strong className="text-ink">If you don&apos;t know, leave it blank.</strong>{" "}
                 That&apos;s fine — Make is the only required field. Don&apos;t
                 guess.
               </p>
@@ -130,7 +130,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
             columns stay aligned across groups. Selected card pops with a
             blue gradient + ring + shadow; unselected cards lift on hover. */}
         <div className="flex flex-col gap-2">
-          <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
+          <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">
             Equipment
           </span>
           <div className="space-y-3">
@@ -141,7 +141,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
                 aria-label={group.label}
               >
                 {group.label && (
-                  <span className="block text-[11px] uppercase tracking-[0.2em] font-semibold text-zinc-500 mb-1.5">
+                  <span className="block text-[11px] uppercase tracking-[0.2em] font-semibold text-ink-faint mb-1.5">
                     {group.label}
                   </span>
                 )}
@@ -154,14 +154,18 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
                         type="button"
                         onClick={() => update("equipmentType", t)}
                         aria-pressed={selected}
+                        /* Selected state is the spec's raised-surface pattern:
+                           panel-hi + a lime border/dot. Lime carries "active"
+                           here; the old blue gradient + blue ring is gone with
+                           the rest of the blue. */
                         className={`group flex items-center gap-2.5 w-full px-3.5 py-3 rounded-lg border-2 text-left transition-all duration-150 ${
                           selected
-                            ? "bg-linear-to-b from-blue-600/30 to-blue-700/10 border-blue-400 text-white shadow-lg shadow-blue-900/40 ring-1 ring-blue-400/40"
-                            : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500 hover:bg-zinc-800/80 hover:text-zinc-100"
+                            ? "bg-panel-hi border-accent text-ink"
+                            : "bg-panel border-line text-ink-soft hover:border-ink-faint hover:bg-panel-hi/80 hover:text-ink"
                         }`}
                       >
-                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${selected ? "border-blue-300" : "border-zinc-600 group-hover:border-zinc-400"}`}>
-                          {selected && <span className="w-2 h-2 rounded-full bg-blue-300" />}
+                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${selected ? "border-accent" : "border-line group-hover:border-ink-faint"}`}>
+                          {selected && <span className="w-2 h-2 rounded-full bg-accent" />}
                         </span>
                         <span className="text-sm uppercase tracking-[0.08em] font-bold leading-tight">
                           {EQUIPMENT_TYPE_LABELS[t]}
@@ -180,9 +184,9 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
           <div className="flex-1 min-w-50">
             <label
               htmlFor="meta-make"
-              className="flex items-center gap-1 text-sm uppercase tracking-[0.16em] font-bold text-zinc-100 mb-1.5"
+              className="flex items-center gap-1 text-sm uppercase tracking-[0.16em] font-bold text-ink mb-1.5"
             >
-              Make <span className="text-red-400" aria-label="required">*</span>
+              Make <span className="text-danger-ink" aria-label="required">*</span>
             </label>
             <input
               id="meta-make"
@@ -192,10 +196,10 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
               placeholder="e.g. Toyota"
               aria-required
               aria-invalid={!makeValid || undefined}
-              className={`w-full bg-zinc-900 border rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:border-transparent transition ${
+              className={`w-full bg-panel border rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:border-transparent transition ${
                 makeValid
-                  ? "border-zinc-700 focus:ring-red-500"
-                  : "border-red-900 focus:ring-red-500"
+                  ? "border-line focus:ring-danger-ink"
+                  : "border-danger-ink focus:ring-danger-ink"
               }`}
             />
           </div>
@@ -204,13 +208,13 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
             type="button"
             onClick={() => onExpand(!expanded)}
             aria-expanded={expanded}
-            className="text-xs uppercase tracking-[0.16em] font-semibold text-zinc-200 hover:text-white transition-colors px-3 py-2.5 border border-zinc-700 hover:border-zinc-500 rounded mb-px"
+            className="text-xs uppercase tracking-[0.16em] font-semibold text-ink hover:text-ink transition-colors px-3 py-2.5 border border-line hover:border-ink-faint rounded mb-px"
           >
             {expanded ? "− Hide details" : "+ More details"}
           </button>
 
           <span
-            className={`text-sm ml-auto mb-2 ${makeValid ? "text-green-400" : "text-amber-300"}`}
+            className={`text-sm ml-auto mb-2 ${makeValid ? "text-accent" : "text-danger-ink"}`}
           >
             {makeValid ? "✓ Ready to enhance" : "Enter the Make to continue"}
           </span>
@@ -219,10 +223,10 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
       </div>
 
       {!hideMeta && expanded && (
-        <div className="border-t border-zinc-900 px-5 py-5 grid grid-cols-2 md:grid-cols-5 gap-4">
+        <div className="border-t border-line px-5 py-5 grid grid-cols-2 md:grid-cols-5 gap-4">
           {EXTRA_FIELDS.map(({ key, label, placeholder, hint }) => (
             <label key={key} className="flex flex-col gap-1.5">
-              <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">
+              <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">
                 {label}
               </span>
               <input
@@ -230,16 +234,16 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
                 value={meta[key] ?? ""}
                 onChange={(e) => update(key, e.target.value)}
                 placeholder={placeholder}
-                className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
               />
-              <span className="text-base text-yellow-300 font-semibold leading-relaxed">
+              <span className="text-base text-accent font-semibold leading-relaxed">
                 {hint}
               </span>
             </label>
           ))}
-          <p className="col-span-full text-base text-zinc-100 leading-relaxed">
+          <p className="col-span-full text-base text-ink leading-relaxed">
             These same values pre-fill the Resize tab&apos;s{" "}
-            <span className="font-mono text-yellow-300 font-bold">Save Project</span> form
+            <span className="font-mono text-accent font-bold">Save Project</span> form
             when you&apos;re ready to export — no need to re-type them there.
           </p>
         </div>

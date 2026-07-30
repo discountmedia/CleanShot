@@ -75,7 +75,7 @@ const MAX_UPLOADS = 150;
 
 function ThumbnailCard({ file }: { file: UploadFile }) {
   return (
-    <div className="relative group rounded-lg overflow-hidden bg-zinc-900 border border-zinc-800">
+    <div className="relative group rounded-lg overflow-hidden bg-panel border border-line">
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src={file.previewUrl}
@@ -91,46 +91,46 @@ function ThumbnailCard({ file }: { file: UploadFile }) {
       />
 
       {file.status !== "done" && (
-        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-2 p-2">
+        <div className="absolute inset-0 bg-header-bg/60 flex flex-col items-center justify-center gap-2 p-2">
           {file.status === "compressing" && (
             <>
-              <svg className="animate-spin w-6 h-6 text-yellow-400" viewBox="0 0 24 24" fill="none">
+              <svg className="animate-spin w-6 h-6 text-accent" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
               </svg>
-              <span className="text-xs text-yellow-400 text-center">Compressing…</span>
+              <span className="text-xs text-accent text-center">Compressing…</span>
             </>
           )}
           {file.status === "uploading" && (
             <>
-              <div className="w-full bg-zinc-700 rounded-full h-1.5">
+              <div className="w-full bg-panel-hi rounded-full h-1.5">
                 <div
-                  className="bg-blue-500 h-1.5 rounded-full transition-all"
+                  className="bg-panel-hi h-1.5 rounded-full transition-all"
                   style={{ width: `${file.progress}%` }}
                 />
               </div>
-              <span className="text-xs text-blue-300">{file.progress}%</span>
+              <span className="text-xs text-ink-soft">{file.progress}%</span>
             </>
           )}
           {file.status === "error" && (
-            <span className="text-xs text-red-400 text-center">{file.error ?? "Upload failed"}</span>
+            <span className="text-xs text-danger-ink text-center">{file.error ?? "Upload failed"}</span>
           )}
           {file.status === "pending" && (
-            <span className="text-xs text-zinc-400">Queued</span>
+            <span className="text-xs text-ink-soft">Queued</span>
           )}
         </div>
       )}
 
       {file.status === "done" && (
-        <div className="absolute top-1.5 right-1.5 bg-green-500 rounded-full p-0.5">
-          <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+        <div className="absolute top-1.5 right-1.5 bg-accent rounded-full p-0.5">
+          <svg className="w-3 h-3 text-header-bg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
           </svg>
         </div>
       )}
 
       {file.compressedSize !== undefined && (
-        <div className="absolute bottom-1.5 left-1.5 bg-black/70 rounded px-1.5 py-0.5 text-[10px] text-yellow-300">
+        <div className="absolute bottom-1.5 left-1.5 bg-header-bg/70 rounded px-1.5 py-0.5 text-[10px] text-accent">
           {formatBytes(file.compressedSize)}
         </div>
       )}
@@ -163,8 +163,8 @@ function ToggleSwitch({
       className={`
         flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-colors
         ${checked
-          ? "bg-blue-950 border-blue-500 text-white"
-          : "bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500"}
+          ? "bg-panel-hi border-accent text-ink"
+          : "bg-panel border-line text-ink-soft hover:border-ink-faint"}
       `}
     >
       <div className="relative mt-0.5 shrink-0">
@@ -175,20 +175,23 @@ function ToggleSwitch({
           checked={checked}
           onChange={(e) => onChange(e.target.checked)}
         />
+        {/* Track: lime when ON ("good"/active), neutral raised when OFF.
+            Knob flips to the dark plate colour on the lime track — a white
+            knob on #95EA00 is ~1.5:1 and effectively disappears. */}
         <div
           className={`w-10 h-6 rounded-full transition-colors ${
-            checked ? "bg-blue-500" : "bg-zinc-600"
+            checked ? "bg-accent" : "bg-panel-hi"
           }`}
         />
         <div
-          className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${
-            checked ? "translate-x-4" : "translate-x-0"
+          className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full shadow transition-transform ${
+            checked ? "translate-x-4 bg-header-bg" : "translate-x-0 bg-ink"
           }`}
         />
       </div>
       <div className="min-w-0">
         <span className="block text-base font-semibold">{label}</span>
-        <span className={`block text-sm mt-1 leading-snug ${checked ? "text-blue-100" : "text-zinc-300"}`}>
+        <span className={`block text-sm mt-1 leading-snug ${checked ? "text-ink" : "text-ink-soft"}`}>
           {description}
         </span>
       </div>
@@ -1483,9 +1486,9 @@ export function EnhancePanel({
           <>Drop the photos of one forklift in the upload zone below (up to 10 at once).</>,
           <>Fill in the equipment details (Make is required) so the AI uses the right brand colours and rules.</>,
           <>Pick one or more AI models to compare results side-by-side. Each model produces its own version of every photo.</>,
-          <>Click <span className="font-semibold text-white">Enhance</span> and wait for the variants to come back.</>,
+          <>Click <span className="font-semibold text-ink">Enhance</span> and wait for the variants to come back.</>,
           <>For each photo, pick the winner variant. Use ↻ to retry, ✎ to tweak with words, or ⌫ to erase part of an image.</>,
-          <>When you&apos;re happy with every photo, click <span className="font-semibold text-white">Send to Scan →</span> to move them forward.</>,
+          <>When you&apos;re happy with every photo, click <span className="font-semibold text-ink">Send to Scan →</span> to move them forward.</>,
         ]}
       >
         <p>
@@ -1562,8 +1565,8 @@ export function EnhancePanel({
         className={`
           relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
           ${files.length >= MAX_UPLOADS
-            ? "border-zinc-700 opacity-50 cursor-not-allowed"
-            : "border-zinc-600 hover:border-blue-500 hover:bg-blue-950/20"}
+            ? "border-line opacity-50 cursor-not-allowed"
+            : "border-line hover:border-line hover:bg-panel"}
         `}
       >
         <input
@@ -1577,16 +1580,16 @@ export function EnhancePanel({
           disabled={files.length >= MAX_UPLOADS}
         />
         <div className="flex flex-col items-center gap-2 pointer-events-none">
-          <svg className="w-10 h-10 text-zinc-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="w-10 h-10 text-ink-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5}
               d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
           </svg>
-          <p className="text-lg font-semibold text-zinc-100">
+          <p className="text-lg font-semibold text-ink">
             {files.length >= MAX_UPLOADS
               ? `Maximum ${MAX_UPLOADS} images reached`
               : `Drop images here or click to browse`}
           </p>
-          <p className="text-sm text-zinc-300 mt-1">
+          <p className="text-sm text-ink-soft mt-1">
             Up to {MAX_UPLOADS} images · Files over 4.5 MB auto-compressed
             · {files.length}/{MAX_UPLOADS} loaded
           </p>
@@ -1597,15 +1600,15 @@ export function EnhancePanel({
       {files.length > 0 && (
         <div>
           <div className="flex items-center justify-between mb-3">
-            <h3 className="text-lg font-bold text-zinc-100">
+            <h3 className="text-lg font-bold text-ink">
               {files.length} image{files.length !== 1 ? "s" : ""} loaded
               {doneCount > 0 && (
-                <span className="ml-2 text-green-300">· {doneCount} uploaded</span>
+                <span className="ml-2 text-accent">· {doneCount} uploaded</span>
               )}
             </h3>
             <button
               onClick={handleClearAll}
-              className="text-sm font-bold text-zinc-200 hover:text-red-300 transition-colors border border-zinc-700 hover:border-red-600 rounded px-3 py-1.5"
+              className="text-sm font-bold text-ink hover:text-danger-ink transition-colors border border-line hover:border-danger-ink rounded px-3 py-1.5"
             >
               Clear all
             </button>
@@ -1617,7 +1620,7 @@ export function EnhancePanel({
                 <ThumbnailCard file={f} />
                 <button
                   onClick={() => removeFile(f.id)}
-                  className="absolute -top-1.5 -right-1.5 bg-red-600 rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                  className="absolute -top-1.5 -right-1.5 bg-danger rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
                   aria-label={`Remove ${f.file.name}`}
                 >
                   <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -1639,15 +1642,15 @@ export function EnhancePanel({
         restriction={restriction}
       />
       {makeValid && files.length > 0 && (
-        <p className="-mt-2 text-[11px] text-zinc-500 font-mono px-1">
+        <p className="-mt-2 text-[11px] text-ink-faint font-mono px-1">
           Files will be uploaded as{" "}
-          <span className="text-zinc-300">
+          <span className="text-ink-soft">
             {buildEnhanceFilename(meta, 0, Math.max(files.length, 1))}
           </span>
           {files.length > 1 && (
             <>
               {" "}through{" "}
-              <span className="text-zinc-300">
+              <span className="text-ink-soft">
                 {buildEnhanceFilename(meta, files.length - 1, files.length)}
               </span>
             </>
@@ -1667,32 +1670,32 @@ export function EnhancePanel({
       />
 
       {/* ── Prompt (required) + optional toggle add-ons ── */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+      <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
         <button
           type="button"
           onClick={() => setAdvancedOpen((v) => !v)}
           aria-expanded={advancedOpen}
-          className="w-full flex items-center justify-between px-5 py-4 bg-zinc-900/30 hover:bg-zinc-900/50 transition-colors text-left"
+          className="w-full flex items-center justify-between px-5 py-4 bg-panel/30 hover:bg-panel/50 transition-colors text-left"
         >
           <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+            <span className="text-base font-semibold uppercase tracking-[0.14em] text-ink">
               Prompt
             </span>
-            <span className="text-sm uppercase tracking-[0.16em] text-zinc-300">
+            <span className="text-sm uppercase tracking-[0.16em] text-ink-soft">
               Write your own — toggles fine-tune it
             </span>
             {customPromptActive ? (
-              <span className="text-xs uppercase tracking-[0.18em] font-bold text-emerald-200 bg-emerald-900/50 border border-emerald-700 rounded px-2 py-0.5">
+              <span className="text-xs uppercase tracking-[0.18em] font-bold text-header-bg bg-accent border border-accent rounded px-2 py-0.5">
                 ✓ Prompt set
               </span>
             ) : (
-              <span className="text-xs uppercase tracking-[0.18em] font-bold text-red-200 bg-red-900/50 border border-red-700 rounded px-2 py-0.5">
+              <span className="text-xs uppercase tracking-[0.18em] font-bold text-danger-ink bg-panel border border-danger-ink rounded px-2 py-0.5">
                 Required
               </span>
             )}
           </div>
           <svg
-            className={`w-5 h-5 text-zinc-200 transition-transform ${advancedOpen ? "rotate-180" : ""}`}
+            className={`w-5 h-5 text-ink transition-transform ${advancedOpen ? "rotate-180" : ""}`}
             fill="none" viewBox="0 0 24 24" stroke="currentColor"
           >
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -1700,7 +1703,7 @@ export function EnhancePanel({
         </button>
 
         {advancedOpen && (
-          <div className="border-t border-zinc-900 p-5 space-y-5">
+          <div className="border-t border-line p-5 space-y-5">
             {/* ── Your prompt — PRIMARY + required (prompt-first redesign,
                 2026-07-21). The operator's own words drive the result;
                 "Insert recommended prompt" gives unfamiliar users an
@@ -1710,8 +1713,8 @@ export function EnhancePanel({
                 spine_override, not a verbatim override). */}
             <div className="space-y-3">
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
-                <h3 className="text-lg font-semibold text-zinc-100">
-                  Your prompt <span className="text-red-400">*</span>
+                <h3 className="text-lg font-semibold text-ink">
+                  Your prompt <span className="text-danger-ink">*</span>
                 </h3>
                 <div className="flex items-center gap-3">
                   <button
@@ -1726,7 +1729,7 @@ export function EnhancePanel({
                       );
                       markUserToggleChange();
                     }}
-                    className="text-sm font-bold text-sky-400 hover:text-sky-300 transition-colors"
+                    className="text-sm font-bold text-accent hover:text-accent transition-colors"
                   >
                     {customPromptActive ? "Reset to recommended" : "Insert recommended prompt"}
                   </button>
@@ -1737,16 +1740,16 @@ export function EnhancePanel({
                         setCustomPrompt("");
                         markUserToggleChange();
                       }}
-                      className="text-sm text-zinc-300 hover:text-white transition-colors font-semibold"
+                      className="text-sm text-ink-soft hover:text-ink transition-colors font-semibold"
                     >
                       Clear
                     </button>
                   )}
                 </div>
               </div>
-              <p className="text-base text-zinc-200 leading-relaxed">
+              <p className="text-base text-ink leading-relaxed">
                 Describe how you want this machine to look, in your own words —{" "}
-                <span className="font-semibold text-yellow-300">your prompt drives the result</span>.
+                <span className="font-semibold text-accent">your prompt drives the result</span>.
                 New to this? Click{" "}
                 <span className="font-semibold">Insert recommended prompt</span>{" "}
                 for a solid starting point and edit it to taste.
@@ -1759,9 +1762,9 @@ export function EnhancePanel({
                 }}
                 placeholder="Example: Give this forklift a clean respray in its original orange, keep every decal, paint the forks red with yellow tips, glossy tire sidewalls, brighten the lighting, tidy the background."
                 rows={6}
-                className="w-full bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent transition leading-relaxed"
+                className="w-full bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition leading-relaxed"
               />
-              <p className="text-sm text-zinc-400 leading-relaxed">
+              <p className="text-sm text-ink-soft leading-relaxed">
                 Your prompt is the base. The built-in safety guardrails (keep the
                 real make / model / decals / proportions, no bait-and-switch) are
                 always applied on top, and any toggles below append extra
@@ -1774,9 +1777,9 @@ export function EnhancePanel({
                 by it. Always enabled. (`disableToggles` guard is inert now that
                 access-control is defanged — kept for shape.) */}
             {!restriction?.disableToggles && (
-            <div className="border-t border-zinc-900 pt-5">
+            <div className="border-t border-line pt-5">
               <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
-                <h3 className="text-lg font-semibold text-zinc-100">
+                <h3 className="text-lg font-semibold text-ink">
                   Optional add-ons
                 </h3>
                 <button
@@ -1785,18 +1788,18 @@ export function EnhancePanel({
                     setToggles(DEFAULT_TOGGLES);
                     markUserToggleChange();
                   }}
-                  className="text-sm text-zinc-300 hover:text-white transition-colors font-semibold"
+                  className="text-sm text-ink-soft hover:text-ink transition-colors font-semibold"
                 >
                   Reset
                 </button>
               </div>
-              <p className="text-base text-zinc-200 mb-1.5 leading-relaxed">
+              <p className="text-base text-ink mb-1.5 leading-relaxed">
                 These{" "}
-                <span className="font-semibold text-yellow-300">append to your prompt</span>{" "}
+                <span className="font-semibold text-accent">append to your prompt</span>{" "}
                 above — extra emphasis (paint, rust, tire shine) or a specific
                 action (paint forks red, remove rental decals).
               </p>
-              <p className="text-base text-yellow-300 italic mb-4 leading-relaxed">
+              <p className="text-base text-accent italic mb-4 leading-relaxed">
                 (Optional — leave them all off to let your prompt stand on its own.)
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1833,7 +1836,7 @@ export function EnhancePanel({
 
       {/* ── Global error ── */}
       {globalError && (
-        <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3" role="alert">
+        <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="alert">
           {globalError}
         </p>
       )}
@@ -1864,8 +1867,8 @@ export function EnhancePanel({
             className={`
               inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all
               ${buttonActive
-                ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
-                : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+                ? "border-cta bg-cta hover:bg-cta-dark text-white"
+                : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
             `}
           >
             {isRunning
@@ -1889,16 +1892,16 @@ export function EnhancePanel({
       {(enhanceJobs.size > 0 || isRunning) && (
         <div ref={jobsSectionRef} className="space-y-3 scroll-mt-4">
           <header className="flex items-baseline justify-between pt-1 flex-wrap gap-2">
-            <h2 className="text-xl font-bold text-white uppercase tracking-[0.14em]">
+            <h2 className="font-display text-xl text-ink uppercase tracking-[0.14em]">
               Results — {variantsByFile.size} image{variantsByFile.size !== 1 ? "s" : ""}
             </h2>
-            <span className="text-sm text-zinc-200 italic">
+            <span className="text-sm text-ink italic">
               One card per source · all providers compared side-by-side
             </span>
           </header>
 
           {enhanceJobs.size === 0 && isRunning && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-6 text-center text-xs text-zinc-500 flex items-center justify-center gap-2">
+            <div className="rounded-xl border border-line bg-well/60 px-4 py-6 text-center text-xs text-ink-faint flex items-center justify-center gap-2">
               <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
@@ -2057,7 +2060,7 @@ export function EnhancePanel({
 
       {/* ── Model attribution ── */}
       {enhanceJobs.size > 0 && (
-        <p className="text-[11px] text-zinc-700 text-center">
+        <p className="text-[11px] text-muted text-center">
           Enhancement powered by{" "}
           {ENHANCE_PROVIDERS.filter((p) => selectedProviders.has(p)).map((p, i, arr) => (
             <span key={p}>

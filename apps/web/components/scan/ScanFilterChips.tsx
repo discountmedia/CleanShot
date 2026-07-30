@@ -20,10 +20,10 @@ interface ChipDef {
 
 const CHIPS: readonly ChipDef[] = [
   { id: "all",      label: "All" },
-  { id: "pass",     label: "Pass",     color: "text-green-300 border-green-600 bg-green-950/40" },
-  { id: "mixed",    label: "Mixed",    color: "text-yellow-300 border-yellow-600 bg-yellow-950/40" },
-  { id: "fail",     label: "Fail",     color: "text-red-300 border-red-600 bg-red-950/40" },
-  { id: "scanning", label: "Scanning", color: "text-blue-300 border-blue-600 bg-blue-950/40" },
+  { id: "pass",     label: "Pass",     color: "text-accent border-accent bg-panel" },
+  { id: "mixed",    label: "Mixed",    color: "text-accent border-accent bg-panel" },
+  { id: "fail",     label: "Fail",     color: "text-danger-ink border-danger-ink bg-panel" },
+  { id: "scanning", label: "Scanning", color: "text-ink-soft border-line bg-panel" },
 ] as const;
 
 export function ScanFilterChips({ counts, active, onChange }: ScanFilterChipsProps) {
@@ -34,9 +34,9 @@ export function ScanFilterChips({ counts, active, onChange }: ScanFilterChipsPro
         const n = counts[c.id] ?? 0;
         const disabled = n === 0 && c.id !== "all";
         const inactiveClass = c.color
-          ? "text-zinc-300 border-zinc-700 bg-transparent hover:border-zinc-500 hover:text-zinc-100"
-          : "text-zinc-100 border-zinc-600 bg-zinc-900 hover:border-zinc-400";
-        const activeClass = c.color ?? "border-red-500 bg-red-950/40 text-red-200";
+          ? "text-ink-soft border-line bg-transparent hover:border-ink-faint hover:text-ink"
+          : "text-ink border-line bg-panel hover:border-ink-faint";
+        const activeClass = c.color ?? "border-danger-ink bg-panel text-danger-ink";
         return (
           <button
             key={c.id}

@@ -116,21 +116,21 @@ export function SourceCompareCard({
   const filename = file.uploadedFilename ?? file.file.name;
 
   return (
-    <article className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+    <article className="rounded-xl border border-line bg-well/60 overflow-hidden">
       {/* Header */}
-      <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-900 gap-3">
+      <header className="flex items-center justify-between px-5 py-4 border-b border-line gap-3">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <span
-            className="font-mono text-base font-bold text-zinc-100 truncate"
+            className="font-mono text-base font-bold text-ink truncate"
             title={filename}
           >
             {filename}
           </span>
           {totalCount > 0 && (
-            <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 tabular-nums whitespace-nowrap">
+            <span className="text-sm uppercase tracking-[0.14em] font-bold text-ink tabular-nums whitespace-nowrap">
               {completedCount}/{totalCount} complete
               {failedCount > 0 && (
-                <span className="text-red-300 ml-1">· {failedCount} failed</span>
+                <span className="text-danger-ink ml-1">· {failedCount} failed</span>
               )}
             </span>
           )}
@@ -138,17 +138,17 @@ export function SourceCompareCard({
 
         <div className="flex items-center gap-2 shrink-0">
           {sent && (
-            <span className="text-xs uppercase tracking-[0.16em] font-bold text-zinc-100 bg-zinc-900 border border-zinc-700 px-2.5 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-ink bg-panel border border-line px-2.5 py-1 rounded">
               ✓ Sent
             </span>
           )}
           {showWorking && (
-            <span className="text-xs uppercase tracking-[0.16em] font-bold text-blue-200 bg-blue-950/40 border border-blue-700 px-2.5 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-ink-soft bg-panel border border-line px-2.5 py-1 rounded">
               working
             </span>
           )}
           {judging && (
-            <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.16em] font-bold text-sky-200 bg-sky-950/40 border border-sky-700 px-2.5 py-1 rounded">
+            <span className="flex items-center gap-1.5 text-xs uppercase tracking-[0.16em] font-bold text-accent bg-panel-hi/40 border border-line px-2.5 py-1 rounded">
               <svg className="animate-spin w-3 h-3" viewBox="0 0 24 24" fill="none">
                 <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                 <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
@@ -169,8 +169,8 @@ export function SourceCompareCard({
               }
               className={`flex items-center gap-1 text-xs uppercase tracking-[0.16em] font-bold px-2.5 py-1 rounded border ${
                 judgeResult.anyPass
-                  ? "text-emerald-200 bg-emerald-950/40 border-emerald-700"
-                  : "text-amber-200 bg-amber-950/40 border-amber-600"
+                  ? "text-accent bg-panel border-accent"
+                  : "text-danger-ink bg-panel border-danger-ink"
               }`}
             >
               ★ Best of {judgeResult.rankings.length}
@@ -179,7 +179,7 @@ export function SourceCompareCard({
             </span>
           )}
           {showPickPrompt && (
-            <span className="text-xs uppercase tracking-[0.16em] font-bold text-red-200 bg-red-950/40 border border-red-700 px-2.5 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-danger-ink bg-panel border border-danger-ink px-2.5 py-1 rounded">
               pick a winner
             </span>
           )}
@@ -195,8 +195,8 @@ export function SourceCompareCard({
             aria-pressed={held}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded border-2 text-sm font-bold uppercase tracking-[0.14em] transition-colors ${
               held
-                ? "border-amber-500 bg-amber-950/40 text-amber-200 hover:bg-amber-900/40"
-                : "border-zinc-600 bg-transparent text-zinc-100 hover:border-zinc-400 hover:text-white"
+                ? "border-danger-ink bg-panel text-danger-ink hover:bg-panel-hi"
+                : "border-line bg-transparent text-ink hover:border-ink-faint hover:text-ink"
             }`}
           >
             <svg
@@ -230,7 +230,7 @@ export function SourceCompareCard({
             the card doesn't dominate ultra-wide screens; centered when
             narrower than the cap. */}
         <figure className="flex flex-col gap-2">
-          <span className="text-base uppercase tracking-[0.14em] text-zinc-100 font-bold">
+          <span className="text-base uppercase tracking-[0.14em] text-ink font-bold">
             Original — source photo
           </span>
           {/* Original capped narrower than the variant column so each
@@ -238,7 +238,7 @@ export function SourceCompareCard({
               original's display width. Math: card body ~1448px →
               variants ~718px each → original max-w-3xl (768px) keeps
               the variant/original ratio at ~93%. */}
-          <div className="relative w-full max-w-3xl mx-auto aspect-4/3 rounded-lg overflow-hidden border border-zinc-800 bg-black">
+          <div className="relative w-full max-w-3xl mx-auto aspect-4/3 rounded-lg overflow-hidden border border-line bg-well">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={file.previewUrl}
@@ -246,7 +246,7 @@ export function SourceCompareCard({
               className="w-full h-full object-contain"
             />
             <div className="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-linear-to-t from-black/80 to-transparent">
-              <span className="text-sm font-mono font-bold text-zinc-100">source</span>
+              <span className="text-sm font-mono font-bold text-ink">source</span>
             </div>
           </div>
         </figure>
@@ -254,14 +254,14 @@ export function SourceCompareCard({
         {/* Variants — 5-column landscape row */}
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between">
-            <span className="text-base uppercase tracking-[0.14em] text-zinc-100 font-bold">
+            <span className="text-base uppercase tracking-[0.14em] text-ink font-bold">
               Enhanced — click a variant to pick the winner
             </span>
             {chosen && (
               <button
                 type="button"
                 onClick={() => onChoose(null)}
-                className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
+                className="text-sm uppercase tracking-[0.14em] font-bold text-ink hover:text-ink border border-line hover:border-ink-faint rounded px-3 py-1.5"
               >
                 Clear pick
               </button>
@@ -300,18 +300,18 @@ export function SourceCompareCard({
               so the operator can address them in one place rather than
               hunting for the red thumb. */}
           {failedVariants.length > 0 && (
-            <div className="mt-1 flex flex-col gap-2 rounded border border-red-800 bg-red-950/20 px-4 py-3">
+            <div className="mt-1 flex flex-col gap-2 rounded border border-danger-ink bg-panel px-4 py-3">
               {failedVariants.map(({ provider, variant }) => (
                 <div
                   key={provider}
                   className="flex items-center justify-between gap-3"
                 >
-                  <div className="text-sm text-red-200 min-w-0">
-                    <span className="font-bold uppercase tracking-[0.14em] text-red-200">
+                  <div className="text-sm text-danger-ink min-w-0">
+                    <span className="font-bold uppercase tracking-[0.14em] text-danger-ink">
                       {ENHANCE_PROVIDER_LABELS[provider]} failed
                     </span>
                     {variant.error && (
-                      <span className="text-zinc-300 ml-2 font-mono truncate inline-block max-w-[40ch] align-bottom">
+                      <span className="text-ink-soft ml-2 font-mono truncate inline-block max-w-[40ch] align-bottom">
                         {variant.error}
                       </span>
                     )}
@@ -319,7 +319,7 @@ export function SourceCompareCard({
                   <button
                     type="button"
                     onClick={() => onRetry(provider)}
-                    className="shrink-0 text-sm uppercase tracking-[0.14em] font-bold text-amber-200 hover:text-white bg-amber-950/40 hover:bg-amber-700 border-2 border-amber-700 hover:border-amber-400 px-3 py-1.5 rounded transition-colors"
+                    className="shrink-0 text-sm uppercase tracking-[0.14em] font-bold text-danger-ink hover:text-ink bg-panel hover:bg-danger-dark border-2 border-danger-ink hover:border-danger-ink px-3 py-1.5 rounded transition-colors"
                   >
                     ↻ Retry {ENHANCE_PROVIDER_LABELS[provider]}
                   </button>
@@ -334,7 +334,7 @@ export function SourceCompareCard({
             images are AI-generated representations, not raw photos. The
             backend prompt's HONESTY CONSTRAINT keeps the output close
             to the source, but the disclaimer is the belt to its braces. */}
-        <p className="text-base text-zinc-200 italic leading-relaxed text-center max-w-3xl mx-auto px-4">
+        <p className="text-base text-ink italic leading-relaxed text-center max-w-3xl mx-auto px-4">
           AI-enhanced for clarity — visible defects, dents, and significant
           wear are preserved. Listings should disclose that images may have
           been altered to better represent the unit&apos;s actual appearance.
@@ -426,12 +426,12 @@ function VariantThumb({
       className={`group relative flex flex-col items-stretch text-left rounded-lg overflow-hidden border transition-all
         ${
           chosen
-            ? "border-red-500 ring-2 ring-red-600/40"
-            : "border-zinc-800 hover:border-zinc-600"
+            ? "border-danger-ink ring-2 ring-danger-ink/40"
+            : "border-line hover:border-line"
         }
         ${isComplete ? "cursor-pointer" : "cursor-default"}`}
     >
-      <div className="relative aspect-4/3 bg-zinc-900">
+      <div className="relative aspect-4/3 bg-panel">
         {isComplete && variant?.outputUrl && (
           /* eslint-disable-next-line @next/next/no-img-element */
           <img
@@ -442,9 +442,9 @@ function VariantThumb({
         )}
 
         {isComplete && (
-          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-green-500 flex items-center justify-center">
+          <div className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-accent flex items-center justify-center">
             <svg
-              className="w-3 h-3 text-white"
+              className="w-3 h-3 text-header-bg"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -474,7 +474,7 @@ function VariantThumb({
               }}
               title={`Regenerate this variant with ${ENHANCE_PROVIDER_LABELS[provider]}`}
               aria-label={`Regenerate ${ENHANCE_PROVIDER_LABELS[provider]} variant`}
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-amber-600 text-amber-300 hover:text-white border-2 border-amber-700 hover:border-amber-400 transition-colors shadow-lg"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-danger-dark text-danger-ink hover:text-ink border-2 border-danger-ink hover:border-danger-ink transition-colors shadow-lg"
             >
               <svg
                 className="w-5 h-5"
@@ -490,7 +490,7 @@ function VariantThumb({
                 />
               </svg>
             </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-amber-700 rounded-md px-3 py-1.5 text-sm font-bold text-amber-100 shadow-2xl opacity-0 group-hover/regen:opacity-100 transition-opacity duration-150 z-20">
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-danger-ink rounded-md px-3 py-1.5 text-sm font-bold text-danger-ink shadow-2xl opacity-0 group-hover/regen:opacity-100 transition-opacity duration-150 z-20">
               Regenerate — run {ENHANCE_PROVIDER_LABELS[provider]} again
             </span>
           </div>
@@ -507,7 +507,7 @@ function VariantThumb({
               }}
               title="Tweak with text — small targeted edits (Gemini)"
               aria-label="Open Gemini tweak tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-blue-600 text-blue-300 hover:text-white border-2 border-blue-700 hover:border-blue-400 transition-colors shadow-lg"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-ink-soft hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
             >
               {/* Pencil / magic-wand icon */}
               <svg
@@ -524,7 +524,7 @@ function VariantThumb({
                 />
               </svg>
             </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-blue-700 rounded-md px-3 py-1.5 text-sm font-bold text-blue-100 shadow-2xl opacity-0 group-hover/tweak:opacity-100 transition-opacity duration-150 z-20">
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-ink-soft shadow-2xl opacity-0 group-hover/tweak:opacity-100 transition-opacity duration-150 z-20">
               Tweak with text — Gemini (&ldquo;remove the propane tank&rdquo;)
             </span>
           </div>
@@ -543,7 +543,7 @@ function VariantThumb({
               }}
               title="Edit with text — Ideogram (typography-strong, best for decals)"
               aria-label="Open Ideogram edit tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-cyan-600 text-cyan-300 hover:text-white border-2 border-cyan-700 hover:border-cyan-400 transition-colors shadow-lg"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-grey hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
             >
               {/* Type / typography icon — distinguishes Ideogram (text-strong) from Gemini's general pencil */}
               <svg
@@ -560,7 +560,7 @@ function VariantThumb({
                 />
               </svg>
             </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-cyan-700 rounded-md px-3 py-1.5 text-sm font-bold text-cyan-100 shadow-2xl opacity-0 group-hover/ideogram-edit:opacity-100 transition-opacity duration-150 z-20">
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-grey shadow-2xl opacity-0 group-hover/ideogram-edit:opacity-100 transition-opacity duration-150 z-20">
               Edit with text — Ideogram (best for decals + signage)
             </span>
           </div>
@@ -577,7 +577,7 @@ function VariantThumb({
               }}
               title="Erase with brush — paint over the area to remove it (Flux)"
               aria-label="Open erase tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-purple-600 text-purple-300 hover:text-white border-2 border-purple-700 hover:border-purple-400 transition-colors shadow-lg"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-grey hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
             >
               {/* Eraser icon */}
               <svg
@@ -595,7 +595,7 @@ function VariantThumb({
                 <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l4 4" />
               </svg>
             </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-purple-700 rounded-md px-3 py-1.5 text-sm font-bold text-purple-100 shadow-2xl opacity-0 group-hover/erase:opacity-100 transition-opacity duration-150 z-20">
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-grey shadow-2xl opacity-0 group-hover/erase:opacity-100 transition-opacity duration-150 z-20">
               Erase with brush — Flux (paint over what to remove)
             </span>
           </div>
@@ -614,7 +614,7 @@ function VariantThumb({
               }}
               title="Inpaint with brush — Ideogram (typography-strong, best for decals)"
               aria-label="Open Ideogram inpaint tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-black/80 hover:bg-rose-600 text-rose-300 hover:text-white border-2 border-rose-700 hover:border-rose-400 transition-colors shadow-lg"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-grey hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
             >
               {/* Brush/paint icon — distinguishes Ideogram inpaint from Flux eraser */}
               <svg
@@ -631,36 +631,36 @@ function VariantThumb({
                 />
               </svg>
             </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-black/95 border border-rose-700 rounded-md px-3 py-1.5 text-sm font-bold text-rose-100 shadow-2xl opacity-0 group-hover/ideogram-inpaint:opacity-100 transition-opacity duration-150 z-20">
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-grey shadow-2xl opacity-0 group-hover/ideogram-inpaint:opacity-100 transition-opacity duration-150 z-20">
               Inpaint with brush — Ideogram (best for decals + signage)
             </span>
           </div>
         )}
 
         {isProcessing && (
-          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2">
-            <svg className="animate-spin w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="none">
+          <div className="absolute inset-0 bg-header-bg/70 flex flex-col items-center justify-center gap-2">
+            <svg className="animate-spin w-5 h-5 text-ink-soft" viewBox="0 0 24 24" fill="none">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
             </svg>
-            <span className="font-mono text-[10px] text-blue-300 tabular-nums">
+            <span className="font-mono text-[10px] text-ink-soft tabular-nums">
               {estimatedPct}%
             </span>
           </div>
         )}
 
         {isIdle && (
-          <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-            <span className="text-[10px] uppercase tracking-[0.18em] text-zinc-600">
+          <div className="absolute inset-0 bg-header-bg/70 flex items-center justify-center">
+            <span className="text-[10px] uppercase tracking-[0.18em] text-muted">
               not run
             </span>
           </div>
         )}
 
         {isFailed && (
-          <div className="absolute inset-0 bg-black/80 flex flex-col items-center justify-center gap-1.5 px-2">
+          <div className="absolute inset-0 bg-header-bg/80 flex flex-col items-center justify-center gap-1.5 px-2">
             <svg
-              className="w-6 h-6 text-red-400"
+              className="w-6 h-6 text-danger-ink"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -672,15 +672,15 @@ function VariantThumb({
                 d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
               />
             </svg>
-            <span className="text-[10px] uppercase tracking-[0.16em] text-red-400">
+            <span className="text-[10px] uppercase tracking-[0.16em] text-danger-ink">
               Failed
             </span>
           </div>
         )}
 
         {chosen && (
-          <div className="absolute inset-x-0 bottom-0 bg-red-600 px-2 py-1 flex items-center justify-center gap-1">
-            <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-white">
+          <div className="absolute inset-x-0 bottom-0 bg-danger px-2 py-1 flex items-center justify-center gap-1">
+            <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-ink">
               Winner
             </span>
           </div>
@@ -689,17 +689,17 @@ function VariantThumb({
 
       <div
         className={`px-2 py-1.5 flex items-center justify-between border-t ${
-          chosen ? "border-red-700 bg-red-950/30" : "border-zinc-800 bg-zinc-950"
+          chosen ? "border-danger-ink bg-panel" : "border-line bg-well"
         }`}
       >
         <span
           className={`text-[10px] font-bold uppercase tracking-[0.16em] ${
-            chosen ? "text-red-300" : "text-zinc-300"
+            chosen ? "text-danger-ink" : "text-ink-soft"
           }`}
         >
           {ENHANCE_PROVIDER_LABELS[provider]}
         </span>
-        <span className="text-[9px] font-mono text-zinc-600 tabular-nums">
+        <span className="text-[9px] font-mono text-muted tabular-nums">
           {isComplete
             ? `${elapsedSeconds}s`
             : isProcessing

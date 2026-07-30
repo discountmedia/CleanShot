@@ -43,19 +43,22 @@ const TONE: Record<NonNullable<TipBannerProps["tone"]>, {
   icon:   string;
   title:  string;
 }> = {
+  // Info is neutral with a lime icon — the old blue tone is gone with the
+  // rest of the blue, and lime is the brand/helper colour. Warn is red,
+  // which is this palette's only attention colour (there is no amber).
   info: {
-    border: "border-blue-900",
-    bg:     "bg-blue-950/30",
-    iconBg: "bg-blue-900/60 border-blue-700",
-    icon:   "text-blue-300",
-    title:  "text-blue-100",
+    border: "border-line",
+    bg:     "bg-panel",
+    iconBg: "bg-panel border-line",
+    icon:   "text-accent",
+    title:  "text-ink",
   },
   warn: {
-    border: "border-amber-900",
-    bg:     "bg-amber-950/30",
-    iconBg: "bg-amber-900/60 border-amber-700",
-    icon:   "text-amber-300",
-    title:  "text-amber-100",
+    border: "border-danger-ink",
+    bg:     "bg-panel",
+    iconBg: "bg-panel border-danger-ink",
+    icon:   "text-danger-ink",
+    title:  "text-danger-ink",
   },
 };
 
@@ -106,7 +109,7 @@ export function TipBanner({
   );
 
   const titleEl = (
-    <h3 className={`text-base font-semibold uppercase tracking-[0.12em] ${t.title}`}>
+    <h3 className={`font-display text-base uppercase tracking-[0.12em] ${t.title}`}>
       {title}
     </h3>
   );
@@ -141,11 +144,11 @@ export function TipBanner({
 
           {expanded && (
             <div className="space-y-2 mt-2">
-              <div className="text-sm text-zinc-200 leading-relaxed space-y-2">
+              <div className="text-sm text-ink leading-relaxed space-y-2">
                 {children}
               </div>
               {steps && steps.length > 0 && (
-                <ol className="space-y-1.5 text-sm text-zinc-200 leading-relaxed list-decimal pl-5 pt-1 marker:text-zinc-400 marker:font-semibold">
+                <ol className="space-y-1.5 text-sm text-ink leading-relaxed list-decimal pl-5 pt-1 marker:text-ink-soft marker:font-semibold">
                   {steps.map((s, i) => (
                     <li key={i}>{s}</li>
                   ))}
@@ -160,7 +163,7 @@ export function TipBanner({
             type="button"
             onClick={onDismiss}
             aria-label="Dismiss tip"
-            className="text-zinc-500 hover:text-zinc-200 text-lg leading-none px-1 shrink-0"
+            className="text-ink-faint hover:text-ink text-lg leading-none px-1 shrink-0"
           >
             ×
           </button>

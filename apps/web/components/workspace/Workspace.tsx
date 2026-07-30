@@ -244,7 +244,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   };
 
   return (
-    <div className="min-h-screen bg-black text-white flex flex-col">
+    <div className="min-h-screen bg-bg text-ink flex flex-col">
       <Header
         bypassed={bypassed}
         isAdmin={isAdmin}
@@ -261,7 +261,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       {/* Body */}
       <main className="flex-1 px-6 py-6 space-y-6 max-w-screen-2xl w-full mx-auto">
         {sessionError && (
-          <div className="rounded-xl border border-red-900 bg-red-950/30 px-4 py-3 text-sm text-red-300">
+          <div className="rounded-xl border border-danger-ink bg-panel px-4 py-3 text-sm text-danger-ink">
             Could not start a workspace session: {sessionError}
           </div>
         )}
@@ -314,7 +314,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           </PanelSlot>
 
           {!sessionId && !sessionError && activeTab !== "history" && (
-            <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-6 py-12 text-center text-sm text-zinc-500">
+            <div className="rounded-xl border border-line bg-well/60 px-6 py-12 text-center text-sm text-ink-faint">
               Starting a workspace session…
             </div>
           )}
@@ -324,7 +324,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       {/* App-wide attribution footer — intentionally low-contrast.
           Visible on every tab below the active panel content. */}
       <footer className="px-6 py-6 text-center">
-        <p className="text-[10px] text-zinc-950 select-none">
+        <p className="text-[10px] text-header-bg select-none">
           Developed by Stephen Cunningham © AI App Integrations LLC 2026
         </p>
       </footer>

@@ -13,9 +13,9 @@ const VERDICT_CONFIG: Record<
   ConsensusSummary["verdict"],
   { label: string; icon: string; colorClass: string }
 > = {
-  pass:  { label: "PASS",  icon: "✓", colorClass: "text-green-400 bg-green-950/60 border-green-800" },
-  fail:  { label: "FAIL",  icon: "✗", colorClass: "text-red-400 bg-red-950/60 border-red-800" },
-  mixed: { label: "MIXED", icon: "◐", colorClass: "text-yellow-400 bg-yellow-950/60 border-yellow-800" },
+  pass:  { label: "PASS",  icon: "✓", colorClass: "text-accent bg-panel border-accent" },
+  fail:  { label: "FAIL",  icon: "✗", colorClass: "text-danger-ink bg-panel border-danger-ink" },
+  mixed: { label: "MIXED", icon: "◐", colorClass: "text-accent bg-panel border-accent" },
 };
 
 export function ConsensusPill({ consensus }: ConsensusPillProps) {

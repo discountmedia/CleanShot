@@ -1,163 +1,221 @@
 # CleanShot — UI Style Guide
 
-Canonical reference for the CleanShot web app's visual system. Established during the 2026-05-27 UI consistency pass. **When adding any new UI element, conform to this document.** If a need arises that this guide doesn't cover, extend the guide in the same PR rather than inventing a one-off.
+Canonical reference for the CleanShot web app's visual system. Rewritten 2026-07-30 for the **Discount Forklift house palette**. **When adding any new UI element, conform to this document.** If a need arises that this guide doesn't cover, extend the guide in the same PR rather than inventing a one-off.
 
 Stack: Next.js 16 App Router · React 19 · Tailwind v4 (`@theme` tokens, no `tailwind.config.js`) · dark theme only.
 
 ---
 
-## 1. Colors
+## 0. The one rule that matters
 
-### Brand / surface
+**[`apps/web/styles/globals.css`](apps/web/styles/globals.css) is the single source of truth for every colour.** Components reference semantic token utilities (`bg-panel`, `text-ink`, `border-line`) — **never a raw hex, never a Tailwind palette family**.
 
-| Purpose | Tailwind | Hex | Notes |
+Tailwind's default colour families are **deleted** in `@theme` (`--color-zinc-*: initial`, etc.). This is deliberate: `bg-zinc-900` / `text-amber-300` / `border-blue-500` now generate **no CSS at all**, so a stray legacy class shows up as an obviously-unstyled element in review instead of quietly reintroducing a blue-grey. Only `white` and `black` survive from the defaults, because both are true neutrals.
+
+### Three hard constraints
+
+1. **Every grey is a true neutral — `r == g == b`.** No slate, no blue-grey, no warm grey. Tailwind has no true-neutral ramp (`zinc-900` is `#18181b`, r24 g24 b27 — blue-dominant), which is why the families are gone.
+2. **No clay, amber, mustard, orange or terracotta anywhere.** The "attention" colour is **red**, not amber.
+3. **The only blue-dominant colours permitted in the codebase are the two CTA purples** (`#914EA6`, `#743E85`). Nothing else may have blue as its strongest channel.
+
+Audit by channel, not by eye — old blue-greys hide in placeholders, empty states and letterbox backgrounds no design review ever looks at:
+
+```bash
+cd apps/web && npx next build
+find .next -name '*.css' -path '*static*' | xargs grep -ohE '#[0-9A-Fa-f]{6}' | sort -u
+```
+
+---
+
+## 1. Tokens
+
+| Token | Utility | Value | Use |
 |---|---|---|---|
-| App background | `bg-black` | `#000000` | Every page + panel base |
-| Brand accent (borders, header rule) | `red-600` | `#dc2626` | The Discount Forklift brand red — header underline, active-tab marker |
-| Card surface | `bg-zinc-900` | `#18181b` | Standard container fill |
-| Card border | `border-zinc-800` | `#27272a` | Standard container border |
-| Muted card border | `border-zinc-700` | `#3f3f46` | Inputs, secondary borders |
-| Body text | `text-zinc-100 / zinc-200 / zinc-300` | — | Primary → secondary → tertiary |
-| Dim text | `text-zinc-500` | `#71717a` | Captions, metadata |
+| headerBg | `header-bg` | `#131313` | Header + footer plate; **also the text colour on filled accent/grey** |
+| bg | `bg` | `#242424` | Main page background |
+| panel | `panel` | `#2C2C2C` | Cards, surfaces |
+| panelHi | `panel-hi` | `#363636` | Raised surface: active tab, selected control, ghost-button hover |
+| well | `well` | `#1A1A1A` | Image letterbox, progress track, recessed areas |
+| line | `line` | `#454545` | Borders, dividers |
+| ink | `ink` | `#CACACA` | Headings + primary text |
+| inkSoft | `ink-soft` | `#9F9F9F` | Sub-headings + secondary text |
+| inkFaint | `ink-faint` | `#8A8A8A` | De-emphasised labels only (~4.0:1 on panel) |
+| grey | `grey` | `#9A9A9A` | Secondary tags, neutral pills |
+| muted | `muted` | `#8E8E8E` | Disabled / archived / inactive |
+| accent | `accent` | `#95EA00` | Brand lime — "good" states, progress |
+| cta | `cta` | `#914EA6` | Primary buttons |
+| ctaDark | `cta-dark` | `#743E85` | Primary button hover |
+| danger | `danger` | `#C22B2B` | **FILLED red only**, under white text |
+| dangerInk | `danger-ink` | `#E85D5D` | Red **text**, borders, status dots, rules on dark |
+| dangerDark | `danger-dark` | `#8E1D1D` | Destructive button hover |
 
-### Semantic button colors (STRICT — see §3)
+---
 
-| Meaning | Tailwind fill | Hex |
+## 2. Semantics — three colours, three meanings
+
+- **lime** = brand identity and "good": complete, active, done, all-clear, progress.
+- **purple** = action. **Primary buttons and nothing else.**
+- **red** = attention **and** error. They share the red family; that is intentional.
+
+**Do not add a fourth accent. Do not reintroduce a second green. Do not use amber for warnings.**
+
+Consequences worth knowing:
+
+- The old **blue** "skip/utility" button is now a **neutral ghost button** (`bg-panel` → `hover:bg-panel-hi`), because purple is reserved for primary actions.
+- The old **yellow** field hint is now **lime** — the brand "look here" highlight. Lime is 10.4:1 on `bg`, so lime text and rules are safe anywhere on the page.
+- The old **amber** warning tone is now **red** (`danger-ink` on `bg-panel`).
+- **Per-provider identity hues are gone.** A three-accent palette can't encode six model colours. Provider selection is shown structurally (raised surface + lime border) and differentiated by name plus the speed pill (lime "Fast" / red "Slow").
+
+---
+
+## 3. Elevation is three-level and slightly unusual
+
+Header and footer are **DARKER** than the page (`#131313` on `#242424`), while cards are **LIGHTER** (`#2C2C2C`). **Do not "fix" this into a conventional single-direction ramp** — the near-black plates top and bottom are the look.
+
+```text
+#131313  header / footer plate, sticky command bars, tab strip
+#242424    page background
+#2C2C2C      cards, panels
+#363636        raised: active tab, selected control, ghost hover
+#1A1A1A  well — image letterbox, progress track (recessed, not elevated)
+```
+
+---
+
+## 4. Text-on-fill rules (the easiest thing to get wrong)
+
+| Fill | Text | Why |
 |---|---|---|
-| 🟢 Approve / proceed / commit | `bg-green-600` (border `green-500`) | `#16a34a` |
-| 🔵 Skip next step / utility | `bg-blue-600` (border `blue-500`) | `#2563eb` |
-| 🔴 Cancel / clear / start over | `bg-red-600` (border `red-500`) | `#dc2626` |
-| Disabled | `bg-zinc-800 text-zinc-500` | — |
+| Filled **lime** or filled **grey** | `text-header-bg` (`#131313`) | White on `#95EA00` is ~1.5:1 and effectively unreadable. Covers filled badges, count pills, active pills, **checklist ticks**, toggle knobs. |
+| Filled **purple** or filled **red** | `text-white` | 5.5:1 and 5.2:1 — correct. |
+| Red as **text** or a hairline rule | `text-danger-ink` (`#E85D5D`, 4.6:1) | **Never** `danger` `#C22B2B` as text — 2.7:1 on `#242424`, fails AA. |
+| Lime as text or rule | `text-accent` | 10.4:1 on `bg` — safe anywhere. |
 
-### Accent colors (non-button)
+Two automated checks worth re-running after any bulk change:
 
-| Purpose | Tailwind | Hex | Notes |
-|---|---|---|---|
-| Hyperlinks / inline CTAs | `sky-400` (hover `sky-300`) | `#38bdf8` | **Always bold.** Set globally in `globals.css` base layer; see §4 |
-| Field hints / "fill this in" guidance | `yellow-300` | `#fde047` | The ONE yellow. Matches AI-provider card text. Never use `yellow-200` |
-| Info tooltip (blue accordion) | `blue-*` family | — | `border-blue-900 bg-blue-950/30`, icon `blue-300`, title `blue-100` |
-| Warning tooltip (amber) | `amber-*` family | — | `border-amber-900 bg-amber-950/30` — reserve for genuine gotchas |
-| Beta banner | `amber-*` | — | `bg-amber-950/40 border-amber-900`, text `amber-100`, badge `amber-300` |
-
-### Provider chip colors (Enhance tab, per-model identity — leave as-is)
-
-`gemini` blue · `openai` green · `grok` orange · `kontext` purple · `ideogram` cyan · `reve` fuchsia. These are intentional per-provider identities, exempt from the semantic button system.
-
-### Rules
-
-- **No new accent colors.** If you need an accent, it's one of: brand red, sky (links), yellow-300 (hints), or a semantic button color.
-- The deprecated one-offs removed in this pass — `sky-400`/`fuchsia-400` section headings, `purple-600` collage button, `emerald` collage box — **do not reintroduce**. Headings are `text-white`; export/commit buttons are green.
+```bash
+cd apps/web
+# 1. light text on a lime/grey FILL — must be empty
+grep -rnP "bg-(accent|grey)\b(?!-)" app components lib | grep -P "text-white\b"
+# 2. same token as both text and background (invisible) — must be empty
+for t in accent cta danger panel panel-hi well ink grey muted header-bg; do
+  grep -rnP "(?=[^\"']*\btext-$t\b(?!-))(?=[^\"']*\bbg-$t\b(?!-)(/[0-9]+)?)" app components lib
+done
+```
 
 ---
 
-## 2. Containers / boxes
-
-| Element | Classes |
-|---|---|
-| Standard card | `rounded-xl border border-zinc-800 bg-zinc-900 p-4` (or `p-5` for roomy) |
-| Tooltip accordion | `rounded-xl border border-blue-900 bg-blue-950/30 px-5 py-4` (see §6) |
-| Drag-and-drop zone | `relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors` — idle `border-zinc-600 hover:border-blue-500 hover:bg-blue-950/20`; dragging `border-blue-500 bg-blue-950/20`; disabled `border-zinc-700 opacity-50 cursor-not-allowed`. **This is the canonical uploader — identical on every tab (Scan is the reference).** |
-| Success card | `rounded-xl border-2 border-green-600 bg-green-950/50 px-5 py-4` |
-| Error card | `border border-red-800 bg-red-950/40 rounded-lg px-4 py-3 text-red-300` |
-| Radius scale | cards `rounded-xl`; buttons/inputs `rounded-lg`; pills/badges `rounded` |
-
-No drop shadows on flat cards. Shadows (`shadow-lg shadow-*-900/40`) were removed from buttons in this pass — keep buttons flat.
-
----
-
-## 3. Buttons
+## 5. Buttons
 
 **Two hard rules:**
 
-1. **Never full-width.** Buttons are `inline-flex` / auto-width. No `w-full` on `<button>`. Group multiple buttons with `flex flex-wrap gap-3`.
-2. **Color = meaning** (§1). Green = proceed/approve/commit · Blue = skip/utility · Red = cancel/clear/start-over.
+1. **Never full-width.** Buttons are `inline-flex` / auto-width. No `w-full` on `<button>`. Group with `flex flex-wrap gap-3`.
+2. **Colour = meaning** (§2).
 
 ### Canonical button class
 
-```
+```text
 inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-colors
 ```
 
-Then per semantic:
-
 | Semantic | State classes |
 |---|---|
-| Green | `border-green-500 bg-green-600 hover:bg-green-500 text-white` |
-| Blue | `border-blue-500 bg-blue-600 hover:bg-blue-500 text-white` |
-| Red | `border-red-500 bg-red-600 hover:bg-red-500 text-white` |
-| Disabled | `border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed` |
+| **Primary / proceed / approve / commit** | `border-cta bg-cta hover:bg-cta-dark text-white` |
+| **Secondary / skip / utility (ghost)** | `border-line bg-panel hover:bg-panel-hi text-ink` |
+| **Destructive / cancel / clear / start-over** | `border-danger-ink bg-danger hover:bg-danger-dark text-white` |
+| **Disabled** | `border-line bg-panel-hi text-muted cursor-not-allowed` |
 
-### Bottom action row pattern (per tab)
-
-When a tab has flow actions, place them in a bottom row in this order: **🟢 Proceed · 🔵 Skip · 🔴 Clear All**. Reference implementation: Modify tab.
+Buttons stay **flat** — no drop shadows, and no coloured shadows at all (the `shadow-*-900/40` tints were removed with the palette).
 
 ---
 
-## 4. Links / CTAs
+## 6. Selected / active state pattern
 
-- **Global default** (`globals.css` base layer): `a { font-weight: 700; color: #38bdf8 }`, hover `#7dd3fc` + underline.
-- Any link with no explicit color class lands on sky-400 automatically. Tailwind `text-*` utilities still override when a link genuinely needs a different color (rare).
-- Inline text CTAs (e.g. "Send a support ticket") follow the same: bold sky-400.
-- **Don't** style a link to look like a filled button unless it's an actual navigation action that belongs in the button system.
+One pattern everywhere — equipment cards, provider chips, toggles, active tabs:
+
+**Raised surface + lime border.** `bg-panel-hi border-accent text-ink`, unselected `bg-panel border-line text-ink-soft`.
+
+The toggle switch (`ToggleSwitch` in `EnhancePanel.tsx`) follows it: track `bg-accent` when ON / `bg-panel-hi` when OFF, and the knob flips to `bg-header-bg` on the lime track (a white knob on lime disappears).
 
 ---
 
-## 5. Typography
+## 7. Containers
 
 | Element | Classes |
 |---|---|
-| Brand mark ("CleanShot") | `text-3xl font-extrabold tracking-[0.14em] text-white uppercase` |
-| Section heading (h3) | `text-base–text-xl font-bold/extrabold text-white uppercase tracking-[0.12em–0.14em]` |
-| Tooltip title | `text-base font-semibold uppercase tracking-[0.12em]` (tone-colored) |
-| Body | `text-sm–text-base text-zinc-200 leading-relaxed` |
-| Field hint | `text-base text-yellow-300 font-semibold leading-relaxed` |
-| Caption / meta | `text-xs–text-sm text-zinc-500` |
-| Mono (filenames, sizes) | `font-mono tabular-nums` |
-| Beta banner | badge `text-sm`, message `text-base sm:text-lg` |
-
-Fonts: `--font-sans: Inter`, `--font-mono: JetBrains Mono` (tokens in `globals.css`).
-
----
-
-## 6. Components
-
-### Tooltip accordion (`TipBanner`)
-
-`apps/web/components/workspace/TipBanner.tsx`. Collapsible by default (`collapsible` prop, defaults true). The title row is a toggle button with a chevron; body + steps collapse.
-
-**Default open/closed is visit-count driven** via `apps/web/lib/useVisitCount.ts`:
-- Visits 1–4 → expanded (operator still learning)
-- Visit 5+ → collapsed (operator knows the tool)
-- Counter is `localStorage["cleanshot_visit_count"]`, +1 per page load (module-guarded so multiple banners don't multi-count)
-
-Use `tone="info"` (blue, default) for "what this tab does"; `tone="warn"` (amber) only for genuine gotchas. **One blue tooltip per tab** — don't stack multiple callouts (the gold "optional" box on Modify was removed for this reason).
-
-### Toggle switch
-
-`ToggleSwitch` (local to `EnhancePanel.tsx`). Pill style: `w-10 h-6 rounded-full` track + `w-5 h-5` white knob translating `translate-x-4` when checked. Label wrapper `flex items-start gap-3 p-3 rounded-lg border cursor-pointer` — checked `bg-blue-950 border-blue-500 text-white`, unchecked `bg-zinc-900 border-zinc-700 text-zinc-300 hover:border-zinc-500`. **This is the reference style for any on/off selection**, including equipment-type selection (pending migration — see §8 of the overhaul / open items).
-
-### Equipment chips (current → target)
-
-Currently segmented-control chips grouped into "warehouse forks" vs "aerial" clusters (`EQUIPMENT_GROUPS` in `lib/types.ts`). **Target: restyle to the toggle look-and-feel above** on the Enhance MetaCard (open item).
+| Standard card | `rounded-xl border border-line bg-panel p-4` (`p-5` roomy) |
+| Recessed / letterbox | `bg-well border border-line` |
+| Info callout (`TipBanner` `tone="info"`) | `border-line bg-panel`, icon `text-accent`, title `text-ink` |
+| Warn callout (`tone="warn"`) | `border-danger-ink bg-panel`, icon + title `text-danger-ink` |
+| Success card | `rounded-xl border-2 border-accent bg-panel px-5 py-4` |
+| Error card | `border border-danger-ink bg-panel rounded-lg px-4 py-3 text-danger-ink` |
+| Drag-and-drop zone | `border-2 border-dashed rounded-xl p-8 text-center` — idle `border-line`, hover/dragging `border-accent bg-panel-hi/40`, disabled `border-line opacity-50` |
+| Image scrims over photos | `bg-header-bg/70` … `/95` (token, not raw black) |
+| Radius scale | cards `rounded-xl`; buttons/inputs `rounded-lg`; pills `rounded` |
 
 ---
 
-## 7. Layout conventions
+## 8. Links
 
-- Tab body max width: `max-w-screen-2xl mx-auto`.
-- Standard vertical rhythm between sections: `space-y-4` / `space-y-6`.
-- Sticky command bars: `sticky bottom-0 -mx-6 px-6 py-3 bg-black/95 backdrop-blur border-t border-zinc-900`.
-- Every tab opens with its blue tooltip accordion, then the drag-drop uploader directly below it.
+Global base rule in `globals.css`: `a { font-weight: 700; color: var(--color-accent) }`, hover adds underline. Any link with no explicit colour class lands on **bold lime** automatically.
+
+Not purple (reserved for buttons) and not the previous `#CE6FEC` (blue-dominant, banned).
 
 ---
 
-## 8. Don't-do list (regressions this pass fixed)
+## 9. Typography
 
-- ❌ Full-width buttons (`w-full` on `<button>`)
-- ❌ Auto-advance toggle / feature (removed entirely)
-- ❌ `yellow-200` for hints (use `yellow-300`)
-- ❌ Per-section heading accent colors (`sky-400`, `fuchsia-400`) — use `text-white`
-- ❌ One-off button colors (`purple-600`) — use the green/blue/red system
-- ❌ Green-bordered "focal" boxes for routine content — neutral `border-zinc-800`
-- ❌ Multiple stacked callout boxes per tab — one blue tooltip accordion
-- ❌ New accent colors of any kind without adding them here first
+Fonts load via `next/font/google` in [`app/layout.tsx`](apps/web/app/layout.tsx) and are referenced through `@theme`:
+
+| Token | Family | Use |
+|---|---|---|
+| `font-display` | **Archivo Black** | `<h1>`, uppercase section headings |
+| `font-sans` (default) | **Archivo** | Body |
+| `font-mono` | **IBM Plex Mono** | Labels, metadata, filenames, ids, timings |
+
+**Archivo Black ships a single weight** — never combine `font-display` with `font-bold`/`font-semibold`, or the browser synthesises a smeared faux-bold.
+
+| Element | Classes |
+|---|---|
+| App name (`<h1>`) | `font-display text-3xl tracking-[0.14em] text-accent uppercase` |
+| Section heading | `font-display text-lg–text-xl text-ink uppercase tracking-[0.12em–0.14em]` |
+| Body | `text-sm–text-base text-ink leading-relaxed` |
+| Secondary | `text-ink-soft` |
+| Field hint | `text-base text-accent font-semibold leading-relaxed` |
+| Caption / meta | `text-xs–text-sm text-ink-faint` |
+| Mono | `font-mono tabular-nums` |
+
+---
+
+## 10. Branding
+
+- **The logo carries "Discount Forklift"**, so the `<h1>` is **just the app name** and there is **no "DISCOUNT FORKLIFT" text eyebrow** above it. The full product name lives in the document `<title>`.
+- **One short subheading line** under the `<h1>` stating what the app does, in `text-ink-soft`.
+- **Wordmark** is `public/discount-forklift-logo.png` — a wide transparent PNG, 1438×400 (**3.6:1**), red with a black outline and white keyline, so it reads correctly on `#131313` with **no plate behind it**. Header **48px** tall (173px wide); centred **250px** wide on auth screens.
+- Always set explicit `width`/`height` on the logo `<img>` — it was the dominant CLS contributor on `/` before those were added.
+- The route guard in [`apps/web/proxy.ts`](apps/web/proxy.ts) exempts static assets by extension, so the logo renders on signed-out pages. **If you tighten that matcher, keep the image paths exempt** — a guard that matches everything redirects the image request and serves HTML, giving a broken logo on exactly the page where nobody is logged in.
+
+---
+
+## 11. Layout conventions
+
+- Tab body max width `max-w-screen-2xl mx-auto`; vertical rhythm `space-y-4` / `space-y-6`.
+- Sticky command bars: `sticky bottom-0 -mx-6 px-6 py-3 bg-header-bg/95 backdrop-blur border-t border-line`.
+- `html { scrollbar-gutter: stable }` reserves the gutter so cards don't jump when the scrollbar appears.
+- Tooltip accordions (`TipBanner`) are collapsible, visit-count driven via [`lib/useVisitCount.ts`](apps/web/lib/useVisitCount.ts) — expanded visits 1–4, collapsed visit 5+. **One callout per tab.**
+
+---
+
+## 12. Don't-do list
+
+- ❌ Any Tailwind palette family (`zinc-*`, `blue-*`, `amber-*`, …) — they generate no CSS by design
+- ❌ Raw hex in a component — add a token instead
+- ❌ A grey where `r != g != b`
+- ❌ Amber/orange for warnings — warnings are red
+- ❌ Purple for anything but a primary button
+- ❌ White text on a lime or grey fill (~1.5:1)
+- ❌ `danger` `#C22B2B` as text colour (2.7:1) — use `danger-ink`
+- ❌ `font-display` combined with a `font-bold`-family class
+- ❌ A second colour vocabulary in a prop union (`color="blue"`) — name props by role (`good`, `attention`, `neutral`, `muted`)
+- ❌ Full-width buttons, coloured drop shadows, multiple stacked callouts per tab
+- ❌ "Fixing" the header/footer plates to be lighter than the page

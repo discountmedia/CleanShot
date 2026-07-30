@@ -35,8 +35,8 @@ export function LoginButton({ callbackUrl }: { callbackUrl?: string }) {
           w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
           font-medium text-sm transition-all border
           ${loading
-            ? "bg-zinc-800 border-zinc-700 text-zinc-500 cursor-not-allowed"
-            : "bg-white border-white text-zinc-900 hover:bg-zinc-100 shadow-lg"}
+            ? "bg-panel-hi border-line text-ink-faint cursor-not-allowed"
+            : "bg-white border-white text-header-bg hover:bg-white/90 shadow-lg"}
         `}
         aria-busy={loading}
       >
@@ -51,7 +51,7 @@ export function LoginButton({ callbackUrl }: { callbackUrl?: string }) {
       </button>
 
       {error && (
-        <p className="text-xs text-red-400 text-center" role="alert">{error}</p>
+        <p className="text-xs text-danger-ink text-center" role="alert">{error}</p>
       )}
     </div>
   );

@@ -45,13 +45,13 @@ export function ProviderRow({
 }: ProviderRowProps) {
   const allOn = selected.size === ENHANCE_PROVIDERS.length;
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-      <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/30 border-b border-zinc-900 gap-3 flex-wrap">
+    <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+      <header className="flex items-center justify-between px-5 py-4 bg-panel/30 border-b border-line gap-3 flex-wrap">
         <div className="flex items-center gap-3 flex-wrap">
-          <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
+          <span className="text-base font-bold uppercase tracking-[0.14em] text-ink">
             AI Providers
           </span>
-          <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-300">
+          <span className="text-sm uppercase tracking-[0.14em] font-bold text-ink-soft">
             multi-select
           </span>
         </div>
@@ -63,14 +63,14 @@ export function ProviderRow({
                 checked={allOn}
                 onChange={onSelectAll}
                 aria-label={allOn ? "Deselect all providers" : "Select all providers"}
-                className="w-4 h-4 accent-emerald-500 cursor-pointer"
+                className="w-4 h-4 accent-accent cursor-pointer"
               />
-              <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200">
+              <span className="text-sm uppercase tracking-[0.14em] font-bold text-ink">
                 Select all
               </span>
             </label>
           )}
-          <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 tabular-nums">
+          <span className="text-sm uppercase tracking-[0.14em] font-bold text-ink tabular-nums">
             {selected.size} selected
           </span>
         </div>
@@ -82,7 +82,7 @@ export function ProviderRow({
             batch finishes only when the slowest one completes and
             the per-source spend scales linearly with the count.
             Small yellow print, italic so it reads as a hint. */}
-        <p className="text-sm italic text-yellow-300/80 mb-3 leading-relaxed">
+        <p className="text-sm italic text-ink-soft mb-3 leading-relaxed">
           Heads up — the more providers you tick, the longer each batch takes.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
@@ -98,18 +98,18 @@ export function ProviderRow({
                 className={`flex flex-col gap-1.5 px-3 py-3 rounded-md border text-left transition-colors ${
                   isOn
                     ? ENHANCE_PROVIDER_CHIP_ON[p]
-                    : "bg-zinc-900 border-zinc-800 hover:border-zinc-700"
+                    : "bg-panel border-line hover:border-line"
                 }`}
               >
                 <div className="flex items-center gap-2 flex-wrap">
                   <span
                     className={`w-4 h-4 rounded border flex items-center justify-center shrink-0 ${
-                      isOn ? "bg-current border-current" : "border-zinc-600"
+                      isOn ? "bg-current border-current" : "border-line"
                     }`}
                   >
                     {isOn && (
                       <svg
-                        className="w-3 h-3 text-black"
+                        className="w-3 h-3 text-header-bg"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -129,11 +129,11 @@ export function ProviderRow({
                   >
                     {meta.speedLabel}
                   </span>
-                  <span className="text-xs font-mono ml-auto text-yellow-300">
+                  <span className="text-xs font-mono ml-auto text-ink-faint">
                     ~{ENHANCE_PROVIDER_DURATION_S[p]}s
                   </span>
                 </div>
-                <p className="text-sm leading-snug text-yellow-300">
+                <p className="text-sm leading-snug text-ink-soft">
                   {meta.description}
                 </p>
               </button>

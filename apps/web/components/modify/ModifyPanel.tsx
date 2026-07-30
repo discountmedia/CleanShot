@@ -539,9 +539,9 @@ export function ModifyPanel({
         title="How Modify works"
         steps={[
           <>This tab is optional. If your photos already look good after Scan, skip it and go straight to Resize.</>,
-          <>You can also <span className="font-semibold text-yellow-300">drop raw photos directly</span> below to use Modify as a standalone tool — no need to run Enhance / Scan first.</>,
+          <>You can also <span className="font-semibold text-accent">drop raw photos directly</span> below to use Modify as a standalone tool — no need to run Enhance / Scan first.</>,
           <>Switch between Adjustments / Crop / Straighten tabs. Settings from all three combine on Apply.</>,
-          <>The preview thumbnails update live as you drag. Click <span className="font-semibold text-white">Apply</span> to commit; full-resolution render runs server-side.</>,
+          <>The preview thumbnails update live as you drag. Click <span className="font-semibold text-ink">Apply</span> to commit; full-resolution render runs server-side.</>,
         ]}
       >
         <p>
@@ -553,18 +553,18 @@ export function ModifyPanel({
 
       {/* ── Standalone upload drop zone (hidden when embedded inside Enhance) ── */}
       {!embedded && (
-      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-        <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/40 border-b border-zinc-900 gap-3">
+      <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+        <header className="flex items-center justify-between px-5 py-4 bg-panel/40 border-b border-line gap-3">
           <div className="flex flex-col gap-1 min-w-0">
-            <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
+            <span className="text-base font-bold uppercase tracking-[0.14em] text-ink">
               Upload images directly
             </span>
-            <span className="text-sm text-zinc-300 leading-relaxed">
+            <span className="text-sm text-ink-soft leading-relaxed">
               Use Modify as a standalone tool — drop raw photos here, adjust,
               click Apply, then continue to Resize for export.
             </span>
           </div>
-          <span className="text-sm uppercase tracking-[0.16em] font-mono text-zinc-300 tabular-nums shrink-0">
+          <span className="text-sm uppercase tracking-[0.16em] font-mono text-ink-soft tabular-nums shrink-0">
             {uploads.length} / {MAX_UPLOADS}
           </span>
         </header>
@@ -587,10 +587,10 @@ export function ModifyPanel({
              Keeps the isDragging highlight. */
           className={`relative border-2 border-dashed rounded-xl p-8 text-center cursor-pointer transition-colors
             ${isDragging
-              ? "border-blue-500 bg-blue-950/20"
+              ? "border-line bg-panel"
               : uploads.length >= MAX_UPLOADS
-                ? "border-zinc-700 opacity-50 cursor-not-allowed"
-                : "border-zinc-600 hover:border-blue-500 hover:bg-blue-950/20"}`}
+                ? "border-line opacity-50 cursor-not-allowed"
+                : "border-line hover:border-line hover:bg-panel"}`}
           aria-disabled={uploads.length >= MAX_UPLOADS}
         >
           <input
@@ -602,14 +602,14 @@ export function ModifyPanel({
             className="sr-only"
             disabled={uploads.length >= MAX_UPLOADS}
           />
-          <p className="text-lg text-zinc-100 font-semibold">
+          <p className="text-lg text-ink font-semibold">
             {uploads.length >= MAX_UPLOADS
               ? `Maximum ${MAX_UPLOADS} uploads reached`
               : isDragging
                 ? "Drop to upload"
                 : "Click or drop image files here"}
           </p>
-          <p className="text-sm text-zinc-300 mt-1">
+          <p className="text-sm text-ink-soft mt-1">
             JPEG, PNG, WebP · auto-converted to JPEG before upload
           </p>
         </div>
@@ -618,8 +618,8 @@ export function ModifyPanel({
             {uploads.map((u) => (
               <div
                 key={u.id}
-                className={`relative rounded-lg overflow-hidden border bg-zinc-900 ${
-                  u.status === "error" ? "border-red-700" : "border-zinc-800"
+                className={`relative rounded-lg overflow-hidden border bg-panel ${
+                  u.status === "error" ? "border-danger-ink" : "border-line"
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -628,26 +628,26 @@ export function ModifyPanel({
                     same fix. (Real Experience Score fix 2026-05-27.) */}
                 <img src={u.previewUrl} alt={u.filename} width={300} height={300} className="w-full aspect-square object-cover" />
                 {u.status !== "done" && (
-                  <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-2 gap-1">
+                  <div className="absolute inset-0 bg-header-bg/60 flex flex-col items-center justify-center p-2 gap-1">
                     {u.status === "uploading" && (
                       <>
-                        <div className="w-full bg-zinc-700 rounded-full h-1.5">
+                        <div className="w-full bg-panel-hi rounded-full h-1.5">
                           <div
-                            className="bg-blue-500 h-1.5 rounded-full transition-all"
+                            className="bg-panel-hi h-1.5 rounded-full transition-all"
                             style={{ width: `${u.progress}%` }}
                           />
                         </div>
-                        <span className="text-[10px] text-blue-300">{u.progress}%</span>
+                        <span className="text-[10px] text-ink-soft">{u.progress}%</span>
                       </>
                     )}
                     {u.status === "error" && (
-                      <span className="text-[10px] text-red-400 text-center">{u.error ?? "Upload failed"}</span>
+                      <span className="text-[10px] text-danger-ink text-center">{u.error ?? "Upload failed"}</span>
                     )}
                   </div>
                 )}
                 {u.status === "done" && (
-                  <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5" aria-label="Uploaded">
-                    <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                  <div className="absolute top-1 right-1 bg-accent rounded-full p-0.5" aria-label="Uploaded">
+                    <svg className="w-3 h-3 text-header-bg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                     </svg>
                   </div>
@@ -655,7 +655,7 @@ export function ModifyPanel({
                 <button
                   type="button"
                   onClick={(e) => { e.stopPropagation(); removeUpload(u.id); }}
-                  className="absolute -top-1 -right-1 bg-red-600 hover:bg-red-500 rounded-full p-0.5 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity"
+                  className="absolute -top-1 -right-1 bg-danger hover:bg-danger-dark rounded-full p-0.5 opacity-0 hover:opacity-100 group-hover:opacity-100 transition-opacity"
                   aria-label={`Remove ${u.filename}`}
                 >
                   <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
@@ -672,11 +672,11 @@ export function ModifyPanel({
       {/* Empty state — only when the standalone uploader is visible (i.e. not
           embedded in Enhance, where assets are always present by definition). */}
       {!embedded && allAssets.length === 0 && (
-        <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/30 px-6 py-12 text-center">
-          <p className="text-base text-zinc-300 font-semibold">
+        <div className="rounded-xl border border-dashed border-line bg-well/30 px-6 py-12 text-center">
+          <p className="text-base text-ink-soft font-semibold">
             Nothing queued for modify yet.
           </p>
-          <p className="text-sm text-zinc-400 mt-2">
+          <p className="text-sm text-ink-soft mt-2">
             Drop photos above to use Modify standalone, OR send approved photos
             from the Scan tab to operate on enhanced output.
           </p>
@@ -687,16 +687,16 @@ export function ModifyPanel({
       {allAssets.length > 0 && (
         <>
           {/* Edit scope toggle — batch vs per-image */}
-          <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
+          <section className="rounded-xl border border-line bg-well/60 px-5 py-4 flex items-center justify-between gap-4 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap">
-              <span className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-100">Edit scope</span>
-              <div className="inline-flex rounded-md border border-zinc-700 overflow-hidden">
+              <span className="text-sm uppercase tracking-[0.14em] font-bold text-ink">Edit scope</span>
+              <div className="inline-flex rounded-md border border-line overflow-hidden">
                 <button
                   type="button"
                   onClick={() => { setEditScope("batch"); setSelectedAssetId(null); }}
                   aria-pressed={editScope === "batch"}
                   className={`text-sm font-bold uppercase tracking-[0.14em] px-4 py-2 transition-colors ${
-                    editScope === "batch" ? "bg-emerald-600 text-white" : "bg-zinc-900 text-zinc-200 hover:text-white"
+                    editScope === "batch" ? "bg-accent text-header-bg" : "bg-panel text-ink hover:text-ink"
                   }`}
                 >
                   Batch (all images)
@@ -708,27 +708,27 @@ export function ModifyPanel({
                     if (!selectedAssetId && allAssets[0]) setSelectedAssetId(allAssets[0].assetId);
                   }}
                   aria-pressed={editScope === "per-image"}
-                  className={`text-sm font-bold uppercase tracking-[0.14em] px-4 py-2 border-l border-zinc-700 transition-colors ${
-                    editScope === "per-image" ? "bg-emerald-600 text-white" : "bg-zinc-900 text-zinc-200 hover:text-white"
+                  className={`text-sm font-bold uppercase tracking-[0.14em] px-4 py-2 border-l border-line transition-colors ${
+                    editScope === "per-image" ? "bg-accent text-header-bg" : "bg-panel text-ink hover:text-ink"
                   }`}
                 >
                   Per-image
                 </button>
               </div>
             </div>
-            <p className="text-sm text-zinc-300 max-w-xl">
+            <p className="text-sm text-ink-soft max-w-xl">
               {editScope === "batch"
                 ? "One set of adjustments applies to every queued image. Switch to Per-image to tune photos individually."
                 : "Click a thumbnail below to select it, then adjust. Each image keeps its own settings; untouched images use the batch defaults."}
             </p>
           </section>
 
-          <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-            <header className="flex items-center justify-between px-5 py-4 bg-zinc-900/40 border-b border-zinc-900">
-              <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
+          <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+            <header className="flex items-center justify-between px-5 py-4 bg-panel/40 border-b border-line">
+              <span className="text-base font-bold uppercase tracking-[0.14em] text-ink">
                 Live preview · {allAssets.length} image{allAssets.length !== 1 ? "s" : ""}
               </span>
-              <span className="text-sm text-zinc-400 italic">
+              <span className="text-sm text-ink-soft italic">
                 {isAllNeutral
                   ? "All controls neutral — no changes applied"
                   : editScope === "per-image"
@@ -747,12 +747,12 @@ export function ModifyPanel({
                   <figure
                     key={a.assetId}
                     onClick={clickable ? () => setSelectedAssetId(a.assetId) : undefined}
-                    className={`relative aspect-4/3 rounded-lg overflow-hidden border bg-black transition-all ${
+                    className={`relative aspect-4/3 rounded-lg overflow-hidden border bg-well transition-all ${
                       isSelected
-                        ? "border-emerald-400 ring-2 ring-emerald-400/40"
+                        ? "border-accent ring-2 ring-accent/40"
                         : clickable
-                          ? "border-zinc-700 hover:border-zinc-400 cursor-pointer"
-                          : "border-zinc-800"
+                          ? "border-line hover:border-ink-faint cursor-pointer"
+                          : "border-line"
                     }`}
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -767,22 +767,22 @@ export function ModifyPanel({
                     />
                     {overlay && (
                       <div
-                        className="absolute border-2 border-dashed border-yellow-400 pointer-events-none"
+                        className="absolute border-2 border-dashed border-accent pointer-events-none"
                         style={overlay}
                       />
                     )}
                     {hasOverride && (
-                      <span className="absolute top-2 right-2 text-[10px] uppercase tracking-[0.12em] font-bold text-emerald-100 bg-emerald-900/80 border border-emerald-500 px-1.5 py-0.5 rounded pointer-events-none">
+                      <span className="absolute top-2 right-2 text-[10px] uppercase tracking-[0.12em] font-bold text-header-bg bg-accent border border-accent px-1.5 py-0.5 rounded pointer-events-none">
                         Tuned
                       </span>
                     )}
                     {isSelected && (
-                      <span className="absolute top-2 left-2 text-[10px] uppercase tracking-[0.12em] font-bold text-white bg-emerald-600 px-1.5 py-0.5 rounded pointer-events-none">
+                      <span className="absolute top-2 left-2 text-[10px] uppercase tracking-[0.12em] font-bold text-header-bg bg-accent px-1.5 py-0.5 rounded pointer-events-none">
                         Editing
                       </span>
                     )}
                     <div className="absolute inset-x-0 bottom-0 px-3 py-1.5 bg-linear-to-t from-black/85 to-transparent">
-                      <span className="text-xs font-mono text-zinc-200 truncate block" title={a.filename}>
+                      <span className="text-xs font-mono text-ink truncate block" title={a.filename}>
                         {a.filename}
                       </span>
                     </div>
@@ -792,9 +792,9 @@ export function ModifyPanel({
             </div>
           </section>
 
-          <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
+          <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
             {/* Mode tab strip */}
-            <div className="flex items-center justify-between px-5 pt-4 gap-3 border-b border-zinc-900">
+            <div className="flex items-center justify-between px-5 pt-4 gap-3 border-b border-line">
               <div className="flex gap-2">
                 <ModeButton active={mode === "adjust"}     onClick={() => setMode("adjust")}>     Adjustments </ModeButton>
                 <ModeButton active={mode === "crop"}       onClick={() => setMode("crop")}>       Crop        </ModeButton>
@@ -804,7 +804,7 @@ export function ModifyPanel({
                 type="button"
                 onClick={handleResetAll}
                 disabled={isAllNeutral || isApplying}
-                className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors mb-3"
+                className="text-sm uppercase tracking-[0.14em] font-bold text-ink hover:text-ink border border-line hover:border-ink-faint rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors mb-3"
               >
                 Reset all
               </button>
@@ -813,12 +813,12 @@ export function ModifyPanel({
             <div className="p-5 space-y-5">
               {/* Per-image scope banner — shows which image the controls are editing. */}
               {editScope === "per-image" && (
-                <div className="rounded-md border border-emerald-700/60 bg-emerald-950/30 px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
+                <div className="rounded-md border border-accent/60 bg-panel px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
                   <div className="min-w-0">
-                    <p className="text-sm font-bold uppercase tracking-[0.14em] text-emerald-200">
+                    <p className="text-sm font-bold uppercase tracking-[0.14em] text-accent">
                       Editing
                     </p>
-                    <p className="text-base text-emerald-50 font-mono truncate" title={selectedAssetId ? allAssets.find((a) => a.assetId === selectedAssetId)?.filename : undefined}>
+                    <p className="text-base text-ink font-mono truncate" title={selectedAssetId ? allAssets.find((a) => a.assetId === selectedAssetId)?.filename : undefined}>
                       {selectedAssetId
                         ? (allAssets.find((a) => a.assetId === selectedAssetId)?.filename ?? "—")
                         : "Click a thumbnail above to start editing"}
@@ -830,7 +830,7 @@ export function ModifyPanel({
                         type="button"
                         onClick={handleCopyCurrentToAll}
                         disabled={isApplying || isNeutralAdj(currentAdj)}
-                        className="text-sm uppercase tracking-[0.14em] font-bold text-emerald-200 hover:text-white border border-emerald-700 hover:border-emerald-400 rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        className="text-sm uppercase tracking-[0.14em] font-bold text-accent hover:text-ink border border-accent hover:border-accent rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         Copy to all
                       </button>
@@ -838,7 +838,7 @@ export function ModifyPanel({
                         type="button"
                         onClick={handleResetCurrent}
                         disabled={isApplying || isNeutralAdj(currentAdj)}
-                        className="text-sm uppercase tracking-[0.14em] font-bold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        className="text-sm uppercase tracking-[0.14em] font-bold text-ink hover:text-ink border border-line hover:border-ink-faint rounded px-3 py-1.5 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                       >
                         Reset this image
                       </button>
@@ -858,7 +858,7 @@ export function ModifyPanel({
               {mode === "crop" && (
                 <>
                   <div className="flex flex-col gap-2">
-                    <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">Aspect ratio</span>
+                    <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">Aspect ratio</span>
                     <div className="flex flex-wrap gap-2">
                       {(["free", "1:1", "4:3", "7:5", "16:9"] as const).map((opt) => {
                         const selected = currentAdj.cropAspect === opt;
@@ -870,8 +870,8 @@ export function ModifyPanel({
                             disabled={isApplying}
                             className={`text-base font-bold uppercase tracking-[0.14em] px-4 py-2 rounded-md border-2 transition-colors ${
                               selected
-                                ? "border-yellow-400 bg-yellow-950/40 text-yellow-100"
-                                : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:border-zinc-500"
+                                ? "border-accent bg-panel text-accent"
+                                : "border-line bg-panel text-ink hover:border-ink-faint"
                             } disabled:opacity-40 disabled:cursor-not-allowed`}
                           >
                             {opt === "free" ? "Free" : opt}
@@ -879,17 +879,17 @@ export function ModifyPanel({
                         );
                       })}
                     </div>
-                    <p className="text-sm text-zinc-400 leading-relaxed">
-                      <span className="text-zinc-300 font-semibold">7:5</span> matches the PRO export target.{" "}
-                      <span className="text-zinc-300 font-semibold">Free</span> keeps the source aspect (zoom only crops symmetrically).
+                    <p className="text-sm text-ink-soft leading-relaxed">
+                      <span className="text-ink-soft font-semibold">7:5</span> matches the PRO export target.{" "}
+                      <span className="text-ink-soft font-semibold">Free</span> keeps the source aspect (zoom only crops symmetrically).
                     </p>
                   </div>
 
                   <label className="flex flex-col gap-2">
                     <div className="flex items-baseline justify-between">
-                      <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">Zoom</span>
-                      <span className="text-sm font-mono tabular-nums text-zinc-300">
-                        {cropZoomSlider}% <span className="text-zinc-500">· keep {cropZoomSlider}% of frame</span>
+                      <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">Zoom</span>
+                      <span className="text-sm font-mono tabular-nums text-ink-soft">
+                        {cropZoomSlider}% <span className="text-ink-faint">· keep {cropZoomSlider}% of frame</span>
                       </span>
                     </div>
                     <input
@@ -900,9 +900,9 @@ export function ModifyPanel({
                       value={cropZoomSlider}
                       disabled={isApplying}
                       onChange={(e) => setCropZoom(Number(e.target.value))}
-                      className="w-full accent-yellow-400 disabled:opacity-40"
+                      className="w-full accent-accent disabled:opacity-40"
                     />
-                    <p className="text-sm text-zinc-400">100% = no crop. Lower values crop in from the centre.</p>
+                    <p className="text-sm text-ink-soft">100% = no crop. Lower values crop in from the centre.</p>
                   </label>
                 </>
               )}
@@ -910,8 +910,8 @@ export function ModifyPanel({
               {mode === "straighten" && (
                 <label className="flex flex-col gap-2">
                   <div className="flex items-baseline justify-between">
-                    <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">Rotation</span>
-                    <span className="text-sm font-mono tabular-nums text-zinc-300">
+                    <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">Rotation</span>
+                    <span className="text-sm font-mono tabular-nums text-ink-soft">
                       {currentAdj.rotationDeg > 0 ? `+${currentAdj.rotationDeg.toFixed(1)}` : currentAdj.rotationDeg.toFixed(1)}°
                     </span>
                   </div>
@@ -923,9 +923,9 @@ export function ModifyPanel({
                     value={rotationSliderTenths}
                     disabled={isApplying}
                     onChange={(e) => setRotation(Number(e.target.value))}
-                    className="w-full accent-rose-400 disabled:opacity-40"
+                    className="w-full accent-accent disabled:opacity-40"
                   />
-                  <p className="text-sm text-zinc-400 leading-relaxed">
+                  <p className="text-sm text-ink-soft leading-relaxed">
                     Rotates the whole scene to level the horizon. On Apply, the rotation
                     wedges are cropped out automatically so the output stays rectangular.
                     Range: −15.0° to +15.0°.
@@ -934,7 +934,7 @@ export function ModifyPanel({
               )}
 
               {error && (
-                <p className="text-base text-red-300 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3">
+                <p className="text-base text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3">
                   {error}
                 </p>
               )}
@@ -947,12 +947,12 @@ export function ModifyPanel({
                   with the modified images as soon as setCompleted lands; that
                   IS the visual confirmation here. */}
               {!embedded && appliedCount !== null && (
-                <div className="bg-emerald-950/50 border-2 border-emerald-600 rounded-xl px-5 py-4 flex items-center gap-4">
+                <div className="bg-panel border-2 border-accent rounded-xl px-5 py-4 flex items-center gap-4">
                   <div className="flex-1">
-                    <p className="text-base font-bold text-emerald-100">
+                    <p className="text-base font-bold text-accent">
                       ✓ {appliedCount} image{appliedCount !== 1 ? "s" : ""} modified successfully
                     </p>
-                    <p className="text-sm text-emerald-300 mt-0.5">
+                    <p className="text-sm text-accent mt-0.5">
                       Ready for Resize, or keep adjusting and Apply again to replace.
                     </p>
                   </div>
@@ -963,7 +963,7 @@ export function ModifyPanel({
                         setAppliedCount(null);
                         onSkipToResize();
                       }}
-                      className="px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-[0.12em] bg-emerald-500 hover:bg-emerald-400 text-emerald-950 shadow-lg shadow-emerald-900/40 transition-colors whitespace-nowrap"
+                      className="px-5 py-2.5 rounded-lg font-bold text-sm uppercase tracking-[0.12em] bg-cta hover:bg-cta-dark text-white shadow-lg transition-colors whitespace-nowrap"
                     >
                       Continue to Resize →
                     </button>
@@ -972,7 +972,7 @@ export function ModifyPanel({
                     type="button"
                     onClick={() => setAppliedCount(null)}
                     aria-label="Dismiss"
-                    className="text-emerald-400 hover:text-emerald-200 text-xl leading-none px-1"
+                    className="text-accent hover:text-accent text-xl leading-none px-1"
                   >
                     ×
                   </button>
@@ -988,8 +988,8 @@ export function ModifyPanel({
                 disabled={isAllNeutral || isApplying || allAssets.length === 0 || anyUploadInFlight}
                 className={`inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all ${
                   !isAllNeutral && !isApplying && allAssets.length > 0 && !anyUploadInFlight
-                    ? "border-green-500 bg-green-600 hover:bg-green-500 text-white shadow-lg shadow-green-900/40"
-                    : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                    ? "border-cta bg-cta hover:bg-cta-dark text-white shadow-lg"
+                    : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"
                 }`}
               >
                 {isApplying
@@ -1021,7 +1021,7 @@ export function ModifyPanel({
                   }
                   onSkipToResize();
                 }}
-                className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-green-500 bg-green-600 hover:bg-green-500 text-white transition-colors"
+                className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-cta bg-cta hover:bg-cta-dark text-white transition-colors"
               >
                 Proceed to Resize →
               </button>
@@ -1030,7 +1030,7 @@ export function ModifyPanel({
               <button
                 type="button"
                 onClick={onSkipToResize}
-                className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-blue-500 bg-blue-600 hover:bg-blue-500 text-white transition-colors"
+                className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-line bg-panel hover:bg-panel-hi text-ink transition-colors"
               >
                 Skip Modify →
               </button>
@@ -1038,7 +1038,7 @@ export function ModifyPanel({
             <button
               type="button"
               onClick={handleClearEverything}
-              className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-red-500 bg-red-600 hover:bg-red-500 text-white transition-colors"
+              className="inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 border-danger-ink bg-danger hover:bg-danger-dark text-white transition-colors"
             >
               Clear All
             </button>
@@ -1066,8 +1066,8 @@ function ModeButton({
       aria-pressed={active}
       className={`px-4 py-2 text-sm uppercase tracking-[0.14em] font-bold rounded-t-md transition-colors ${
         active
-          ? "bg-zinc-900 text-white border-b-2 border-emerald-500"
-          : "bg-transparent text-zinc-400 hover:text-zinc-200 border-b-2 border-transparent"
+          ? "bg-panel text-ink border-b-2 border-accent"
+          : "bg-transparent text-ink-soft hover:text-ink border-b-2 border-transparent"
       }`}
     >
       {children}
@@ -1088,16 +1088,16 @@ interface SliderRowProps {
 
 function SliderRow({ label, value, onChange, factor, accent, disabled }: SliderRowProps) {
   const accentClass =
-    accent === "amber"   ? "accent-amber-500" :
-    accent === "sky"     ? "accent-sky-500"   :
-    /* emerald */          "accent-emerald-500";
+    accent === "amber"   ? "accent-accent" :
+    accent === "sky"     ? "accent-accent"   :
+    /* emerald */          "accent-accent";
   return (
     <label className="flex flex-col gap-2">
       <div className="flex items-baseline justify-between">
-        <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-100">{label}</span>
-        <span className="text-sm font-mono tabular-nums text-zinc-300">
+        <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">{label}</span>
+        <span className="text-sm font-mono tabular-nums text-ink-soft">
           {value > 0 ? `+${value}` : value}{" "}
-          <span className="text-zinc-500">· ×{factor.toFixed(2)}</span>
+          <span className="text-ink-faint">· ×{factor.toFixed(2)}</span>
         </span>
       </div>
       <input

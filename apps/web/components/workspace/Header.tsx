@@ -21,23 +21,28 @@ export function Header({
   isAdmin = false,
 }: HeaderProps) {
   return (
-    <header className="bg-black border-b-2 border-brand-500">
-      {/* BETA banner — sits above the logo row so it's the first thing
-          the operator sees on page load. Links to the user profile page
-          where they can file a support ticket. Amber striped to read as
-          informational/warning without competing with the brand-red
-          underline below the main header strip. Enlarged 2026-05-27 per
-          operator request so the testing notice is unmissable. */}
-      <div className="bg-amber-950/40 border-b border-amber-900">
+    /* Header is the DARKER plate (#131313) sitting on the #242424 page —
+       three-level elevation, where cards go lighter (#2C2C2C) and the
+       plates top and bottom go near-black. Not a mistake; it is the look.
+       The divider is a neutral line: purple is reserved for primary
+       buttons, and a red rule here would read as an error state. */
+    <header className="bg-header-bg border-b border-line">
+      {/* BETA banner — sits above the logo row so it's the first thing the
+          operator sees on page load. Links to the user profile page where
+          they can file a support ticket. Now RED rather than amber: the
+          palette has no amber, and red is the designated attention colour.
+          Uses danger-ink for text/border (4.6:1) over a neutral panel —
+          NOT filled danger, which is a fill-only colour. */}
+      <div className="bg-panel border-b border-danger-ink">
         <div className="px-6 py-3.5 flex items-center justify-center gap-3 text-center flex-wrap">
-          <span className="text-sm uppercase tracking-[0.18em] font-bold text-amber-300 bg-amber-900/60 border border-amber-700 rounded px-3 py-1 shrink-0">
+          <span className="text-sm uppercase tracking-[0.18em] font-bold text-danger-ink border border-danger-ink rounded px-3 py-1 shrink-0">
             Beta V.1
           </span>
-          <p className="text-base sm:text-lg font-semibold uppercase tracking-[0.12em] text-amber-100 leading-snug">
+          <p className="text-base sm:text-lg font-semibold uppercase tracking-[0.12em] text-danger-ink leading-snug">
             Site is currently in testing — bugs will be present.{" "}
             <Link
               href="/profile"
-              className="font-bold text-brand-400 underline hover:text-brand-300 transition-colors"
+              className="font-bold text-accent underline hover:text-accent transition-colors"
             >
               Send a support ticket through the user profile page
             </Link>{" "}
@@ -53,29 +58,40 @@ export function Header({
           <img
             src="/discount-forklift-logo.png"
             alt="Discount Forklift"
-            /* Intrinsic 1438×400 → 64px tall → 230px wide. Explicit
-               dims let the browser reserve space before the PNG bytes
-               arrive, eliminating the load-time layout shift that was
-               showing up as the dominant CLS contributor on /
-               (Real Experience Score fix 2026-05-27). */
-            width={230}
-            height={64}
-            className="h-16 w-auto block"
+            /* Intrinsic 1438×400 (3.6:1) → 48px tall → 173px wide, inside
+               the house 44-52px header band. The wordmark is red with a
+               black outline and white keyline, so it reads correctly
+               straight on #131313 and needs no plate behind it.
+
+               Explicit dims let the browser reserve space before the PNG
+               bytes arrive, eliminating the load-time layout shift that
+               was the dominant CLS contributor on / (Real Experience
+               Score fix 2026-05-27). */
+            width={173}
+            height={48}
+            className="h-12 w-auto block"
           />
         </Link>
 
-        {/* Title + filename. "CleanShot" enlarged 2026-05-27 so it reads
-            as a co-equal brand mark next to the Discount Forklift logo
-            instead of fine print. */}
-        <div className="flex items-baseline gap-3 min-w-0">
-          <h1 className="text-3xl font-extrabold tracking-[0.14em] text-acid uppercase">
-            CleanShot
-          </h1>
-          {subtitle && (
-            <span className="text-sm text-zinc-500 truncate font-mono">
-              — {subtitle}
-            </span>
-          )}
+        {/* Title block. The logo already says "Discount Forklift", so the
+            <h1> is just the app name and there is deliberately NO
+            "DISCOUNT FORKLIFT" text eyebrow above it — the full product
+            name lives in the document <title> instead. One subheading
+            line states what the app does. */}
+        <div className="min-w-0">
+          <div className="flex items-baseline gap-3 min-w-0">
+            <h1 className="font-display text-3xl tracking-[0.14em] text-accent uppercase">
+              CleanShot
+            </h1>
+            {subtitle && (
+              <span className="text-sm text-ink-faint truncate font-mono">
+                — {subtitle}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-ink-soft leading-snug mt-0.5">
+            Turns used-equipment photos into clean, listing-ready images.
+          </p>
         </div>
 
         {/* Utility actions */}
@@ -83,14 +99,14 @@ export function Header({
           {isAdmin && (
             <Link
               href="/admin"
-              className="text-sm uppercase tracking-[0.16em] font-bold text-brand-300 hover:text-white border-2 border-brand-700 hover:border-brand-500 bg-brand-900/40 hover:bg-brand-700/40 px-4 py-2 rounded transition-colors"
+              className="text-sm uppercase tracking-[0.16em] font-bold text-accent hover:text-ink border-2 border-cta-dark hover:border-cta bg-panel hover:bg-cta-dark px-4 py-2 rounded transition-colors"
               aria-label="Open admin dashboard"
             >
               Admin
             </Link>
           )}
           {bypassed ? (
-            <span className="text-sm uppercase tracking-[0.16em] font-bold text-amber-300 border-2 border-amber-700 px-4 py-2 rounded">
+            <span className="text-sm uppercase tracking-[0.16em] font-bold text-danger-ink border-2 border-danger-ink px-4 py-2 rounded">
               Dev bypass
             </span>
           ) : (

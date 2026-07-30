@@ -572,8 +572,8 @@ export function ScanPanel({
               disabled={!canSkip}
               className={`inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-colors ${
                 canSkip
-                  ? "border-blue-500 bg-blue-600 hover:bg-blue-500 text-white"
-                  : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"
+                  ? "border-line bg-panel hover:bg-panel-hi text-ink"
+                  : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"
               }`}
             >
               Skip scanning — queue all for export ↓
@@ -587,10 +587,10 @@ export function ScanPanel({
         title="Scan tab — what this does"
         steps={[
           <>Three AI quality checkers (Gemini, OpenAI, Claude) each look at every image and vote pass or fail.</>,
-          <>Each card shows the consensus verdict at the top — <span className="text-green-300 font-semibold">PASS</span> means all agree, <span className="text-yellow-300 font-semibold">MIXED</span> means they disagree, <span className="text-red-300 font-semibold">FAIL</span> means all flagged a problem.</>,
+          <>Each card shows the consensus verdict at the top — <span className="text-accent font-semibold">PASS</span> means all agree, <span className="text-accent font-semibold">MIXED</span> means they disagree, <span className="text-danger-ink font-semibold">FAIL</span> means all flagged a problem.</>,
           <>Click any card to expand it and read the specific issues each AI found.</>,
-          <>Use <span className="font-semibold text-white">↻ Regenerate</span> on a failing image to get a fresh AI version that targets the flagged issues.</>,
-          <>When done, click <span className="font-semibold text-white">Approve N → Export</span> at the bottom to queue all undecided cards into the Save &amp; Export section.</>,
+          <>Use <span className="font-semibold text-ink">↻ Regenerate</span> on a failing image to get a fresh AI version that targets the flagged issues.</>,
+          <>When done, click <span className="font-semibold text-ink">Approve N → Export</span> at the bottom to queue all undecided cards into the Save &amp; Export section.</>,
         ]}
       >
         <p>
@@ -616,20 +616,20 @@ export function ScanPanel({
 
       {/* ── Standalone upload zone ── */}
       {scanStates.length === 0 && (
-        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-          <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
+        <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+          <header className="flex items-start justify-between gap-4 px-5 py-4 bg-panel/50 border-b border-line">
             <div className="flex flex-col gap-1">
-              <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+              <span className="text-base font-semibold uppercase tracking-[0.14em] text-ink">
                 Upload images to scan directly
               </span>
-              <span className="text-sm text-zinc-300 leading-relaxed">
+              <span className="text-sm text-ink-soft leading-relaxed">
                 Use this when you already have a finished photo and just want
                 a quality check on it — no Enhance step required. Three AI
                 quality checkers will vote pass / fail and flag any issues
                 they spot. Files are auto-converted to JPEG before upload.
               </span>
             </div>
-            <span className="text-sm uppercase tracking-[0.18em] font-mono text-zinc-300 tabular-nums shrink-0">
+            <span className="text-sm uppercase tracking-[0.18em] font-mono text-ink-soft tabular-nums shrink-0">
               {uploads.length} / {MAX_UPLOADS}
             </span>
           </header>
@@ -650,10 +650,10 @@ export function ScanPanel({
             className={`
               m-4 p-6 rounded-lg border-2 border-dashed cursor-pointer transition-colors text-center
               ${isDragging
-                ? "border-blue-500 bg-blue-950/30"
+                ? "border-line bg-panel"
                 : uploads.length >= MAX_UPLOADS
-                  ? "border-zinc-800 bg-zinc-900/40 cursor-not-allowed opacity-60"
-                  : "border-zinc-700 bg-zinc-900/40 hover:border-zinc-500"}
+                  ? "border-line bg-panel/40 cursor-not-allowed opacity-60"
+                  : "border-line bg-panel/40 hover:border-ink-faint"}
             `}
             aria-disabled={uploads.length >= MAX_UPLOADS}
           >
@@ -666,14 +666,14 @@ export function ScanPanel({
               className="sr-only"
               disabled={uploads.length >= MAX_UPLOADS}
             />
-            <p className="text-base text-zinc-100 font-semibold">
+            <p className="text-base text-ink font-semibold">
               {uploads.length >= MAX_UPLOADS
                 ? `Maximum ${MAX_UPLOADS} uploads reached`
                 : isDragging
                   ? "Drop to upload"
                   : "Click or drop image files here"}
             </p>
-            <p className="text-sm text-zinc-300 mt-1">
+            <p className="text-sm text-ink-soft mt-1">
               JPEG, PNG, WebP · auto-converted to JPEG before upload
             </p>
           </div>
@@ -684,8 +684,8 @@ export function ScanPanel({
                 <div
                   key={u.id}
                   className={`
-                    relative rounded-lg overflow-hidden border bg-zinc-900
-                    ${u.status === "error" ? "border-red-700" : "border-zinc-800"}
+                    relative rounded-lg overflow-hidden border bg-panel
+                    ${u.status === "error" ? "border-danger-ink" : "border-line"}
                   `}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -695,26 +695,26 @@ export function ScanPanel({
                     className="w-full aspect-square object-cover"
                   />
                   {u.status !== "done" && (
-                    <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center p-2 gap-1">
+                    <div className="absolute inset-0 bg-header-bg/60 flex flex-col items-center justify-center p-2 gap-1">
                       {u.status === "uploading" && (
                         <>
-                          <div className="w-full bg-zinc-700 rounded-full h-1.5">
+                          <div className="w-full bg-panel-hi rounded-full h-1.5">
                             <div
-                              className="bg-blue-500 h-1.5 rounded-full transition-all"
+                              className="bg-panel-hi h-1.5 rounded-full transition-all"
                               style={{ width: `${u.progress}%` }}
                             />
                           </div>
-                          <span className="text-[10px] text-blue-300">{u.progress}%</span>
+                          <span className="text-[10px] text-ink-soft">{u.progress}%</span>
                         </>
                       )}
                       {u.status === "error" && (
-                        <span className="text-[10px] text-red-400 text-center">{u.error ?? "Upload failed"}</span>
+                        <span className="text-[10px] text-danger-ink text-center">{u.error ?? "Upload failed"}</span>
                       )}
                     </div>
                   )}
                   {u.status === "done" && (
-                    <div className="absolute top-1 right-1 bg-green-500 rounded-full p-0.5" aria-label="Uploaded">
-                      <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                    <div className="absolute top-1 right-1 bg-accent rounded-full p-0.5" aria-label="Uploaded">
+                      <svg className="w-3 h-3 text-header-bg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                         <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
                       </svg>
                     </div>
@@ -722,15 +722,15 @@ export function ScanPanel({
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); removeUpload(u.id); }}
-                    className="absolute top-1 left-1 bg-black/70 hover:bg-black/90 rounded-full w-5 h-5 flex items-center justify-center text-zinc-300 hover:text-white text-xs leading-none"
+                    className="absolute top-1 left-1 bg-header-bg/70 hover:bg-header-bg/90 rounded-full w-5 h-5 flex items-center justify-center text-ink-soft hover:text-ink text-xs leading-none"
                     aria-label={`Remove ${u.filename}`}
                     title="Remove"
                   >
                     ×
                   </button>
                   <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
-                    <p className="text-[10px] text-zinc-200 truncate">{u.filename}</p>
-                    <p className="text-[9px] text-zinc-500">{formatBytes(u.size)}</p>
+                    <p className="text-[10px] text-ink truncate">{u.filename}</p>
+                    <p className="text-[9px] text-ink-faint">{formatBytes(u.size)}</p>
                   </div>
                 </div>
               ))}
@@ -750,14 +750,14 @@ export function ScanPanel({
               above. */}
           {enhancedAssets.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-300">
+              <p className="text-sm uppercase tracking-[0.16em] font-bold text-ink-soft">
                 From the Enhance tab — {enhancedAssets.length} image{enhancedAssets.length !== 1 ? "s" : ""}
               </p>
               <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
                 {enhancedAssets.map((a) => (
                   <div
                     key={a.assetId}
-                    className="relative rounded-lg overflow-hidden border border-zinc-800 bg-zinc-900 aspect-square"
+                    className="relative rounded-lg overflow-hidden border border-line bg-panel aspect-square"
                   >
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
@@ -768,7 +768,7 @@ export function ScanPanel({
                       className="w-full h-full object-cover"
                     />
                     <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
-                      <p className="text-[10px] text-zinc-200 truncate">{a.filename}</p>
+                      <p className="text-[10px] text-ink truncate">{a.filename}</p>
                     </div>
                   </div>
                 ))}
@@ -777,7 +777,7 @@ export function ScanPanel({
           )}
 
           <div className="text-center space-y-4">
-          <div className="text-zinc-500 space-y-1">
+          <div className="text-ink-faint space-y-1">
             <p className="text-sm">
               {allAssets.length > 0
                 ? `${allAssets.length} image${allAssets.length !== 1 ? "s" : ""} ready to scan` +
@@ -788,7 +788,7 @@ export function ScanPanel({
                   ? "Waiting for uploads to finish…"
                   : "Drop images above, or send some from the Enhance tab first"}
             </p>
-            <p className="text-xs text-zinc-700">
+            <p className="text-xs text-muted">
               Scans with{" "}
               <code className="font-mono">gemini-2.5-flash</code>
               {" "}· OpenAI{" "}
@@ -799,7 +799,7 @@ export function ScanPanel({
           </div>
 
           {scanError && (
-            <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3" role="alert">
+            <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="alert">
               {scanError}
             </p>
           )}
@@ -811,8 +811,8 @@ export function ScanPanel({
             className={`
               px-8 py-3 rounded-xl font-semibold text-sm transition-all
               ${allAssets.length > 0 && !anyUploadInFlight
-                ? "bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/40"
-                : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+                ? "bg-panel hover:bg-panel-hi text-ink shadow-lg"
+                : "bg-panel-hi text-ink-faint cursor-not-allowed"}
             `}
           >
             {anyUploadInFlight
@@ -827,7 +827,7 @@ export function ScanPanel({
       {scanStates.length > 0 && (
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4 flex-wrap">
-            <h2 className="text-xl font-bold text-white uppercase tracking-[0.14em]">
+            <h2 className="font-display text-xl text-ink uppercase tracking-[0.14em]">
               Scan results — {scanStates.length} image{scanStates.length !== 1 ? "s" : ""}
             </h2>
             <ScanFilterChips counts={filterCounts} active={filter} onChange={setFilter} />
@@ -835,7 +835,7 @@ export function ScanPanel({
           <button
             type="button"
             onClick={handleResetScan}
-            className="text-sm font-bold text-zinc-200 hover:text-white transition-colors border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
+            className="text-sm font-bold text-ink hover:text-ink transition-colors border border-line hover:border-ink-faint rounded px-3 py-1.5"
           >
             Reset scan
           </button>
@@ -884,9 +884,9 @@ export function ScanPanel({
           })}
 
           {filteredScans.length === 0 && (
-            <div className="rounded-xl border border-dashed border-zinc-800 bg-zinc-950/30 p-12 text-center text-sm text-zinc-500">
+            <div className="rounded-xl border border-dashed border-line bg-well/30 p-12 text-center text-sm text-ink-faint">
               No images match the{" "}
-              <span className="uppercase tracking-[0.18em] text-zinc-400 font-semibold">{filter}</span>{" "}
+              <span className="uppercase tracking-[0.18em] text-ink-soft font-semibold">{filter}</span>{" "}
               filter.
             </div>
           )}
@@ -895,7 +895,7 @@ export function ScanPanel({
 
       {/* ── Model attribution ── */}
       {scanStates.length > 0 && (
-        <p className="text-[11px] text-zinc-700 text-center">
+        <p className="text-[11px] text-muted text-center">
           Scanned by{" "}
           <code className="font-mono">gemini-2.5-flash</code>
           {" · "}

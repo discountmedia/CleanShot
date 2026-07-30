@@ -197,19 +197,19 @@ export function TweakDialog({
       role="dialog"
       aria-modal="true"
       aria-label="Tweak tool"
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-header-bg/85 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={(e) => {
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="w-full max-w-3xl max-h-full bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-3xl max-h-full bg-well border border-line rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-900">
+        <header className="flex items-center justify-between px-5 py-4 border-b border-line">
           <div>
-            <h2 className="text-xl font-bold text-white">
+            <h2 className="text-xl font-bold text-ink">
               {toolMeta.title}
             </h2>
-            <p className="text-base text-zinc-200 mt-1 leading-relaxed">
+            <p className="text-base text-ink mt-1 leading-relaxed">
               {toolMeta.subtitle}
             </p>
           </div>
@@ -217,7 +217,7 @@ export function TweakDialog({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-200 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
+            className="text-sm uppercase tracking-[0.16em] font-bold text-ink hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-line hover:border-ink-faint rounded px-3 py-1.5"
           >
             {resultUrl ? "Close" : "Cancel"}
           </button>
@@ -225,7 +225,7 @@ export function TweakDialog({
 
         {/* Preview + form */}
         <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
-          <div className="relative mx-auto bg-zinc-900 rounded-lg overflow-hidden ring-1 ring-zinc-800 max-h-[50vh]">
+          <div className="relative mx-auto bg-panel rounded-lg overflow-hidden ring-1 ring-line max-h-[50vh]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={resultUrl ?? sourceImageUrl}
@@ -234,23 +234,23 @@ export function TweakDialog({
               draggable={false}
             />
             {submitting && !resultUrl && (
-              <div className="absolute inset-0 bg-black/65 flex flex-col items-center justify-center gap-3">
-                <svg className="animate-spin w-7 h-7 text-blue-400" viewBox="0 0 24 24" fill="none">
+              <div className="absolute inset-0 bg-header-bg/65 flex flex-col items-center justify-center gap-3">
+                <svg className="animate-spin w-7 h-7 text-ink-soft" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
-                <span className="text-base font-bold text-blue-200">{progressLabel}</span>
+                <span className="text-base font-bold text-ink-soft">{progressLabel}</span>
               </div>
             )}
           </div>
 
           {/* Tip banner — how to use Tweak. */}
           {!resultUrl && (
-            <div className="rounded-lg border border-yellow-700/60 bg-yellow-950/30 px-4 py-3">
-              <p className="text-sm font-bold uppercase tracking-[0.14em] text-yellow-200 mb-1">
+            <div className="rounded-lg border border-accent bg-panel px-4 py-3">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-accent mb-1">
                 How to write a good tweak
               </p>
-              <p className="text-base text-yellow-100 leading-relaxed">
+              <p className="text-base text-accent leading-relaxed">
                 Tell the AI exactly one thing to change in plain English. Best results come from
                 short, specific commands like &ldquo;remove the propane tank,&rdquo; &ldquo;add a small dent to
                 the upper-left fender,&rdquo; or &ldquo;restore the JLG decal on the left side.&rdquo; Avoid long
@@ -261,7 +261,7 @@ export function TweakDialog({
 
           {!resultUrl && (
             <label className="block">
-              <span className="text-sm font-bold uppercase tracking-[0.16em] text-zinc-100 mb-1.5 block">
+              <span className="text-sm font-bold uppercase tracking-[0.16em] text-ink mb-1.5 block">
                 Instruction
               </span>
               <textarea
@@ -270,13 +270,13 @@ export function TweakDialog({
                 disabled={submitting}
                 placeholder={examplePlaceholder}
                 rows={3}
-                className="w-full bg-zinc-900 border border-zinc-700 focus:border-blue-500 focus:outline-none rounded-lg px-3 py-2.5 text-base text-white placeholder:text-zinc-400 disabled:opacity-40 resize-y min-h-16"
+                className="w-full bg-panel border border-line focus:border-line focus:outline-none rounded-lg px-3 py-2.5 text-base text-ink placeholder:text-ink-soft disabled:opacity-40 resize-y min-h-16"
               />
               <div className="flex items-center justify-between mt-1.5">
-                <span className="text-sm text-zinc-300 italic leading-snug">
+                <span className="text-sm text-ink-soft italic leading-snug">
                   Short imperative phrases work best. Gemini only touches what you name.
                 </span>
-                <span className="text-sm text-zinc-300 tabular-nums">
+                <span className="text-sm text-ink-soft tabular-nums">
                   {instruction.length}/{MAX_INSTRUCTION_CHARS}
                 </span>
               </div>
@@ -284,14 +284,14 @@ export function TweakDialog({
           )}
 
           {submitError && (
-            <p className="text-base font-medium text-red-300 bg-red-950/40 border border-red-800 rounded px-3 py-2">
+            <p className="text-base font-medium text-danger-ink bg-panel border border-danger-ink rounded px-3 py-2">
               {submitError}
             </p>
           )}
         </div>
 
         {/* Footer actions */}
-        <footer className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-900">
+        <footer className="flex items-center justify-end gap-2 px-5 py-4 border-t border-line">
           {!resultUrl ? (
             <button
               type="button"
@@ -299,8 +299,8 @@ export function TweakDialog({
               disabled={submitting || instruction.trim().length < 3}
               className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors
                 ${!submitting && instruction.trim().length >= 3
-                  ? "bg-blue-600 hover:bg-blue-500 text-white"
-                  : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}`}
+                  ? "bg-panel hover:bg-panel-hi text-ink"
+                  : "bg-panel-hi text-ink-faint cursor-not-allowed"}`}
             >
               {submitting ? "Working…" : toolMeta.action}
             </button>
@@ -309,14 +309,14 @@ export function TweakDialog({
               <button
                 type="button"
                 onClick={handleDiscardResult}
-                className="px-5 py-2.5 rounded-lg text-base font-bold text-zinc-100 hover:text-white bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                className="px-5 py-2.5 rounded-lg text-base font-bold text-ink hover:text-ink bg-panel hover:bg-panel-hi transition-colors"
               >
                 Try again
               </button>
               <button
                 type="button"
                 onClick={handleAccept}
-                className="px-6 py-2.5 rounded-lg text-base font-bold bg-green-600 hover:bg-green-500 text-white transition-colors"
+                className="px-6 py-2.5 rounded-lg text-base font-bold bg-cta hover:bg-cta-dark text-white transition-colors"
               >
                 Accept &amp; replace variant
               </button>

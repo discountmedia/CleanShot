@@ -90,13 +90,13 @@ function FilterBar({
   const isFiltered = JSON.stringify(filters) !== JSON.stringify(EMPTY_FILTERS);
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-      <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800 flex-wrap">
+    <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+      <header className="flex items-start justify-between gap-4 px-5 py-4 bg-panel/50 border-b border-line flex-wrap">
         <div className="flex flex-col gap-1 min-w-0">
-          <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+          <span className="text-base font-semibold uppercase tracking-[0.14em] text-ink">
             Filter
           </span>
-          <span className="text-sm text-zinc-300 leading-relaxed">
+          <span className="text-sm text-ink-soft leading-relaxed">
             Use the search box to find a specific lift by Make, Model,
             filename, or folder name. Date filters narrow the list to
             sets approved in a window. Use the Make / Model dropdowns
@@ -104,13 +104,13 @@ function FilterBar({
           </span>
         </div>
         <div className="flex items-center gap-4 shrink-0">
-          <span className="text-sm uppercase tracking-[0.16em] text-zinc-300 tabular-nums font-semibold">
+          <span className="text-sm uppercase tracking-[0.16em] text-ink-soft tabular-nums font-semibold">
             {filteredCount} / {totalSets} set{totalSets !== 1 ? "s" : ""}
           </span>
           {isFiltered && (
             <button
               onClick={() => onChange(EMPTY_FILTERS)}
-              className="text-sm uppercase tracking-[0.18em] font-semibold text-red-300 hover:text-red-200 transition-colors"
+              className="text-sm uppercase tracking-[0.18em] font-semibold text-danger-ink hover:text-danger-ink transition-colors"
             >
               Clear filters
             </button>
@@ -121,7 +121,7 @@ function FilterBar({
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 p-5">
         {/* Free-text search */}
         <label className="flex flex-col gap-1.5 md:col-span-2">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
+          <span className="text-xs uppercase tracking-[0.18em] text-ink-soft font-semibold">
             Search
           </span>
           <input
@@ -129,43 +129,43 @@ function FilterBar({
             value={filters.query}
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
             placeholder="Make, model, filename, or folder…"
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
           />
         </label>
 
         {/* Date range */}
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
+          <span className="text-xs uppercase tracking-[0.18em] text-ink-soft font-semibold">
             From date
           </span>
           <input
             type="date"
             value={filters.startDate}
             onChange={(e) => onChange({ ...filters, startDate: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
+          <span className="text-xs uppercase tracking-[0.18em] text-ink-soft font-semibold">
             To date
           </span>
           <input
             type="date"
             value={filters.endDate}
             onChange={(e) => onChange({ ...filters, endDate: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
           />
         </label>
 
         {/* Make + model dropdowns */}
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
+          <span className="text-xs uppercase tracking-[0.18em] text-ink-soft font-semibold">
             Make
           </span>
           <select
             value={filters.make}
             onChange={(e) => onChange({ ...filters, make: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
           >
             <option value="">All makes</option>
             {availableMakes.map((m) => (
@@ -174,13 +174,13 @@ function FilterBar({
           </select>
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-xs uppercase tracking-[0.18em] text-zinc-300 font-semibold">
+          <span className="text-xs uppercase tracking-[0.18em] text-ink-soft font-semibold">
             Model
           </span>
           <select
             value={filters.model}
             onChange={(e) => onChange({ ...filters, model: e.target.value })}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
           >
             <option value="">All models</option>
             {availableModels.map((m) => (
@@ -205,31 +205,31 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
   return (
     <article
       className={`rounded-xl border overflow-hidden transition-colors ${
-        expired ? "border-zinc-800 opacity-60 bg-zinc-950/60" : "border-zinc-800 bg-zinc-950/60"
+        expired ? "border-line opacity-60 bg-well/60" : "border-line bg-well/60"
       }`}
     >
       {/* Header row */}
       <div className="flex items-center justify-between px-4 py-3 gap-3">
         <div className="flex items-center gap-3 min-w-0">
           {/* Date badge */}
-          <div className="shrink-0 text-center bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-1.5">
-            <p className="text-[10px] text-zinc-500 uppercase tracking-[0.18em]">
+          <div className="shrink-0 text-center bg-panel border border-line rounded-lg px-3 py-1.5">
+            <p className="text-[10px] text-ink-faint uppercase tracking-[0.18em]">
               {new Date(set.createdAt).toLocaleDateString("en-US", { month: "short" })}
             </p>
-            <p className="text-lg font-bold text-white leading-none tabular-nums">
+            <p className="text-lg font-bold text-ink leading-none tabular-nums">
               {new Date(set.createdAt).getDate()}
             </p>
           </div>
 
           {/* Info */}
           <div className="min-w-0">
-            <p className="font-medium text-white truncate">
+            <p className="font-medium text-ink truncate">
               {set.make} {set.model}
             </p>
-            <p className="text-xs text-zinc-500 mt-0.5">
+            <p className="text-xs text-ink-faint mt-0.5">
               {set.imageCount} image{set.imageCount !== 1 ? "s" : ""}
               {" · "}
-              <code className="font-mono text-[10px] text-zinc-600">{set.dirName}</code>
+              <code className="font-mono text-[10px] text-muted">{set.dirName}</code>
             </p>
           </div>
         </div>
@@ -241,10 +241,10 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
           {daysLeft !== null && (
             <span className={`text-[10px] uppercase tracking-[0.18em] font-semibold px-2 py-1 rounded border ${
               expired
-                ? "text-red-400 border-red-900 bg-red-950/40"
+                ? "text-danger-ink border-danger-ink bg-panel"
                 : daysLeft <= 5
-                  ? "text-amber-400 border-amber-900 bg-amber-950/40"
-                  : "text-zinc-500 border-zinc-800 bg-zinc-900"
+                  ? "text-danger-ink border-danger-ink bg-panel"
+                  : "text-ink-faint border-line bg-panel"
             }`}>
               {expired ? "Expired" : `${daysLeft}d left`}
             </span>
@@ -255,7 +255,7 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
             <a
               href={set.zipSignedUrl}
               download
-              className="text-[10px] uppercase tracking-[0.18em] font-semibold text-white bg-red-600 hover:bg-red-500 border border-red-500 transition-colors px-3 py-1.5 rounded"
+              className="text-[10px] uppercase tracking-[0.18em] font-semibold text-ink bg-danger hover:bg-danger-dark border border-danger-ink transition-colors px-3 py-1.5 rounded"
               aria-label={`Download ZIP for ${set.dirName}`}
             >
               Download ZIP
@@ -265,12 +265,12 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
           {/* Expand toggle */}
           <button
             onClick={() => setExpanded((v) => !v)}
-            className="p-1.5 rounded hover:bg-zinc-800 transition-colors"
+            className="p-1.5 rounded hover:bg-panel-hi transition-colors"
             aria-expanded={expanded}
             aria-label={expanded ? "Collapse images" : "Expand images"}
           >
             <svg
-              className={`w-4 h-4 text-zinc-500 transition-transform ${expanded ? "rotate-180" : ""}`}
+              className={`w-4 h-4 text-ink-faint transition-transform ${expanded ? "rotate-180" : ""}`}
               fill="none" viewBox="0 0 24 24" stroke="currentColor"
             >
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
@@ -288,11 +288,11 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
               key={a.assetId}
               src={a.thumbnailUrl}
               alt={a.filename}
-              className="w-14 h-14 rounded object-cover shrink-0 border border-zinc-800"
+              className="w-14 h-14 rounded object-cover shrink-0 border border-line"
             />
           ))}
           {set.assets.length > 8 && (
-            <div className="w-14 h-14 rounded border border-zinc-800 bg-zinc-900 flex items-center justify-center text-xs text-zinc-500 shrink-0">
+            <div className="w-14 h-14 rounded border border-line bg-panel flex items-center justify-center text-xs text-ink-faint shrink-0">
               +{set.assets.length - 8}
             </div>
           )}
@@ -301,7 +301,7 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
 
       {/* Expanded grid */}
       {expanded && (
-        <div className="px-4 pb-4 border-t border-zinc-900 pt-3">
+        <div className="px-4 pb-4 border-t border-line pt-3">
           <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-2">
             {set.assets.map((a) => (
               <a
@@ -316,15 +316,15 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
                 <img
                   src={a.thumbnailUrl}
                   alt={a.filename}
-                  className="w-full aspect-square object-contain bg-black rounded-lg border border-zinc-800 group-hover:border-zinc-600 transition-colors"
+                  className="w-full aspect-square object-contain bg-well rounded-lg border border-line group-hover:border-line transition-colors"
                 />
-                <span className="absolute bottom-1 left-1 right-1 text-[9px] font-mono text-zinc-300 bg-black/70 px-1 py-0.5 rounded truncate">
+                <span className="absolute bottom-1 left-1 right-1 text-[9px] font-mono text-ink-soft bg-header-bg/70 px-1 py-0.5 rounded truncate">
                   {a.filename}
                 </span>
               </a>
             ))}
           </div>
-          <p className="mt-3 text-[10px] text-zinc-700 font-mono">
+          <p className="mt-3 text-[10px] text-muted font-mono">
             gs://…/approved/{"{email}"}/{set.dirName}/
           </p>
         </div>
@@ -414,7 +414,7 @@ export function HistoryList({
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-16 gap-3 text-zinc-500">
+      <div className="flex items-center justify-center py-16 gap-3 text-ink-faint">
         <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24" fill="none">
           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z"/>
@@ -426,7 +426,7 @@ export function HistoryList({
 
   if (error) {
     return (
-      <div className="text-center py-12 text-red-400 text-sm" role="alert">
+      <div className="text-center py-12 text-danger-ink text-sm" role="alert">
         {error}
       </div>
     );
@@ -444,10 +444,10 @@ export function HistoryList({
           </p>
         </TipBanner>
         <div className="text-center py-16 space-y-3">
-          <p className="text-base text-zinc-200 font-semibold">
+          <p className="text-base text-ink font-semibold">
             No approved image sets yet.
           </p>
-          <p className="text-sm text-zinc-400">
+          <p className="text-sm text-ink-soft">
             Approve a set on the Resize tab to save it here.
           </p>
         </div>
@@ -459,10 +459,10 @@ export function HistoryList({
     <div className="space-y-4">
       {/* ── Page heading ── */}
       <header className="space-y-1">
-        <h1 className="text-3xl font-extrabold text-white tracking-tight">
+        <h1 className="text-3xl font-extrabold text-ink tracking-tight">
           Your Photo Library
         </h1>
-        <p className="text-base text-zinc-300">
+        <p className="text-base text-ink-soft">
           Every approved set you&apos;ve shipped — kept indefinitely.
         </p>
       </header>
@@ -472,7 +472,7 @@ export function HistoryList({
         title="Your Photo Library — what this does"
         steps={[
           <>Every approved set from the Resize tab lands here automatically.</>,
-          <>Sets are kept <span className="font-semibold text-yellow-300">indefinitely</span> — no auto-deletion. Old sets stay until you manually clean them up.</>,
+          <>Sets are kept <span className="font-semibold text-accent">indefinitely</span> — no auto-deletion. Old sets stay until you manually clean them up.</>,
           <>Use the filter bar below to search by Make / Model / filename / folder, or narrow by approval date.</>,
           <>Click any thumbnail to open the full-size signed URL in a new tab.</>,
         ]}
@@ -485,18 +485,18 @@ export function HistoryList({
       </TipBanner>
 
       <div className="flex items-center justify-between gap-3 flex-wrap">
-        <p className="text-sm uppercase tracking-[0.16em] text-zinc-300 font-semibold">
-          <span className="text-yellow-300">{data.totalSets}</span>{" "}
+        <p className="text-sm uppercase tracking-[0.16em] text-ink-soft font-semibold">
+          <span className="text-accent">{data.totalSets}</span>{" "}
           set{data.totalSets !== 1 ? "s" : ""}
-          <span className="text-zinc-500"> · </span>
+          <span className="text-ink-faint"> · </span>
           Stored indefinitely
-          <span className="text-zinc-500"> · </span>
-          <span className="text-zinc-200 font-mono">{userEmail}</span>
+          <span className="text-ink-faint"> · </span>
+          <span className="text-ink font-mono">{userEmail}</span>
         </p>
         <button
           onClick={() => setRefreshTick((t) => t + 1)}
           disabled={loading}
-          className="text-sm uppercase tracking-[0.16em] font-semibold text-zinc-200 hover:text-white border border-zinc-700 hover:border-zinc-500 px-3 py-2 rounded transition-colors disabled:opacity-50"
+          className="text-sm uppercase tracking-[0.16em] font-semibold text-ink hover:text-ink border border-line hover:border-ink-faint px-3 py-2 rounded transition-colors disabled:opacity-50"
           aria-label="Reload history"
         >
           {loading ? "Loading…" : "Refresh"}
@@ -513,11 +513,11 @@ export function HistoryList({
       />
 
       {filteredSets.length === 0 ? (
-        <div className="text-center py-12 rounded-xl border border-zinc-800 bg-zinc-950/60">
-          <p className="text-zinc-500 text-sm">No approval sets match the current filters.</p>
+        <div className="text-center py-12 rounded-xl border border-line bg-well/60">
+          <p className="text-ink-faint text-sm">No approval sets match the current filters.</p>
           <button
             onClick={() => setFilters(EMPTY_FILTERS)}
-            className="mt-3 text-[10px] uppercase tracking-[0.18em] font-semibold text-red-400 hover:text-red-300 transition-colors"
+            className="mt-3 text-[10px] uppercase tracking-[0.18em] font-semibold text-danger-ink hover:text-danger-ink transition-colors"
           >
             Clear filters
           </button>

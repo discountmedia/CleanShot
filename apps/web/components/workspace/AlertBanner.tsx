@@ -9,19 +9,19 @@ type Severity = "danger" | "warn" | "info";
 
 const STYLES: Record<Severity, { border: string; icon: string; title: string }> = {
   danger: {
-    border: "border-red-900 bg-red-950/30",
-    icon:   "text-red-500",
-    title:  "text-red-400",
+    border: "border-danger-ink bg-panel",
+    icon:   "text-danger-ink",
+    title:  "text-danger-ink",
   },
   warn: {
-    border: "border-amber-900 bg-amber-950/20",
-    icon:   "text-amber-500",
-    title:  "text-amber-400",
+    border: "border-danger-ink bg-panel",
+    icon:   "text-danger-ink",
+    title:  "text-danger-ink",
   },
   info: {
-    border: "border-zinc-800 bg-zinc-900/40",
-    icon:   "text-zinc-400",
-    title:  "text-zinc-200",
+    border: "border-line bg-panel/40",
+    icon:   "text-ink-soft",
+    title:  "text-ink",
   },
 };
 
@@ -70,7 +70,7 @@ export function AlertBanner({
           {title}
         </p>
         {body && (
-          <p className="mt-0.5 text-sm text-zinc-400 leading-snug">
+          <p className="mt-0.5 text-sm text-ink-soft leading-snug">
             {body}
           </p>
         )}
@@ -82,7 +82,7 @@ export function AlertBanner({
         {dismissible && (
           <button
             onClick={() => setOpen(false)}
-            className="text-zinc-600 hover:text-zinc-300 transition-colors"
+            className="text-muted hover:text-ink-soft transition-colors"
             aria-label="Dismiss"
           >
             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

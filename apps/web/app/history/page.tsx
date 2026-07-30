@@ -24,18 +24,18 @@ export default async function HistoryPage() {
   }
 
   return (
-    <div className="min-h-screen bg-zinc-950 text-white">
+    <div className="min-h-screen bg-well text-ink">
       <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-white">Your Photo Library</h1>
-            <p className="text-sm text-zinc-500 mt-1">
+            <h1 className="text-xl font-bold text-ink">Your Photo Library</h1>
+            <p className="text-sm text-ink-faint mt-1">
               Last 60 days · {userEmail}
             </p>
           </div>
           <Link
             href="/"
-            className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
+            className="text-sm text-ink-soft hover:text-ink-soft transition-colors"
           >
             ← Back to workspace
           </Link>

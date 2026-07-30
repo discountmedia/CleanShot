@@ -102,7 +102,7 @@ function TextField({
 }) {
   return (
     <label className="flex flex-col gap-1.5">
-      <span className="text-sm uppercase tracking-[0.16em] text-zinc-100 font-bold">
+      <span className="text-sm uppercase tracking-[0.16em] text-ink font-bold">
         {label}
       </span>
       <input
@@ -111,9 +111,9 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder:text-zinc-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition disabled:opacity-50"
+        className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition disabled:opacity-50"
       />
-      {hint && <span className="text-base text-yellow-300 font-semibold leading-relaxed">{hint}</span>}
+      {hint && <span className="text-base text-accent font-semibold leading-relaxed">{hint}</span>}
     </label>
   );
 }
@@ -302,31 +302,31 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
   return (
     <div className="space-y-6">
       {/* ── Spec card ── */}
-      <div className="bg-black border border-zinc-700 rounded-xl p-5 space-y-5">
+      <div className="bg-well border border-line rounded-xl p-5 space-y-5">
         <div className="space-y-2.5">
-          <h3 className="text-lg font-semibold text-acid">PRO CONSTRAINTS EXPORT</h3>
-          <ul className="text-base text-zinc-100 space-y-1.5 leading-relaxed" role="list">
-            <li>• <strong className="font-semibold text-yellow-300">1024 × 731 px</strong> — 7:5 aspect ratio</li>
-            <li>• <strong className="font-semibold text-yellow-300">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
-            <li>• <strong className="font-semibold text-yellow-300">≤ 99 KB JPEG</strong> — quality iterated until target</li>
+          <h3 className="text-lg font-semibold text-accent">PRO CONSTRAINTS EXPORT</h3>
+          <ul className="text-base text-ink space-y-1.5 leading-relaxed" role="list">
+            <li>• <strong className="font-semibold text-accent">1024 × 731 px</strong> — 7:5 aspect ratio</li>
+            <li>• <strong className="font-semibold text-accent">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
+            <li>• <strong className="font-semibold text-accent">≤ 99 KB JPEG</strong> — quality iterated until target</li>
           </ul>
         </div>
       </div>
 
       {/* ── Export set (reorderable) ── */}
       {orderedAssets.length > 0 && (
-        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-          <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
+        <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+          <header className="flex items-start justify-between gap-4 px-5 py-4 bg-panel/50 border-b border-line">
             <div className="flex flex-col gap-1">
-              <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+              <span className="text-base font-semibold uppercase tracking-[0.14em] text-ink">
                 Queued for export
               </span>
-              <span className="text-sm text-zinc-300 leading-relaxed">
+              <span className="text-sm text-ink-soft leading-relaxed">
                 These images will be included in the next export.{" "}
-                <span className="font-semibold text-yellow-300">Drag any tile to reorder</span> — the order drives the export filename numbering.
+                <span className="font-semibold text-accent">Drag any tile to reorder</span> — the order drives the export filename numbering.
               </span>
             </div>
-            <span className="text-sm uppercase tracking-[0.18em] font-mono text-zinc-300 tabular-nums shrink-0">
+            <span className="text-sm uppercase tracking-[0.18em] font-mono text-ink-soft tabular-nums shrink-0">
               {orderedAssets.length}
             </span>
           </header>
@@ -370,12 +370,12 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                       return next;
                     });
                   }}
-                  className={`relative rounded-lg overflow-hidden border-2 bg-zinc-900 cursor-move transition-colors ${
+                  className={`relative rounded-lg overflow-hidden border-2 bg-panel cursor-move transition-colors ${
                     isOver
-                      ? "border-brand-500"
+                      ? "border-cta"
                       : isDragging
-                        ? "border-zinc-600 opacity-50"
-                        : "border-zinc-800"
+                        ? "border-line opacity-50"
+                        : "border-line"
                   }`}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -385,16 +385,16 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                     draggable={false}
                     className="w-full aspect-square object-cover pointer-events-none"
                   />
-                  <span className="absolute top-1 left-1 text-[11px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-black/80 border border-zinc-700 text-yellow-300 tabular-nums">
+                  <span className="absolute top-1 left-1 text-[11px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-header-bg/80 border border-line text-accent tabular-nums">
                     {idx + 1}
                   </span>
                   {a.provider && (
-                    <span className="absolute top-1 right-1 text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-black/70 text-zinc-200">
+                    <span className="absolute top-1 right-1 text-[9px] uppercase tracking-[0.12em] font-bold px-1.5 py-0.5 rounded bg-header-bg/70 text-ink">
                       {a.provider}
                     </span>
                   )}
                   <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1">
-                    <p className="text-[10px] text-zinc-200 truncate" title={a.filename}>
+                    <p className="text-[10px] text-ink truncate" title={a.filename}>
                       {a.filename}
                     </p>
                   </div>
@@ -406,24 +406,24 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       )}
 
       {/* ── Project form ── */}
-      <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-        <header className="flex items-start justify-between gap-4 px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
+      <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+        <header className="flex items-start justify-between gap-4 px-5 py-4 bg-panel/50 border-b border-line">
           <div className="flex flex-col gap-1">
-            <span className="text-base font-semibold uppercase tracking-[0.14em] text-zinc-100">
+            <span className="text-base font-semibold uppercase tracking-[0.14em] text-ink">
               Project details
             </span>
-            <span className="text-sm text-zinc-300 leading-relaxed">
-              Clicking <span className="font-semibold text-white">Save Project</span> does two things:
+            <span className="text-sm text-ink-soft leading-relaxed">
+              Clicking <span className="font-semibold text-ink">Save Project</span> does two things:
               it locks in this metadata so the export buttons will work, AND
               it copies the queued images into Your Photo Library so you can
               re-download them later. Only{" "}
-              <span className="font-semibold text-yellow-300">Make</span> and{" "}
-              <span className="font-semibold text-yellow-300">Model</span> are
+              <span className="font-semibold text-accent">Make</span> and{" "}
+              <span className="font-semibold text-accent">Model</span> are
               required — the rest pre-fill from the Enhance tab.
             </span>
           </div>
           {isSaved && (
-            <span className="text-sm uppercase tracking-[0.18em] font-semibold text-green-400 shrink-0">
+            <span className="text-sm uppercase tracking-[0.18em] font-semibold text-accent shrink-0">
               ✓ Saved
             </span>
           )}
@@ -450,12 +450,12 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
 
       {/* ── Error / warning banners ── */}
       {error && (
-        <p className="text-sm text-red-400 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3" role="alert">
+        <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="alert">
           {error}
         </p>
       )}
       {anyWarning && (
-        <p className="text-sm text-amber-300 bg-amber-950/40 border border-amber-800 rounded-lg px-4 py-3" role="status">
+        <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="status">
           Some images could not be compressed under 99 KB at acceptable quality — those tiles are flagged below. Inspect them before downloading; the ZIP still contains the lowest-quality version the encoder could produce.
         </p>
       )}
@@ -468,9 +468,9 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
           inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
           ${canSave
             ? isSaved
-              ? "border-green-700 bg-green-700 hover:bg-green-600 text-white"
-              : "border-green-500 bg-green-600 hover:bg-green-500 text-white"
-            : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+              ? "border-cta bg-cta hover:bg-cta-dark text-white"
+              : "border-cta bg-cta hover:bg-cta-dark text-white"
+            : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
         `}
       >
         {isSaving
@@ -486,21 +486,21 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       <label
         className={`flex items-start gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition-colors select-none ${
           addAiDisclaimer
-            ? "border-yellow-500 bg-yellow-950/30 hover:bg-yellow-900/30"
-            : "border-zinc-700 bg-zinc-950/40 hover:border-zinc-500"
+            ? "border-accent bg-panel hover:bg-accent/30"
+            : "border-line bg-well/40 hover:border-ink-faint"
         }`}
       >
         <input
           type="checkbox"
           checked={addAiDisclaimer}
           onChange={(e) => setAddAiDisclaimer(e.target.checked)}
-          className="mt-1 w-5 h-5 accent-yellow-500 shrink-0"
+          className="mt-1 w-5 h-5 accent-accent shrink-0"
         />
         <div className="min-w-0">
-          <p className="text-base font-bold text-zinc-100 leading-snug">
+          <p className="text-base font-bold text-ink leading-snug">
             Add AI disclaimer watermark
           </p>
-          <p className="text-sm text-zinc-300 mt-1 leading-relaxed">
+          <p className="text-sm text-ink-soft mt-1 leading-relaxed">
             Burns a tiny, semi-transparent line of text into the bottom-right
             corner of every exported JPEG:
           </p>
@@ -509,13 +509,13 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             style={{ fontFamily: "Roboto, sans-serif" }}
           >
             &ldquo;
-            <span className="font-bold text-green-500">{AI_DISCLAIMER_LABEL}</span>
-            <span className="font-bold text-zinc-100">
+            <span className="font-bold text-accent">{AI_DISCLAIMER_LABEL}</span>
+            <span className="font-bold text-ink">
               {AI_DISCLAIMER_WATERMARK.slice(AI_DISCLAIMER_LABEL.length)}
             </span>
             &rdquo;
           </p>
-          <p className="text-sm text-zinc-300 mt-1.5 leading-relaxed">
+          <p className="text-sm text-ink-soft mt-1.5 leading-relaxed">
             Use this when the photo is going to a customer-facing listing —
             it&apos;s your honest disclosure that the image was cleaned up by AI.
           </p>
@@ -529,8 +529,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
         className={`
           inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
           ${canExport
-            ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
-            : "border-zinc-800 bg-zinc-800 text-zinc-500 cursor-not-allowed"}
+            ? "border-cta bg-cta hover:bg-cta-dark text-white"
+            : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
         `}
       >
         {isExporting
@@ -546,30 +546,30 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
 
       {/* ── Streaming progress ── */}
       {isExporting && (
-        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3 space-y-2" aria-live="polite">
+        <section className="rounded-xl border border-line bg-well/60 px-4 py-3 space-y-2" aria-live="polite">
           <div className="flex items-center justify-between text-xs">
-            <span className="font-semibold uppercase tracking-[0.18em] text-zinc-300">
+            <span className="font-semibold uppercase tracking-[0.18em] text-ink-soft">
               {progressTotal === 0
                 ? "Downloading…"
                 : progressCurrent >= progressTotal && progressTotal > 0
                   ? "Bundling ZIP…"
                   : `Resizing ${progressCurrent} of ${progressTotal}`}
             </span>
-            <span className="font-mono tabular-nums text-zinc-500">
+            <span className="font-mono tabular-nums text-ink-faint">
               {progressTotal > 0
                 ? `${Math.round((progressCurrent / progressTotal) * 100)}%`
                 : "…"}
             </span>
           </div>
           <div
-            className="h-2 w-full bg-zinc-900 rounded-full overflow-hidden"
+            className="h-2 w-full bg-panel rounded-full overflow-hidden"
             role="progressbar"
             aria-valuemin={0}
             aria-valuemax={progressTotal || 100}
             aria-valuenow={progressCurrent}
           >
             <div
-              className="h-full bg-blue-500 transition-all duration-300 ease-out"
+              className="h-full bg-panel-hi transition-all duration-300 ease-out"
               style={{
                 width: progressTotal === 0
                   ? "5%"
@@ -578,7 +578,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             />
           </div>
           {progressFilename && (
-            <p className="text-[11px] font-mono text-zinc-600 truncate" title={progressFilename}>
+            <p className="text-[11px] font-mono text-muted truncate" title={progressFilename}>
               {progressFilename}
             </p>
           )}
@@ -590,10 +590,10 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
         <section className="space-y-3">
           <header className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h3 className="text-sm font-semibold text-zinc-200">
+              <h3 className="text-sm font-semibold text-ink">
                 Resized previews ({previewItems.length})
               </h3>
-              <p className="text-[11px] text-zinc-500 mt-0.5">
+              <p className="text-[11px] text-ink-faint mt-0.5">
                 Every tile renders at its exact pixel dimensions — if a tile&apos;s aspect doesn&apos;t match the 7:5 frame, the export is wrong.
               </p>
             </div>
@@ -601,7 +601,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
               <a
                 href={zipUrl}
                 download={zipFilename}
-                className="bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-2"
+                className="bg-panel hover:bg-panel-hi text-ink text-sm font-semibold px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-2"
               >
                 Download ZIP
                 <span className="text-[10px] font-mono opacity-80">{formatBytes(zipSizeBytes)}</span>
@@ -616,9 +616,9 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
               return (
                 <figure
                   key={item.assetId}
-                  className="rounded-xl border border-zinc-800 bg-zinc-950 overflow-hidden"
+                  className="rounded-xl border border-line bg-well overflow-hidden"
                 >
-                  <div className="relative bg-black mx-auto" style={{ aspectRatio: "1024 / 731", width: "100%" }}>
+                  <div className="relative bg-well mx-auto" style={{ aspectRatio: "1024 / 731", width: "100%" }}>
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
                       src={item.url}
@@ -630,8 +630,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                       <span
                         className={`text-[10px] font-mono px-2 py-0.5 rounded ${
                           aspectOk
-                            ? "bg-black/70 text-green-400"
-                            : "bg-red-950/90 text-red-300 border border-red-700"
+                            ? "bg-header-bg/70 text-accent"
+                            : "bg-panel text-danger-ink border border-danger-ink"
                         }`}
                         title={aspectOk ? "Dimensions match spec" : "Wrong dimensions — letterboxing or wrong aspect"}
                       >
@@ -640,8 +640,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                       <span
                         className={`text-[10px] font-mono px-2 py-0.5 rounded ${
                           item.sizeWarning
-                            ? "bg-amber-950/90 text-amber-300 border border-amber-700"
-                            : "bg-black/70 text-zinc-300"
+                            ? "bg-panel text-danger-ink border border-danger-ink"
+                            : "bg-header-bg/70 text-ink-soft"
                         }`}
                         title={item.sizeWarning ? "Couldn't compress under 99 KB" : ""}
                       >
@@ -649,14 +649,14 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                       </span>
                     </div>
                   </div>
-                  <figcaption className="flex items-center justify-between px-3 py-2 border-t border-zinc-800">
-                    <span className="text-xs text-zinc-400 truncate" title={item.filename}>
+                  <figcaption className="flex items-center justify-between px-3 py-2 border-t border-line">
+                    <span className="text-xs text-ink-soft truncate" title={item.filename}>
                       {item.filename}
                     </span>
                     <a
                       href={item.url}
                       download={item.filename}
-                      className="text-xs text-blue-400 hover:text-blue-300 transition-colors font-medium shrink-0"
+                      className="text-xs text-ink-soft hover:text-ink-soft transition-colors font-medium shrink-0"
                     >
                       Download
                     </a>

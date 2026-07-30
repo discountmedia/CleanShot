@@ -413,20 +413,20 @@ export function EraseDialog({
       role="dialog"
       aria-modal="true"
       aria-label="Erase tool"
-      className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4"
+      className="fixed inset-0 z-50 bg-header-bg/85 backdrop-blur-sm flex items-center justify-center p-4"
       onClick={(e) => {
         // Click outside the dialog closes it (unless submitting).
         if (e.target === e.currentTarget && !submitting) onClose();
       }}
     >
-      <div className="w-full max-w-5xl max-h-full bg-zinc-950 border border-zinc-800 rounded-xl shadow-2xl flex flex-col overflow-hidden">
+      <div className="w-full max-w-5xl max-h-full bg-well border border-line rounded-xl shadow-2xl flex flex-col overflow-hidden">
         {/* ── Header ── */}
-        <header className="flex items-center justify-between px-5 py-4 border-b border-zinc-900">
+        <header className="flex items-center justify-between px-5 py-4 border-b border-line">
           <div>
-            <h2 className="text-xl font-bold text-white">
+            <h2 className="text-xl font-bold text-ink">
               {toolMeta.title}
             </h2>
-            <p className="text-base text-zinc-200 mt-1 leading-relaxed">
+            <p className="text-base text-ink mt-1 leading-relaxed">
               {toolMeta.subtitle}
             </p>
           </div>
@@ -434,7 +434,7 @@ export function EraseDialog({
             type="button"
             onClick={onClose}
             disabled={submitting}
-            className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-200 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-zinc-700 hover:border-zinc-400 rounded px-3 py-1.5"
+            className="text-sm uppercase tracking-[0.16em] font-bold text-ink hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors border border-line hover:border-ink-faint rounded px-3 py-1.5"
           >
             {resultUrl ? "Close" : "Cancel"}
           </button>
@@ -442,7 +442,7 @@ export function EraseDialog({
 
         {/* ── Canvas + brush controls ── */}
         <div className="flex-1 overflow-auto p-5 flex flex-col gap-4">
-          <div className="relative mx-auto bg-zinc-900 rounded-lg overflow-hidden ring-1 ring-zinc-800 max-h-[60vh]">
+          <div className="relative mx-auto bg-panel rounded-lg overflow-hidden ring-1 ring-line max-h-[60vh]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               ref={imgRef}
@@ -469,23 +469,23 @@ export function EraseDialog({
 
             {/* Submitting overlay */}
             {submitting && !resultUrl && (
-              <div className="absolute inset-0 bg-black/65 flex flex-col items-center justify-center gap-3">
-                <svg className="animate-spin w-7 h-7 text-blue-400" viewBox="0 0 24 24" fill="none">
+              <div className="absolute inset-0 bg-header-bg/65 flex flex-col items-center justify-center gap-3">
+                <svg className="animate-spin w-7 h-7 text-ink-soft" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
                 </svg>
-                <span className="text-base font-bold text-blue-200">{progressLabel}</span>
+                <span className="text-base font-bold text-ink-soft">{progressLabel}</span>
               </div>
             )}
           </div>
 
           {/* Tip banner — how to use the brush. */}
           {!resultUrl && (
-            <div className="rounded-lg border border-yellow-700/60 bg-yellow-950/30 px-4 py-3">
-              <p className="text-sm font-bold uppercase tracking-[0.14em] text-yellow-200 mb-1">
+            <div className="rounded-lg border border-accent bg-panel px-4 py-3">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-accent mb-1">
                 How to use the eraser
               </p>
-              <p className="text-base text-yellow-100 leading-relaxed">
+              <p className="text-base text-accent leading-relaxed">
                 Drag your cursor over anything you want gone — extra cones, propane tanks, people,
                 logos, debris. Cover the whole object plus a little extra around the edges. The AI
                 will invent a clean fill (sky, dirt, concrete, etc.) based on what surrounds it.
@@ -496,7 +496,7 @@ export function EraseDialog({
           {/* Brush + Clear */}
           {!resultUrl && (
             <div className="flex items-center gap-4 flex-wrap">
-              <label className="flex items-center gap-3 text-base font-bold text-zinc-100">
+              <label className="flex items-center gap-3 text-base font-bold text-ink">
                 Brush
                 <input
                   type="range"
@@ -505,9 +505,9 @@ export function EraseDialog({
                   value={brushPx}
                   disabled={submitting}
                   onChange={(e) => setBrushPx(Number(e.target.value))}
-                  className="w-48 accent-blue-500 disabled:opacity-40"
+                  className="w-48 accent-accent disabled:opacity-40"
                 />
-                <span className="font-mono text-zinc-200 tabular-nums w-12 text-right text-base">
+                <span className="font-mono text-ink tabular-nums w-12 text-right text-base">
                   {brushPx}px
                 </span>
               </label>
@@ -515,11 +515,11 @@ export function EraseDialog({
                 type="button"
                 onClick={handleClear}
                 disabled={!hasStrokes || submitting}
-                className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-200 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded border border-zinc-700 hover:border-zinc-400 disabled:hover:border-zinc-700"
+                className="text-sm uppercase tracking-[0.16em] font-bold text-ink hover:text-ink disabled:opacity-30 disabled:cursor-not-allowed transition-colors px-3 py-1.5 rounded border border-line hover:border-ink-faint disabled:hover:border-line"
               >
                 Clear mask
               </button>
-              <span className="text-sm font-bold text-zinc-200 ml-auto">
+              <span className="text-sm font-bold text-ink ml-auto">
                 {strokes.length} stroke{strokes.length === 1 ? "" : "s"}
               </span>
             </div>
@@ -528,7 +528,7 @@ export function EraseDialog({
           {/* Instruction */}
           {!resultUrl && (
             <label className="block">
-              <span className="text-sm font-bold uppercase tracking-[0.16em] text-zinc-100 mb-1.5 block">
+              <span className="text-sm font-bold uppercase tracking-[0.16em] text-ink mb-1.5 block">
                 Fill hint (optional)
               </span>
               <input
@@ -537,9 +537,9 @@ export function EraseDialog({
                 onChange={(e) => setInstruction(e.target.value.slice(0, MAX_INSTRUCTION_CHARS))}
                 disabled={submitting}
                 placeholder="e.g. plain concrete floor"
-                className="w-full bg-zinc-900 border border-zinc-700 focus:border-blue-500 focus:outline-none rounded-lg px-3 py-2.5 text-base text-white placeholder:text-zinc-400 disabled:opacity-40"
+                className="w-full bg-panel border border-line focus:border-line focus:outline-none rounded-lg px-3 py-2.5 text-base text-ink placeholder:text-ink-soft disabled:opacity-40"
               />
-              <span className="text-sm text-zinc-300 mt-1 block text-right tabular-nums">
+              <span className="text-sm text-ink-soft mt-1 block text-right tabular-nums">
                 {instruction.length}/{MAX_INSTRUCTION_CHARS}
               </span>
             </label>
@@ -547,14 +547,14 @@ export function EraseDialog({
 
           {/* Submit error */}
           {submitError && (
-            <p className="text-base font-medium text-red-300 bg-red-950/40 border border-red-800 rounded px-3 py-2">
+            <p className="text-base font-medium text-danger-ink bg-panel border border-danger-ink rounded px-3 py-2">
               {submitError}
             </p>
           )}
         </div>
 
         {/* ── Footer actions ── */}
-        <footer className="flex items-center justify-end gap-2 px-5 py-4 border-t border-zinc-900">
+        <footer className="flex items-center justify-end gap-2 px-5 py-4 border-t border-line">
           {!resultUrl ? (
             <button
               type="button"
@@ -562,8 +562,8 @@ export function EraseDialog({
               disabled={!hasStrokes || submitting || !naturalSize}
               className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors
                 ${hasStrokes && !submitting && naturalSize
-                  ? "bg-blue-600 hover:bg-blue-500 text-white"
-                  : "bg-zinc-800 text-zinc-500 cursor-not-allowed"}`}
+                  ? "bg-panel hover:bg-panel-hi text-ink"
+                  : "bg-panel-hi text-ink-faint cursor-not-allowed"}`}
             >
               {submitting ? "Working…" : "Erase masked area"}
             </button>
@@ -572,14 +572,14 @@ export function EraseDialog({
               <button
                 type="button"
                 onClick={handleDiscardResult}
-                className="px-5 py-2.5 rounded-lg text-base font-bold text-zinc-100 hover:text-white bg-zinc-800 hover:bg-zinc-700 transition-colors"
+                className="px-5 py-2.5 rounded-lg text-base font-bold text-ink hover:text-ink bg-panel hover:bg-panel-hi transition-colors"
               >
                 Try again
               </button>
               <button
                 type="button"
                 onClick={handleAccept}
-                className="px-6 py-2.5 rounded-lg text-base font-bold bg-green-600 hover:bg-green-500 text-white transition-colors"
+                className="px-6 py-2.5 rounded-lg text-base font-bold bg-cta hover:bg-cta-dark text-white transition-colors"
               >
                 Accept &amp; replace variant
               </button>

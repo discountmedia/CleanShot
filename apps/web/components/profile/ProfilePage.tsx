@@ -160,13 +160,13 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <header className="border-b border-zinc-800 bg-zinc-950">
+    <div className="min-h-screen bg-bg text-ink">
+      <header className="border-b border-line bg-well">
         <div className="max-w-screen-md mx-auto px-6 py-5 flex items-center justify-between">
-          <h1 className="text-2xl font-bold tracking-tight text-white">My Profile</h1>
-          <div className="flex items-center gap-4 text-base text-zinc-200">
+          <h1 className="text-2xl font-bold tracking-tight text-ink">My Profile</h1>
+          <div className="flex items-center gap-4 text-base text-ink">
             <span className="font-mono">{userEmail}</span>
-            <Link href="/" className="text-blue-300 hover:text-white font-bold">
+            <Link href="/" className="text-ink-soft hover:text-ink font-bold">
               ← Back to workspace
             </Link>
           </div>
@@ -175,17 +175,17 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
 
       <main className="max-w-screen-md mx-auto px-6 py-6 space-y-6">
         {loadErr && (
-          <p className="text-base text-red-300 bg-red-950/40 border border-red-800 rounded-lg px-4 py-3">
+          <p className="text-base text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3">
             Could not load profile: {loadErr}
           </p>
         )}
 
         {/* ── Identity + avatar ── */}
-        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-          <header className="px-5 py-4 bg-zinc-900/50 border-b border-zinc-800 flex items-center justify-between">
-            <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">Identity</span>
+        <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+          <header className="px-5 py-4 bg-panel/50 border-b border-line flex items-center justify-between">
+            <span className="text-base font-bold uppercase tracking-[0.14em] text-ink">Identity</span>
             {avatarMsg && (
-              <span className="text-sm uppercase tracking-[0.16em] font-bold text-zinc-200">
+              <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">
                 {avatarMsg}
               </span>
             )}
@@ -196,16 +196,16 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
               <img
                 src={profile.avatarUrl}
                 alt=""
-                className="w-24 h-24 rounded-full object-cover border border-zinc-700"
+                className="w-24 h-24 rounded-full object-cover border border-line"
               />
             ) : (
-              <div className="w-24 h-24 rounded-full bg-zinc-800 border border-zinc-700 flex items-center justify-center text-2xl font-bold text-zinc-200">
+              <div className="w-24 h-24 rounded-full bg-panel-hi border border-line flex items-center justify-center text-2xl font-bold text-ink">
                 {userEmail.slice(0, 2).toUpperCase()}
               </div>
             )}
             <div className="flex-1">
-              <p className="text-lg font-bold text-white">{profile?.fullName || userEmail}</p>
-              <p className="text-sm text-zinc-300 font-mono mt-0.5">{userEmail}</p>
+              <p className="text-lg font-bold text-ink">{profile?.fullName || userEmail}</p>
+              <p className="text-sm text-ink-soft font-mono mt-0.5">{userEmail}</p>
             </div>
             <label className="cursor-pointer">
               <input
@@ -217,8 +217,8 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
               />
               <span className={`inline-block text-sm uppercase tracking-[0.16em] font-bold px-4 py-2.5 rounded border transition-colors ${
                 avatarUploading
-                  ? "border-zinc-800 text-zinc-600 cursor-not-allowed"
-                  : "border-zinc-600 text-zinc-100 hover:border-zinc-400 hover:text-white"
+                  ? "border-line text-muted cursor-not-allowed"
+                  : "border-line text-ink hover:border-ink-faint hover:text-ink"
               }`}>
                 {avatarUploading ? "Uploading…" : "Change avatar"}
               </span>
@@ -227,11 +227,11 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
         </section>
 
         {/* ── Editable profile form ── */}
-        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-          <header className="px-5 py-4 bg-zinc-900/50 border-b border-zinc-800 flex items-center justify-between">
-            <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">Details</span>
+        <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+          <header className="px-5 py-4 bg-panel/50 border-b border-line flex items-center justify-between">
+            <span className="text-base font-bold uppercase tracking-[0.14em] text-ink">Details</span>
             {saveMsg && (
-              <span className="text-sm uppercase tracking-[0.16em] font-bold text-green-300">
+              <span className="text-sm uppercase tracking-[0.16em] font-bold text-accent">
                 {saveMsg}
               </span>
             )}
@@ -239,11 +239,11 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
 
           {/* Tip: why these fields matter. */}
           <div className="px-5 pt-4">
-            <div className="rounded-lg border border-yellow-700/60 bg-yellow-950/30 px-4 py-3">
-              <p className="text-sm font-bold uppercase tracking-[0.14em] text-yellow-200 mb-1">
+            <div className="rounded-lg border border-accent bg-panel px-4 py-3">
+              <p className="text-sm font-bold uppercase tracking-[0.14em] text-accent mb-1">
                 Why fill these out
               </p>
-              <p className="text-base text-yellow-100 leading-relaxed">
+              <p className="text-base text-accent leading-relaxed">
                 Your <strong>name</strong>, <strong>phone</strong>, and <strong>location</strong> appear next
                 to every project you create — admins and teammates use these to know who shot which set of
                 photos, who to call about a listing, and which yard the unit lives in. Inaccurate fields slow
@@ -254,33 +254,33 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5">
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm uppercase tracking-[0.16em] text-zinc-100 font-bold">Full name</span>
+              <span className="text-sm uppercase tracking-[0.16em] text-ink font-bold">Full name</span>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Stephen Cunningham"
-                className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
               />
             </label>
             <label className="flex flex-col gap-1.5">
-              <span className="text-sm uppercase tracking-[0.16em] text-zinc-100 font-bold">Work phone</span>
+              <span className="text-sm uppercase tracking-[0.16em] text-ink font-bold">Work phone</span>
               <input
                 type="text"
                 value={workPhone}
                 onChange={(e) => setWorkPhone(e.target.value)}
                 placeholder="(555) 555-5555"
-                className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
               />
             </label>
             <label className="flex flex-col gap-1.5 md:col-span-2">
-              <span className="text-sm uppercase tracking-[0.16em] text-zinc-100 font-bold">Location</span>
+              <span className="text-sm uppercase tracking-[0.16em] text-ink font-bold">Location</span>
               <input
                 type="text"
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="City, State (e.g. Dallas, TX)"
-                className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
               />
             </label>
           </div>
@@ -290,8 +290,8 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
               disabled={saving}
               className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors ${
                 saving
-                  ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-                  : "bg-blue-600 hover:bg-blue-500 text-white"
+                  ? "bg-panel-hi text-ink-faint cursor-not-allowed"
+                  : "bg-panel hover:bg-panel-hi text-ink"
               }`}
             >
               {saving ? "Saving…" : "Save changes"}
@@ -303,16 +303,16 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
         <PersonalUsageCard />
 
         {/* ── Your Photo Library link ── */}
-        <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-5 py-5 flex items-center justify-between gap-4">
+        <section className="rounded-xl border border-line bg-well/60 px-5 py-5 flex items-center justify-between gap-4">
           <div>
-            <p className="text-lg font-bold text-white">Your Photo Library</p>
-            <p className="text-base text-zinc-200 mt-1">
+            <p className="text-lg font-bold text-ink">Your Photo Library</p>
+            <p className="text-base text-ink mt-1">
               View every image set you&apos;ve approved + saved over the last 60 days.
             </p>
           </div>
           <Link
             href="/"
-            className="text-sm uppercase tracking-[0.16em] font-bold text-blue-300 hover:text-white transition-colors whitespace-nowrap"
+            className="text-sm uppercase tracking-[0.16em] font-bold text-ink-soft hover:text-ink transition-colors whitespace-nowrap"
           >
             Open Your Photo Library →
           </Link>
@@ -322,7 +322,7 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
         <SupportTicketForm />
 
         <footer className="text-center">
-          <p className="text-[10px] text-zinc-950 select-none">
+          <p className="text-[10px] text-header-bg select-none">
             Developed by Stephen Cunningham © AI App Integrations LLC 2026
           </p>
         </footer>
@@ -372,23 +372,23 @@ function PersonalUsageCard() {
   }, []);
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-      <header className="px-5 py-4 bg-zinc-900/50 border-b border-zinc-800">
-        <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
+    <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+      <header className="px-5 py-4 bg-panel/50 border-b border-line">
+        <span className="text-base font-bold uppercase tracking-[0.14em] text-ink">
           My usage (last 30 days)
         </span>
       </header>
       {err ? (
-        <p className="px-5 py-6 text-base text-zinc-200">
+        <p className="px-5 py-6 text-base text-ink">
           Usage stats are admin-only right now. Ask your admin for a personal-usage feed.
         </p>
       ) : !data ? (
-        <p className="px-5 py-6 text-base text-zinc-200">Loading…</p>
+        <p className="px-5 py-6 text-base text-ink">Loading…</p>
       ) : data.byUser.length === 0 ? (
-        <p className="px-5 py-6 text-base text-zinc-200">No tracked events yet — run an enhance to populate this.</p>
+        <p className="px-5 py-6 text-base text-ink">No tracked events yet — run an enhance to populate this.</p>
       ) : (
         <table className="w-full text-base">
-          <thead className="bg-zinc-900/60 text-xs uppercase tracking-[0.16em] text-zinc-200">
+          <thead className="bg-panel/60 text-xs uppercase tracking-[0.16em] text-ink">
             <tr>
               <th className="px-4 py-3 text-left font-bold">Provider / model</th>
               <th className="px-4 py-3 text-right font-bold">Calls</th>
@@ -397,10 +397,10 @@ function PersonalUsageCard() {
           </thead>
           <tbody>
             {data.byProviderModel.map((r, i) => (
-              <tr key={i} className="border-t border-zinc-800">
-                <td className="px-4 py-2 font-mono text-zinc-100">{r.provider} · {r.model}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-zinc-100">{r.callCount}</td>
-                <td className="px-4 py-2 text-right tabular-nums text-zinc-200">{r.totalCostUsd.toFixed(4)}</td>
+              <tr key={i} className="border-t border-line">
+                <td className="px-4 py-2 font-mono text-ink">{r.provider} · {r.model}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink">{r.callCount}</td>
+                <td className="px-4 py-2 text-right tabular-nums text-ink">{r.totalCostUsd.toFixed(4)}</td>
               </tr>
             ))}
           </tbody>
@@ -440,13 +440,13 @@ function SupportTicketForm() {
   };
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950/60 overflow-hidden">
-      <header className="px-5 py-4 bg-zinc-900/50 border-b border-zinc-800 flex items-center justify-between">
-        <span className="text-base font-bold uppercase tracking-[0.14em] text-zinc-100">
+    <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
+      <header className="px-5 py-4 bg-panel/50 border-b border-line flex items-center justify-between">
+        <span className="text-base font-bold uppercase tracking-[0.14em] text-ink">
           Contact the admin
         </span>
         {msg && (
-          <span className="text-sm uppercase tracking-[0.16em] font-bold text-green-300">
+          <span className="text-sm uppercase tracking-[0.16em] font-bold text-accent">
             {msg}
           </span>
         )}
@@ -459,9 +459,9 @@ function SupportTicketForm() {
               name="ticket-type"
               checked={type === "support"}
               onChange={() => setType("support")}
-              className="accent-red-500 w-4 h-4"
+              className="accent-accent w-4 h-4"
             />
-            <span className="text-zinc-100 font-medium">Support / bug</span>
+            <span className="text-ink font-medium">Support / bug</span>
           </label>
           <label className="flex items-center gap-2 cursor-pointer">
             <input
@@ -469,31 +469,31 @@ function SupportTicketForm() {
               name="ticket-type"
               checked={type === "feature"}
               onChange={() => setType("feature")}
-              className="accent-red-500 w-4 h-4"
+              className="accent-accent w-4 h-4"
             />
-            <span className="text-zinc-100 font-medium">Feature request</span>
+            <span className="text-ink font-medium">Feature request</span>
           </label>
         </div>
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm uppercase tracking-[0.16em] text-zinc-100 font-bold">Subject</span>
+          <span className="text-sm uppercase tracking-[0.16em] text-ink font-bold">Subject</span>
           <input
             type="text"
             value={subject}
             onChange={(e) => setSubject(e.target.value)}
             required
             maxLength={200}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
           />
         </label>
         <label className="flex flex-col gap-1.5">
-          <span className="text-sm uppercase tracking-[0.16em] text-zinc-100 font-bold">Details</span>
+          <span className="text-sm uppercase tracking-[0.16em] text-ink font-bold">Details</span>
           <textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
             required
             rows={5}
             maxLength={4000}
-            className="bg-zinc-900 border border-zinc-700 rounded-md px-3 py-2.5 text-base text-white placeholder-zinc-400 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent transition resize-y"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition resize-y"
           />
         </label>
         <button
@@ -501,8 +501,8 @@ function SupportTicketForm() {
           disabled={sending || !subject.trim() || !body.trim()}
           className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors ${
             sending || !subject.trim() || !body.trim()
-              ? "bg-zinc-800 text-zinc-500 cursor-not-allowed"
-              : "bg-red-600 hover:bg-red-500 text-white"
+              ? "bg-panel-hi text-ink-faint cursor-not-allowed"
+              : "bg-danger hover:bg-danger-dark text-white"
           }`}
         >
           {sending ? "Sending…" : "Send to admin"}

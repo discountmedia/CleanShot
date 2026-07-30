@@ -36,9 +36,9 @@ const SCAN_PROVIDER_LABELS: Record<ScanProvider, string> = {
 };
 
 const SCAN_PROVIDER_TEXT: Record<ScanProvider, string> = {
-  gemini:    "text-blue-300",
-  openai:    "text-green-300",
-  anthropic: "text-orange-300",
+  gemini:    "text-ink-soft",
+  openai:    "text-accent",
+  anthropic: "text-grey",
 };
 
 const DEFAULT_PROVIDERS: readonly ScanProvider[] = [
@@ -59,7 +59,7 @@ export function ScanProgressStrip({
 
   return (
     <div className="space-y-2">
-      <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+      <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-ink-faint">
         Running 3-provider consensus scan
       </span>
       {providers.map((p) => {
@@ -76,7 +76,7 @@ export function ScanProgressStrip({
               {SCAN_PROVIDER_LABELS[p]}
             </span>
             <div
-              className="flex-1 h-1.5 bg-zinc-900 rounded-full overflow-hidden"
+              className="flex-1 h-1.5 bg-panel rounded-full overflow-hidden"
               role="progressbar"
               aria-valuemin={0}
               aria-valuemax={100}
@@ -85,17 +85,17 @@ export function ScanProgressStrip({
             >
               <div
                 className={`h-full transition-all duration-500 ease-out ${
-                  done ? "bg-green-500" : "bg-blue-500"
+                  done ? "bg-accent" : "bg-panel-hi"
                 }`}
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <span className="text-[10px] font-mono text-zinc-500 tabular-nums w-24 text-right">
+            <span className="text-[10px] font-mono text-ink-faint tabular-nums w-24 text-right">
               {String(Math.min(elapsedSeconds, 99)).padStart(2, "0")}s / ~{expected}s
             </span>
             <span
               className={`text-[10px] font-mono tabular-nums w-10 text-right ${
-                done ? "text-green-400" : "text-blue-400"
+                done ? "text-accent" : "text-ink-soft"
               }`}
             >
               {pct}%

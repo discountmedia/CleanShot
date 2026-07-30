@@ -52,20 +52,20 @@ export function RegenPanel({
   const rows = Math.min(12, prompt.split("\n").length + 1);
 
   return (
-    <section className="rounded-lg border border-amber-900 bg-amber-950/15 overflow-hidden">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-amber-900/50 bg-amber-950/30">
+    <section className="rounded-lg border border-danger-ink bg-panel overflow-hidden">
+      <header className="flex items-center justify-between px-4 py-2 border-b border-danger-ink bg-panel">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-amber-300">
+          <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-danger-ink">
             ↻ Regenerate
           </span>
-          <span className="text-[10px] text-zinc-500 italic">
+          <span className="text-[10px] text-ink-faint italic">
             Auto-built prompt from anomalies — edit before applying if needed
           </span>
         </div>
         <button
           type="button"
           onClick={onCancel}
-          className="text-[10px] uppercase tracking-[0.18em] text-zinc-500 hover:text-zinc-300 transition-colors"
+          className="text-[10px] uppercase tracking-[0.18em] text-ink-faint hover:text-ink-soft transition-colors"
         >
           Cancel
         </button>
@@ -78,19 +78,19 @@ export function RegenPanel({
           rows={rows}
           spellCheck={false}
           aria-label="Regeneration prompt"
-          className="w-full bg-zinc-950 border border-zinc-800 rounded-md px-3 py-2 text-[12px] font-mono text-zinc-200 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent resize-y leading-relaxed"
+          className="w-full bg-well border border-line rounded-md px-3 py-2 text-[12px] font-mono text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent resize-y leading-relaxed"
         />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-zinc-500">
+            <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-ink-faint">
               Provider
             </span>
             <select
               value={provider}
               onChange={(e) => setProvider(e.target.value as EnhanceProvider)}
               aria-label="Regeneration provider"
-              className="bg-zinc-900 border border-zinc-700 rounded-md px-2.5 py-1.5 text-xs text-white focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              className="bg-panel border border-line rounded-md px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent"
             >
               {ENHANCE_PROVIDERS.map((p) => (
                 <option key={p} value={p}>
@@ -98,7 +98,7 @@ export function RegenPanel({
                 </option>
               ))}
             </select>
-            <span className="text-[10px] text-zinc-600 italic">
+            <span className="text-[10px] text-muted italic">
               · re-runs Enhance with this prompt
             </span>
           </div>
@@ -106,7 +106,7 @@ export function RegenPanel({
           <button
             type="button"
             onClick={() => onApply({ prompt, provider })}
-            className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-amber-600 hover:bg-amber-500 border border-amber-500 px-4 py-2 rounded transition-colors"
+            className="text-xs uppercase tracking-[0.18em] font-semibold text-ink bg-danger hover:bg-danger-dark border border-danger-ink px-4 py-2 rounded transition-colors"
           >
             ↻ Regenerate now
           </button>

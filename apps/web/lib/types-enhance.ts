@@ -95,14 +95,24 @@ export const GENERIC_AUTHORS: readonly PromptAuthor[] = [
 ] as const;
 
 /**
- * Per-provider chip classes when SELECTED (i.e. checkbox / variant footer
- * highlighted). Matches the saturated `bg-*-950/40 text-*-300 border-*-800`
- * vocabulary the rest of the app uses.
+ * Chip classes when SELECTED. The house palette has three accents (lime =
+ * good/active, purple = primary buttons only, red = attention/error), so it
+ * cannot encode six per-provider identity hues — the old blue/green/orange/
+ * purple/cyan/fuchsia set is gone. Selection is now shown structurally, the
+ * same way the equipment cards and toggles show it: RAISED SURFACE + LIME
+ * BORDER. Per-model differentiation is carried by the provider name and the
+ * speed pill (lime "Fast" vs red "Slow") instead of by hue.
+ *
+ * All providers share one ON style deliberately — a previous per-provider
+ * sweep left gemini's ON state byte-identical to its OFF state, so selecting
+ * it produced no visible change at all.
  */
+const CHIP_ON_SELECTED = "bg-panel-hi text-ink border-accent";
+
 export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
-  gemini: "bg-blue-950/40 text-blue-300 border-blue-800",
-  openai: "bg-green-950/40 text-green-300 border-green-800",
-  grok:   "bg-orange-950/40 text-orange-300 border-orange-800",
+  gemini: CHIP_ON_SELECTED,
+  openai: CHIP_ON_SELECTED,
+  grok:   CHIP_ON_SELECTED,
 };
 
 /**
@@ -113,32 +123,34 @@ export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
  */
 export interface EnhanceProviderMeta {
   speedLabel:   "Fast" | "Fastest" | "Moderate" | "Slow";
-  /** Tailwind classes for the speed pill. Tone tracks the label (emerald for fast, amber moderate, red slow). */
+  /** Tailwind classes for the speed pill. Tone tracks the label: lime for
+   *  fast ("good"), red for slow (the palette's attention colour — there is
+   *  no amber middle tone, so "Moderate" also reads neutral). */
   speedClass:   string;
   /** One-sentence "what this is" line shown under the provider name. */
   description:  string;
-  /** Per-provider title colour class — keeps each model visually distinct
-   *  on the provider chip card (the operator explicitly asked for this). */
+  /** Provider title colour. Now uniform: the three-accent palette can't
+   *  carry six identity hues, so the name text itself is the identity. */
   titleClass:   string;
 }
 
 export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta> = {
   gemini: {
     speedLabel:  "Fast",
-    speedClass:  "text-emerald-300 bg-emerald-950/60 border-emerald-800",
+    speedClass:  "text-accent bg-panel border-accent",
     description: "Fastest and cheapest. Routes through gemini-3.1-flash-image-preview.",
-    titleClass:  "text-sky-300",
+    titleClass:  "text-ink",
   },
   openai: {
     speedLabel:  "Slow",
-    speedClass:  "text-red-300 bg-red-950/60 border-red-800",
+    speedClass:  "text-danger-ink bg-panel border-danger-ink",
     description: "Slower but can be more literal. gpt-5 reasons + dispatches the image_generation tool.",
-    titleClass:  "text-emerald-300",
+    titleClass:  "text-ink",
   },
   grok: {
     speedLabel:  "Fast",
-    speedClass:  "text-emerald-300 bg-emerald-950/60 border-emerald-800",
+    speedClass:  "text-accent bg-panel border-accent",
     description: "xAI Grok image-edit — broad style transfer + photorealistic touch-ups via grok-imagine-image-quality.",
-    titleClass:  "text-orange-300",
+    titleClass:  "text-ink",
   },
 };

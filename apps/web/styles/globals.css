@@ -1,99 +1,155 @@
 /* Tailwind v4: single @import replaces @tailwind base/components/utilities */
 @import "tailwindcss";
 
-/* ── Brand palette ────────────────────────────────────────────────────────
-   Colours + font mimic the company marketing site (home.css). This is a
-   palette-only restyle: we remap the Tailwind colour families the app
-   already uses (black / zinc surfaces, sky links) onto the brand greys +
-   purple, so existing utility classes pick up the new look with NO layout
-   change.
+/* ── Discount Forklift house palette ──────────────────────────────────────
+   SINGLE SOURCE OF TRUTH for every colour in this app. Components reference
+   these tokens by their semantic utility name (bg-panel, text-ink,
+   border-line, …) — never a raw hex, never a Tailwind palette family.
 
-   Deliberately NOT remapped (so per-model provider chips + the semantic
-   button system keep their meaning): blue (gemini), green (openai),
-   orange (grok), purple (kontext), cyan (ideogram), fuchsia (reve), plus
-   red (errors / cancel — matches brand --error) and yellow (field hints).
-   sky-300 is also left alone — gemini's provider title uses it. */
+   Three hard constraints this palette enforces:
+     1. Every grey is a TRUE neutral (r == g == b). No slate, no blue-grey,
+        no warm grey. The previous restyle shipped #454549 and #5A5A60,
+        which are blue-tinted; those are gone.
+     2. No clay / amber / mustard / orange / terracotta anywhere. The
+        "attention" colour is RED, not amber.
+     3. The ONLY blue-dominant colours permitted in the codebase are the two
+        CTA purples (--color-cta #914EA6, --color-cta-dark #743E85).
+
+   Semantics — three colours, three meanings. Do not add a fourth accent:
+     • lime   (accent) = brand identity and "good": complete, active, done,
+                         all-clear, progress.
+     • purple (cta)    = action. Primary buttons and NOTHING else.
+     • red    (danger) = attention AND error. They intentionally share the
+                         red family.
+
+   Elevation is three-level and deliberately unconventional: header and
+   footer are DARKER than the page (#131313 on #242424) while cards are
+   LIGHTER (#2C2C2C). The near-black plates top and bottom are the look —
+   do not "fix" this into a conventional single-direction ramp. */
 @theme {
-  /* Company purple — exposed under the (previously unused) brand-* family
-     so the purple utilities never collide with kontext's purple-* chip. */
-  --color-brand-300:  #DDA3EE;
-  --color-brand-400:  #CE6FEC;   /* brand-purple-light — active text, accents */
-  --color-brand-500:  #A559BD;   /* brand-purple — primary accent / fills */
-  --color-brand-600:  #914EA6;   /* brand-purple-hover */
-  --color-brand-700:  #7E3E92;
-  --color-brand-900:  #3A2142;   /* deep purple — subtle tinted backgrounds */
+  /* ── Surfaces ─────────────────────────────────────────────────────── */
+  --color-header-bg:  #131313;   /* header + footer plate; ALSO the text colour on filled accent/grey */
+  --color-bg:         #242424;   /* main page background */
+  --color-panel:      #2C2C2C;   /* cards, surfaces */
+  --color-panel-hi:   #363636;   /* raised surface: active tab, ghost-button hover */
+  --color-well:       #1A1A1A;   /* image letterbox, progress track, recessed areas */
+  --color-line:       #454545;   /* borders, dividers */
 
-  /* Acid lime — logo text, headings, placeholders. Custom token (no Tailwind
-     `lime-*` override) so nothing else shifts. */
-  --color-acid:       #95EA00;
+  /* ── Text ─────────────────────────────────────────────────────────── */
+  --color-ink:        #CACACA;   /* headings + primary text */
+  --color-ink-soft:   #9F9F9F;   /* sub-headings + secondary text */
+  --color-ink-faint:  #8A8A8A;   /* de-emphasised labels ONLY (~4.0:1 on panel) */
+  --color-grey:       #9A9A9A;   /* secondary tags, neutral pills */
+  --color-muted:      #8E8E8E;   /* disabled / archived / inactive states */
 
-  /* Surfaces + text — remap black + the zinc ramp onto the brand greys.
-     #131313 page → #1C1C1C → #2D2D2D card → #353535 raised. */
-  --color-black:      #131313;   /* page + header base */
-  --color-white:      #F4F4F4;   /* text-primary (near-white, not pure) */
+  /* ── The three accents ────────────────────────────────────────────── */
+  --color-accent:     #95EA00;   /* brand lime — "good", progress. 10.4:1 on bg, safe as text anywhere */
+  --color-cta:        #914EA6;   /* primary buttons (white text, 5.5:1) */
+  --color-cta-dark:   #743E85;   /* primary button hover */
 
-  --color-zinc-950:   #171717;
-  --color-zinc-900:   #2D2D2D;   /* card surface */
-  --color-zinc-800:   #353535;   /* raised surface / card border */
-  --color-zinc-700:   #454549;   /* muted / input border */
-  --color-zinc-600:   #5A5A60;   /* unselected control border */
-  --color-zinc-500:   #9F9F9F;   /* muted text */
-  --color-zinc-400:   #B0B0B0;   /* muted text (alt) */
-  --color-zinc-300:   #CDCDCD;
-  --color-zinc-200:   #E4E4E4;
-  --color-zinc-100:   #F4F4F4;   /* primary text */
+  /* Red is split three ways by USE, and mixing them up is the easiest
+     contrast bug to ship:
+       danger      — FILLED red only, under WHITE text (5.2:1).
+       danger-ink  — red TEXT, borders, status dots, hairline rules (4.6:1).
+                     NEVER use --color-danger as text: 2.7:1, fails AA.
+       danger-dark — destructive button hover. */
+  --color-danger:      #C22B2B;
+  --color-danger-ink:  #E85D5D;
+  --color-danger-dark: #8E1D1D;
 
-  /* Links / focus accents → brand purple. sky-300 intentionally untouched
-     (gemini provider title). */
-  --color-sky-400:    #CE6FEC;   /* link colour (utility usages) */
-  --color-sky-500:    #A559BD;   /* focus rings */
-
-  --font-sans:   'myriad-pro', system-ui, sans-serif;
-  --font-mono:   'JetBrains Mono', monospace;
+  /* ── Fonts ────────────────────────────────────────────────────────── */
+  /* Loaded via next/font/google in app/layout.tsx, which sets these
+     --font-*-src vars on <html>. Archivo Black = display, Archivo = body,
+     IBM Plex Mono = labels + metadata. */
+  --font-sans:    var(--font-archivo-src), system-ui, sans-serif;
+  --font-display: var(--font-archivo-black-src), var(--font-archivo-src), system-ui, sans-serif;
+  --font-mono:    var(--font-plex-mono-src), ui-monospace, monospace;
 
   --radius-card: 0.75rem;
   --radius-pill: 9999px;
+
+  /* ── Guardrail: delete every palette family we are not allowed to use ──
+     Tailwind v4 lets us remove a namespace subset with `initial`. Without
+     this, `bg-zinc-900` / `text-amber-300` / `border-blue-500` silently keep
+     working and the palette drifts straight back. With it, they generate no
+     CSS at all, so a stray legacy class shows up as an obviously-unstyled
+     element in review instead of quietly reintroducing a blue-grey.
+
+     Greys are gone because Tailwind has no true-neutral ramp: zinc-900 is
+     #18181b (r24 g24 b27 — blue-dominant), and slate/gray/stone are tinted
+     too. `neutral` IS r==g==b but its steps don't match this palette, so it
+     is removed as well to keep ONE source of truth.
+
+     Kept: white + black (both true neutrals, needed for on-fill text and
+     the pure-black nothing-else-works case) and Tailwind's transparent /
+     current / inherit keywords. */
+  --color-slate-*:   initial;
+  --color-gray-*:    initial;
+  --color-zinc-*:    initial;
+  --color-neutral-*: initial;
+  --color-stone-*:   initial;
+  --color-red-*:     initial;
+  --color-orange-*:  initial;
+  --color-amber-*:   initial;
+  --color-yellow-*:  initial;
+  --color-lime-*:    initial;
+  --color-green-*:   initial;
+  --color-emerald-*: initial;
+  --color-teal-*:    initial;
+  --color-cyan-*:    initial;
+  --color-sky-*:     initial;
+  --color-blue-*:    initial;
+  --color-indigo-*:  initial;
+  --color-violet-*:  initial;
+  --color-purple-*:  initial;
+  --color-fuchsia-*: initial;
+  --color-pink-*:    initial;
+  --color-rose-*:    initial;
 }
 
 @utility focus-ring {
-  outline: 2px solid var(--color-brand-500);
+  outline: 2px solid var(--color-cta);
   outline-offset: 2px;
 }
 
-/* ── Hyperlinks / inline CTAs ────────────────────────────────────────────
-   Canonical link style for the whole app: bold + one consistent bright
-   colour. Brand restyle moved this from sky-400 to brand-purple-light. Any
-   link that needs a different colour can still override with a Tailwind
-   text-* utility (utilities out-specificity base rules). See STYLE_GUIDE.md. */
 @layer base {
+  /* ── Hyperlinks / inline CTAs ──────────────────────────────────────
+     Canonical link style app-wide: bold + brand lime. Lime is 10.4:1 on
+     the page background, so it is safe as text anywhere.
+
+     Why not purple: purple is reserved for primary buttons and nothing
+     else. Why not the previous #CE6FEC: it is blue-dominant (r206 g111
+     b236) and therefore banned outright.
+
+     Any link that genuinely needs another colour can still override with
+     a Tailwind text-* utility — utilities out-specificity base rules. */
   a {
     font-weight: 700;
-    color: #CE6FEC; /* brand-purple-light */
+    color: var(--color-accent);
   }
   a:hover {
-    color: #DDA3EE; /* lighter purple */
+    color: var(--color-accent);
     text-decoration: underline;
   }
 
-  /* App-wide brand font. The Adobe "myriad-pro" web font is not bundled;
-     this sets the family + a graceful system-sans fallback. */
   body {
+    background-color: var(--color-bg);
+    color: var(--color-ink);
     font-family: var(--font-sans);
   }
 
-  /* Placeholders pick up the brand lime (dimmed so inputs stay legible). */
+  /* Placeholders are de-emphasised neutral, NOT lime. The old rule tinted
+     every placeholder brand-lime at 55% opacity, which read as a filled-in
+     value rather than a prompt and put "good"-state colour on empty inputs. */
   ::placeholder {
-    color: #95EA00;
-    opacity: 0.55;
+    color: var(--color-ink-faint);
+    opacity: 1;
   }
 
   /* Reserve the vertical scrollbar's gutter at all times so content
      doesn't shift horizontally when a short page (no scrollbar) grows
      into a tall one (scrollbar appears) — the "cards jump left when the
-     scrollbar shows up" problem. Reserving the gutter keeps the
-     centred layout fixed whether or not the scrollbar is present.
-     Degrades gracefully on browsers without scrollbar-gutter support
-     (behaves as it does today — minor jump, not broken). */
+     scrollbar shows up" problem. */
   html {
     scrollbar-gutter: stable;
   }

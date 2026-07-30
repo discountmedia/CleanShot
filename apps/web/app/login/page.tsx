@@ -27,31 +27,38 @@ export default async function LoginPage({ searchParams }: Props) {
   }
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center p-4">
-      {/* Subtle red glow behind the logo to match the red-accent
-          treatment the rest of the app uses (Header border, admin
-          badge, send-to-resize button). */}
+    <div className="min-h-screen bg-bg flex items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-8 relative">
-        {/* Logo / wordmark */}
+        {/* Wordmark — centred at the house auth-screen size (~250px wide).
+            The PNG is red with a black outline and a white keyline, so it
+            reads correctly on the dark page with no plate behind it. It
+            already carries "Discount Forklift", so the <h1> below is just
+            the app name with no text eyebrow. */}
         <div className="text-center space-y-3">
-          {/* eslint-disable-next-line @next/next/no-img-element -- plain <img>; logo is a circular PNG with transparency, next/image optimization isn't worth the config */}
+          {/* eslint-disable-next-line @next/next/no-img-element -- plain <img>; wide transparent PNG, next/image optimization isn't worth the config */}
           <img
-            src="/cleanshot-splash-icon-small.webp"
-            alt="CleanShot"
-            className="inline-block w-24 h-24 rounded-full mb-2 shadow-lg shadow-red-900/40"
+            src="/discount-forklift-logo.png"
+            alt="Discount Forklift"
+            /* Intrinsic 1438×400 (3.6:1) → 250px wide → 70px tall. */
+            width={250}
+            height={70}
+            className="inline-block h-auto mb-2"
           />
-          <h1 className="text-2xl font-bold text-white tracking-[0.18em] uppercase">
+          <h1 className="font-display text-2xl text-accent tracking-[0.18em] uppercase">
             CleanShot
           </h1>
-          <p className="text-sm text-zinc-400">by Discount Forklift</p>
+          <p className="text-sm text-ink-soft">
+            Turns used-equipment photos into clean, listing-ready images.
+          </p>
         </div>
 
-        {/* Sign-in card — black with a red top accent matching the
-            site Header's red-600 underline. */}
-        <div className="bg-zinc-950 border border-zinc-800 rounded-2xl overflow-hidden">
-          <div className="h-1 bg-red-600" aria-hidden="true" />
+        {/* Sign-in card. The top keyline is brand lime, not red — red in
+            this palette means attention/error, and an error-coloured bar
+            across the sign-in card reads as a failure state. */}
+        <div className="bg-well border border-line rounded-2xl overflow-hidden">
+          <div className="h-1 bg-accent" aria-hidden="true" />
           <div className="p-6 space-y-4">
-            <p className="text-sm text-zinc-400 text-center">
+            <p className="text-sm text-ink-soft text-center">
               Sign in with your Microsoft account to continue.
               Only authorized accounts can access CleanShot.
             </p>
@@ -59,13 +66,13 @@ export default async function LoginPage({ searchParams }: Props) {
           </div>
         </div>
 
-        <p className="text-center text-xs text-zinc-700">
+        <p className="text-center text-xs text-muted">
           Access restricted to authorized users only.
           Contact your administrator to request access.
         </p>
 
         {/* Attribution footer (same as workspace + admin) */}
-        <p className="text-[10px] text-zinc-800 text-center select-none">
+        <p className="text-[10px] text-ink-faint text-center select-none">
           Developed by Stephen Cunningham © AI App Integrations LLC 2026
         </p>
       </div>

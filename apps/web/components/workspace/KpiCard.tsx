@@ -2,25 +2,20 @@
 // One stat tile — small uppercase label, huge colored number, optional secondary label.
 // Mirrors the metric-card pattern from the company's inventory/ledger dashboards.
 
+// Named by ROLE, not by hue. The old union ("green" | "yellow" | "blue" | …)
+// became a second colour vocabulary once the house palette landed — "blue"
+// mapped to lime, which is a lie the next reader would have to decode.
 export type KpiColor =
-  | "white"
-  | "red"
-  | "green"
-  | "yellow"
-  | "orange"
-  | "blue"
-  | "purple"
-  | "muted";
+  | "neutral"   // plain count, no judgement
+  | "good"      // lime — throughput, healthy, done
+  | "attention" // red — needs a human; this palette has no amber
+  | "muted";    // inactive / archived
 
 const VALUE_COLORS: Record<KpiColor, string> = {
-  white:  "text-white",
-  red:    "text-red-500",
-  green:  "text-green-400",
-  yellow: "text-yellow-400",
-  orange: "text-orange-400",
-  blue:   "text-sky-400",
-  purple: "text-violet-400",
-  muted:  "text-zinc-600",
+  neutral:   "text-ink",
+  good:      "text-accent",
+  attention: "text-danger-ink",
+  muted:     "text-muted",
 };
 
 interface KpiCardProps {
@@ -40,7 +35,7 @@ export function KpiCard({
   label,
   value,
   secondary,
-  color = "white",
+  color = "neutral",
   href,
   placeholder = false,
 }: KpiCardProps) {
@@ -51,17 +46,17 @@ export function KpiCard({
     <Tag
       {...tagProps}
       className={`
-        group relative block rounded-xl border border-zinc-800 bg-zinc-950/60
+        group relative block rounded-xl border border-line bg-well/60
         px-5 py-4 transition-colors
-        ${href ? "hover:border-zinc-700" : ""}
+        ${href ? "hover:border-line" : ""}
       `}
     >
       <div className="flex items-start justify-between gap-3">
-        <span className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-200">
+        <span className="text-sm font-semibold uppercase tracking-[0.14em] text-ink">
           {label}
         </span>
         {href && (
-          <span className="text-zinc-300 group-hover:text-white transition-colors" aria-hidden="true">
+          <span className="text-ink-soft group-hover:text-ink transition-colors" aria-hidden="true">
             →
           </span>
         )}
@@ -72,7 +67,7 @@ export function KpiCard({
       </div>
 
       {secondary && (
-        <div className="mt-2 text-sm text-zinc-300">
+        <div className="mt-2 text-sm text-ink-soft">
           {secondary}
         </div>
       )}

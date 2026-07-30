@@ -46,11 +46,11 @@ export function UserMenu() {
   if (isPending) {
     return (
       <div
-        className="flex items-center gap-3 px-4 py-2 rounded-lg bg-zinc-900 border-2 border-zinc-800"
+        className="flex items-center gap-3 px-4 py-2 rounded-lg bg-panel border-2 border-line"
         aria-hidden="true"
       >
-        <span className="w-9 h-9 rounded-full bg-zinc-800" />
-        <span className="hidden sm:block w-32 h-4 rounded bg-zinc-800" />
+        <span className="w-9 h-9 rounded-full bg-panel-hi" />
+        <span className="hidden sm:block w-32 h-4 rounded bg-panel-hi" />
       </div>
     );
   }
@@ -71,7 +71,7 @@ export function UserMenu() {
     <div className="relative">
       <button
         onClick={() => setMenuOpen((v) => !v)}
-        className="flex items-center gap-3 px-4 py-2 rounded-lg bg-zinc-900 border-2 border-zinc-800 hover:border-zinc-500 transition-colors"
+        className="flex items-center gap-3 px-4 py-2 rounded-lg bg-panel border-2 border-line hover:border-ink-faint transition-colors"
         aria-expanded={menuOpen}
         aria-label="User menu"
       >
@@ -82,7 +82,7 @@ export function UserMenu() {
             alt=""
             width={36}
             height={36}
-            className="w-9 h-9 rounded-full object-cover bg-zinc-800"
+            className="w-9 h-9 rounded-full object-cover bg-panel-hi"
           />
         ) : (
           /* Initials fallback shares the avatar's exact 36×36 footprint
@@ -91,12 +91,12 @@ export function UserMenu() {
              width/height on the <img>, the browser couldn't reserve
              space before the image bytes arrived → CLS spike each
              page-load. (Real Experience Score fix 2026-05-27.) */
-          <span className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-sm font-bold text-white">
+          <span className="w-9 h-9 rounded-full bg-panel-hi flex items-center justify-center text-sm font-bold text-ink">
             {initials}
           </span>
         )}
-        <span className="text-base text-zinc-100 font-bold max-w-45 truncate hidden sm:block">{email}</span>
-        <svg className={`w-4 h-4 text-zinc-300 transition-transform ${menuOpen ? "rotate-180" : ""}`}
+        <span className="text-base text-ink font-bold max-w-45 truncate hidden sm:block">{email}</span>
+        <svg className={`w-4 h-4 text-ink-soft transition-transform ${menuOpen ? "rotate-180" : ""}`}
           fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M19 9l-7 7-7-7" />
         </svg>
@@ -108,15 +108,15 @@ export function UserMenu() {
           <div className="fixed inset-0 z-10" onClick={() => setMenuOpen(false)} aria-hidden="true" />
 
           {/* Dropdown */}
-          <div className="absolute right-0 mt-2 w-56 bg-zinc-900 border border-zinc-700 rounded-xl shadow-xl z-20 overflow-hidden">
-            <div className="px-4 py-3 border-b border-zinc-800">
-              <p className="text-xs text-zinc-500">Signed in as</p>
-              <p className="text-sm text-white font-medium truncate mt-0.5">{email}</p>
+          <div className="absolute right-0 mt-2 w-56 bg-panel border border-line rounded-xl shadow-xl z-20 overflow-hidden">
+            <div className="px-4 py-3 border-b border-line">
+              <p className="text-xs text-ink-faint">Signed in as</p>
+              <p className="text-sm text-ink font-medium truncate mt-0.5">{email}</p>
             </div>
             <Link
               href="/profile"
               onClick={() => setMenuOpen(false)}
-              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-zinc-200 hover:bg-zinc-800 border-b border-zinc-800 transition-colors"
+              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-ink hover:bg-panel-hi border-b border-line transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
@@ -127,7 +127,7 @@ export function UserMenu() {
             <button
               onClick={handleSignOut}
               disabled={signingOut}
-              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-red-400 hover:bg-zinc-800 transition-colors"
+              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-danger-ink hover:bg-panel-hi transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

@@ -47,29 +47,29 @@ export function CommandBar({
     "text-sm uppercase tracking-[0.16em] font-bold px-5 py-2.5 rounded border-2 transition-colors whitespace-nowrap";
 
   return (
-    <section className="sticky bottom-0 mt-2 -mx-6 px-6 py-3 bg-black/95 backdrop-blur border-t border-zinc-900">
+    <section className="sticky bottom-0 mt-2 -mx-6 px-6 py-3 bg-header-bg/95 backdrop-blur border-t border-line">
       <div className="max-w-screen-2xl mx-auto flex items-center gap-4 flex-wrap">
         <div className="flex items-center gap-4 text-sm">
           <span className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-green-500" />
-            <span className="text-zinc-100 tabular-nums font-bold">{readyCount} ready</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-accent" />
+            <span className="text-ink tabular-nums font-bold">{readyCount} ready</span>
           </span>
           <span className="flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-            <span className="text-zinc-100 tabular-nums font-bold">{workingCount} working</span>
+            <span className="w-2.5 h-2.5 rounded-full bg-panel-hi" />
+            <span className="text-ink tabular-nums font-bold">{workingCount} working</span>
           </span>
           {undecidedCount > 0 && (
             <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-              <span className="text-red-300 tabular-nums font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-danger" />
+              <span className="text-danger-ink tabular-nums font-bold">
                 {undecidedCount} need a pick
               </span>
             </span>
           )}
           {heldCount > 0 && (
             <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-              <span className="text-amber-200 tabular-nums font-bold">{heldCount} held</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-danger" />
+              <span className="text-danger-ink tabular-nums font-bold">{heldCount} held</span>
             </span>
           )}
         </div>
@@ -85,8 +85,8 @@ export function CommandBar({
               title="Skip the Scan step and send picked winners straight to the Resize tab"
               className={`${ctaBase} ${
                 canSend
-                  ? "border-blue-500 bg-blue-600 hover:bg-blue-500 text-white"
-                  : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
+                  ? "border-line bg-panel hover:bg-panel-hi text-ink"
+                  : "border-line bg-well text-muted cursor-not-allowed"
               }`}
             >
               Skip Scan → Send {readyCount} to Resize
@@ -99,8 +99,8 @@ export function CommandBar({
             disabled={!canSend}
             className={`${ctaBase} ${
               canSend
-                ? "border-green-500 bg-green-600 hover:bg-green-500 text-white"
-                : "border-zinc-800 bg-zinc-950 text-zinc-700 cursor-not-allowed"
+                ? "border-cta bg-cta hover:bg-cta-dark text-white"
+                : "border-line bg-well text-muted cursor-not-allowed"
             }`}
           >
             Send {readyCount} to Scan →

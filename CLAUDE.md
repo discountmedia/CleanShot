@@ -41,7 +41,15 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 
 ---
 
-## Latest session (2026-07-21) — best-of-N auto-pick, Grok dormant, prompt-first Enhance
+## Latest session (2026-07-30) — differential-scan recalibration + house-palette migration
+
+**1. Differential scan stopped false-positiving on paint** (`5805777`). The operator was getting a flood of failed scans for the exact edits they'd asked for (new paint, forks painted red with yellow tips). Root cause was a **regression from prompt-first Enhance**, not just an over-eager prompt: `_describe_intended_edits` builds the "already requested, don't flag" whitelist from the enhance **toggles**, but prompt-first made toggles optional — the operator types the intent instead, so the whitelist came back nearly empty and the requested repaint got flagged as an unintended `colour_changed`. The manual Scan-tab batch never sent `intended_edits` at all (ScanPanel omits the field), so a re-scan hit the *strictest* fallback text. Fixes: **paint is now STANDING policy in `SCAN_DIFFERENTIAL_PROMPT_BASE`** rather than a per-batch whitelist entry (same-colour respray, red/orange forks + yellow tips, black backrest/carriage/load guard, repainted wheels/counterweight are always expected) — which also fixes the manual re-scan and the toggles-off path without lifting toggle state into ScanPanel; **geometry flags removed entirely** (operator: "no one understands what that means" — it was the label on most false positives; gross deformity still lands as `size_changed`/`part_added`/`part_removed`); text fires only when a number is legible in BOTH images and genuinely differs (never 1-2 char drift); and the operator's typed prompt is threaded through verbatim (1500-char cap). Closes the parked 2026-07-13 recalibration item. **Still open:** `computeConsensus` returns `"mixed"` if any ONE of three providers fails, so a single over-eager vote still costs a clean pass badge — changing it is a verdict-semantics decision, not a bug.
+
+**2. Discount Forklift house-palette migration** (35 files). A *partial* migration to this same palette already existed and had drifted wrong: it remapped Tailwind's families (`--color-zinc-900: #2D2D2D`) — the second-source-of-truth problem — and shipped `#454549`/`#5A5A60` (blue-tinted greys), three blue-dominant purples that were neither CTA purple, and `#131313` as the *page* background so header and page were the same plate. Now 17 semantic tokens in `@theme` are the only source of colour, ~1,400 legacy palette-class usages are gone, and the offending Tailwind families are deleted so they can't come back silently. See the "Frontend UI system" section for the rules. Verified by channel-auditing the **compiled** stylesheet (source greps miss what Tailwind emits): every grey `r == g == b`, only `#914EA6`/`#743E85` blue-dominant, all reds `g == b`, zero amber, no `oklch()` leak. Build + `tsc` clean; the 8 remaining ESLint errors are pre-existing `react-hooks/set-state-in-effect`. **Two open items:** the Microsoft SSO logo keeps its four official brand squares ([LoginButton.tsx](apps/web/components/auth/LoginButton.tsx)) as a deliberate third-party-trademark exception — swap to Microsoft's approved monochrome mark if strict compliance is wanted; and **no footer component exists**, so the spec's footer plate + 26px footer wordmark are unimplemented (adding one is new UI, not a restyle).
+
+---
+
+## Previous session (2026-07-21) — best-of-N auto-pick, Grok dormant, prompt-first Enhance
 
 Three shipped Enhance-tab changes (all live in prod):
 
@@ -55,7 +63,7 @@ Three shipped Enhance-tab changes (all live in prod):
 
 ---
 
-## Previous session (2026-07-13) — differential scan, equipment types, enhance-quality investigation
+## Earlier session (2026-07-13) — differential scan, equipment types, enhance-quality investigation
 
 **Shipped & live:**
 - **Differential (before/after) scan** (`3a90e77`) — see the Scan section below. Compares the enhanced output against the ORIGINAL pre-enhance photo and flags UNINTENDED machine changes (shrunk forks, added parts, altered text, added damage), with an `intended_edits` whitelist so deliberate edits aren't flagged. Auto-fires on every enhance; manual scan-batch threads originals too; standalone uploads fall back to the isolated scan.
@@ -346,15 +354,22 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 
 ## Frontend UI system, Flags & access control
 
-**`STYLE_GUIDE.md` (repo root) is the canonical UI reference.** Established in the 2026-05-27 consistency overhaul. Conform to it for any new UI; extend it in-PR rather than inventing one-offs. Key rules baked in across the app:
+**`STYLE_GUIDE.md` (repo root) is the canonical UI reference.** Rewritten 2026-07-30 for the **Discount Forklift house palette** (see Latest session). Conform to it for any new UI; extend it in-PR rather than inventing one-offs. Key rules baked in across the app:
 
-- **Button colour system (strict):** 🟢 green = approve/proceed/commit · 🔵 blue = skip/utility · 🔴 red = cancel/clear/start-over. No full-width buttons (`inline-flex`, never `w-full`).
-- **Links/CTAs:** bold `sky-400` (global base-layer rule in `globals.css`).
-- **One yellow:** `yellow-300` for field hints (matches provider-card text).
+- **`apps/web/styles/globals.css` is the SINGLE source of truth for colour.** 17 semantic tokens in Tailwind v4 `@theme` (`bg-panel`, `text-ink`, `border-line`, …). Never a raw hex, never a Tailwind palette family — the offending families are **deleted** (`--color-zinc-*: initial`, etc.), so `bg-zinc-900` generates no CSS and a stray legacy class is visibly unstyled instead of silently reintroducing a blue-grey.
+- **Three hard constraints:** every grey is a true neutral (`r == g == b`) · no amber/orange/mustard anywhere (the attention colour is RED) · the only blue-dominant colours allowed are the two CTA purples `#914EA6` / `#743E85`.
+- **Three accents, three meanings:** lime `#95EA00` = brand + "good" (complete/active/progress) · purple = **action, primary buttons and nothing else** · red = attention AND error.
+- **Button colour system (strict):** primary/proceed/approve = **purple** `border-cta bg-cta hover:bg-cta-dark text-white` · secondary/skip/utility = **neutral ghost** `bg-panel hover:bg-panel-hi` · destructive = `bg-danger hover:bg-danger-dark text-white`. No full-width buttons (`inline-flex`, never `w-full`). Flat — no shadows.
+- **Text-on-fill (easiest thing to get wrong):** text on filled lime/grey MUST be `text-header-bg` `#131313` (white is ~1.5:1) · white is correct on filled purple/red · red as *text* is `danger-ink` `#E85D5D`, never `danger` `#C22B2B` (2.7:1, fails AA).
+- **Elevation is three-level and intentional:** header/footer plates are DARKER than the page (`#131313` on `#242424`) while cards are LIGHTER (`#2C2C2C`). Don't "fix" it into a conventional ramp.
+- **Selected/active state, one pattern everywhere:** raised surface + lime border (`bg-panel-hi border-accent`).
+- **Links/CTAs:** bold **lime** (global base-layer rule in `globals.css`). Not purple (buttons only); the old `sky-400` and `#CE6FEC` are both blue-dominant and banned.
+- **Fonts:** `font-display` Archivo Black (h1 + uppercase section headings) · Archivo body · IBM Plex Mono labels/metadata, via `next/font/google` in `app/layout.tsx`. **Never combine `font-display` with `font-bold`** — Archivo Black is single-weight and the browser fakes a smeared bold.
 - **Auto-advance is GONE** — removed entirely. The per-card "Hold" on Enhance now just means "exclude from the bulk Send to Scan".
-- **Tooltip accordions:** `TipBanner` is collapsible by default, driven by `apps/web/lib/useVisitCount.ts` — expanded visits 1-4, collapsed visit 5+ (localStorage `cleanshot_visit_count`). One blue tooltip per tab. The Enhance equipment-details red callout is the exception: always defaults expanded.
-- **Equipment selectors** render as toggle-cards (blue selected / dark + radio-dot unselected), grouped warehouse-forks vs aerial via `EQUIPMENT_GROUPS` in `lib/types.ts`.
+- **Tooltip accordions:** `TipBanner` is collapsible by default, driven by `apps/web/lib/useVisitCount.ts` — expanded visits 1-4, collapsed visit 5+ (localStorage `cleanshot_visit_count`). One callout per tab; `tone="info"` is neutral + lime icon, `tone="warn"` is red. The Enhance equipment-details callout is the exception: always defaults expanded.
+- **Equipment selectors** render as toggle-cards (raised + lime border selected / dark + radio-dot unselected), grouped warehouse-forks vs aerial via `EQUIPMENT_GROUPS` in `lib/types.ts`.
 - **Scrollbar gutter:** `html { scrollbar-gutter: stable }` reserves the gutter so cards don't jump when the scrollbar appears.
+- **Per-provider identity hues are GONE** — a three-accent palette can't encode six model colours. Provider selection is structural; the speed pill (lime "Fast" / red "Slow") carries differentiation.
 
 **Vercel Flags SDK + PostHog** — `apps/web/flags.ts`. `identify()` resolves the operator from the Better Auth session (`getSessionEmail(await headers())`) so PostHog targets flags per-user by email. Example flag `myFlag`/`my-flag` is a template — rename to the real PostHog flag key. Adapter env vars come from `vercel env pull` (.env.local, gitignored); must also exist in Vercel Production.
 
