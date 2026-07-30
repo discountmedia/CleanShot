@@ -113,7 +113,7 @@ function ThumbnailCard({ file }: { file: UploadFile }) {
             </>
           )}
           {file.status === "error" && (
-            <span className="text-xs text-danger-ink text-center">{file.error ?? "Upload failed"}</span>
+            <span className="text-xs text-attn text-center">{file.error ?? "Upload failed"}</span>
           )}
           {file.status === "pending" && (
             <span className="text-xs text-ink-soft">Queued</span>
@@ -1608,7 +1608,7 @@ export function EnhancePanel({
             </h3>
             <button
               onClick={handleClearAll}
-              className="text-sm font-bold text-ink hover:text-danger-ink transition-colors border border-line hover:border-danger-ink rounded px-3 py-1.5"
+              className="text-sm font-bold text-ink hover:text-attn transition-colors border border-line hover:border-attn rounded px-3 py-1.5"
             >
               Clear all
             </button>
@@ -1689,7 +1689,7 @@ export function EnhancePanel({
                 ✓ Prompt set
               </span>
             ) : (
-              <span className="text-xs uppercase tracking-[0.18em] font-bold text-danger-ink bg-panel border border-danger-ink rounded px-2 py-0.5">
+              <span className="text-xs uppercase tracking-[0.18em] font-bold text-attn bg-panel border border-attn rounded px-2 py-0.5">
                 Required
               </span>
             )}
@@ -1714,7 +1714,7 @@ export function EnhancePanel({
             <div className="space-y-3">
               <div className="flex items-baseline justify-between gap-3 flex-wrap">
                 <h3 className="text-lg font-semibold text-ink">
-                  Your prompt <span className="text-danger-ink">*</span>
+                  Your prompt <span className="text-attn">*</span>
                 </h3>
                 <div className="flex items-center gap-3">
                   <button
@@ -1836,7 +1836,7 @@ export function EnhancePanel({
 
       {/* ── Global error ── */}
       {globalError && (
-        <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="alert">
+        <p className="text-sm text-attn bg-panel border border-attn rounded-lg px-4 py-3" role="alert">
           {globalError}
         </p>
       )}

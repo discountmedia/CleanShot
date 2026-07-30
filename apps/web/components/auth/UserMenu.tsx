@@ -127,7 +127,7 @@ export function UserMenu() {
             <button
               onClick={handleSignOut}
               disabled={signingOut}
-              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-danger-ink hover:bg-panel-hi transition-colors"
+              className="w-full flex items-center gap-2 px-4 py-3 text-sm text-attn hover:bg-panel-hi transition-colors"
             >
               <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}

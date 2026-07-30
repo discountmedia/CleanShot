@@ -52,10 +52,10 @@ export function RegenPanel({
   const rows = Math.min(12, prompt.split("\n").length + 1);
 
   return (
-    <section className="rounded-lg border border-danger-ink bg-panel overflow-hidden">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-danger-ink bg-panel">
+    <section className="rounded-lg border border-attn bg-panel overflow-hidden">
+      <header className="flex items-center justify-between px-4 py-2 border-b border-attn bg-panel">
         <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-danger-ink">
+          <span className="text-[10px] uppercase tracking-[0.18em] font-bold text-attn">
             ↻ Regenerate
           </span>
           <span className="text-[10px] text-ink-faint italic">
@@ -78,7 +78,7 @@ export function RegenPanel({
           rows={rows}
           spellCheck={false}
           aria-label="Regeneration prompt"
-          className="w-full bg-well border border-line rounded-md px-3 py-2 text-[12px] font-mono text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent resize-y leading-relaxed"
+          className="w-full bg-well border border-line rounded-md px-3 py-2 text-[12px] font-mono text-ink focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent resize-y leading-relaxed"
         />
 
         <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -90,7 +90,7 @@ export function RegenPanel({
               value={provider}
               onChange={(e) => setProvider(e.target.value as EnhanceProvider)}
               aria-label="Regeneration provider"
-              className="bg-panel border border-line rounded-md px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent"
+              className="bg-panel border border-line rounded-md px-2.5 py-1.5 text-xs text-ink focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent"
             >
               {ENHANCE_PROVIDERS.map((p) => (
                 <option key={p} value={p}>
@@ -106,7 +106,7 @@ export function RegenPanel({
           <button
             type="button"
             onClick={() => onApply({ prompt, provider })}
-            className="text-xs uppercase tracking-[0.18em] font-semibold text-ink bg-danger hover:bg-danger-dark border border-danger-ink px-4 py-2 rounded transition-colors"
+            className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-cta hover:bg-cta-dark border border-attn px-4 py-2 rounded transition-colors"
           >
             ↻ Regenerate now
           </button>

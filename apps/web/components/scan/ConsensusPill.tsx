@@ -14,7 +14,7 @@ const VERDICT_CONFIG: Record<
   { label: string; icon: string; colorClass: string }
 > = {
   pass:  { label: "PASS",  icon: "✓", colorClass: "text-accent bg-panel border-accent" },
-  fail:  { label: "FAIL",  icon: "✗", colorClass: "text-danger-ink bg-panel border-danger-ink" },
+  fail:  { label: "FAIL",  icon: "✗", colorClass: "text-attn bg-panel border-attn" },
   mixed: { label: "MIXED", icon: "◐", colorClass: "text-accent bg-panel border-accent" },
 };
 

@@ -175,7 +175,7 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
 
       <main className="max-w-screen-md mx-auto px-6 py-6 space-y-6">
         {loadErr && (
-          <p className="text-base text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3">
+          <p className="text-base text-attn bg-panel border border-attn rounded-lg px-4 py-3">
             Could not load profile: {loadErr}
           </p>
         )}
@@ -260,7 +260,7 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="e.g. Stephen Cunningham"
-                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
               />
             </label>
             <label className="flex flex-col gap-1.5">
@@ -270,7 +270,7 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
                 value={workPhone}
                 onChange={(e) => setWorkPhone(e.target.value)}
                 placeholder="(555) 555-5555"
-                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
               />
             </label>
             <label className="flex flex-col gap-1.5 md:col-span-2">
@@ -280,7 +280,7 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
                 placeholder="City, State (e.g. Dallas, TX)"
-                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
               />
             </label>
           </div>
@@ -482,7 +482,7 @@ function SupportTicketForm() {
             onChange={(e) => setSubject(e.target.value)}
             required
             maxLength={200}
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -493,7 +493,7 @@ function SupportTicketForm() {
             required
             rows={5}
             maxLength={4000}
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition resize-y"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder-ink-faint focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition resize-y"
           />
         </label>
         <button
@@ -502,7 +502,7 @@ function SupportTicketForm() {
           className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors ${
             sending || !subject.trim() || !body.trim()
               ? "bg-panel-hi text-ink-faint cursor-not-allowed"
-              : "bg-danger hover:bg-danger-dark text-white"
+              : "bg-cta hover:bg-cta-dark text-white"
           }`}
         >
           {sending ? "Sending…" : "Send to admin"}

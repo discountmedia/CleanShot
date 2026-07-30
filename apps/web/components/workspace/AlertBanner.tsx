@@ -7,16 +7,21 @@ import { useState } from "react";
 
 type Severity = "danger" | "warn" | "info";
 
+// The palette has ONE attention colour (purple `attn`), so danger and warn
+// can no longer differ by hue — they differ by WEIGHT instead: danger gets a
+// 2px rule and a raised surface, warn a hairline on the flat panel. Without
+// this the two severities were byte-identical, which reads as a copy-paste
+// bug to the next person in here.
 const STYLES: Record<Severity, { border: string; icon: string; title: string }> = {
   danger: {
-    border: "border-danger-ink bg-panel",
-    icon:   "text-danger-ink",
-    title:  "text-danger-ink",
+    border: "border-2 border-attn bg-panel-hi",
+    icon:   "text-attn",
+    title:  "text-attn",
   },
   warn: {
-    border: "border-danger-ink bg-panel",
-    icon:   "text-danger-ink",
-    title:  "text-danger-ink",
+    border: "border-attn bg-panel",
+    icon:   "text-attn",
+    title:  "text-ink",
   },
   info: {
     border: "border-line bg-panel/40",

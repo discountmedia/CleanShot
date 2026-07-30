@@ -16,7 +16,7 @@ const SEV_STYLE: Record<
   AnomalyItem["severity"],
   { dot: string; text: string; bg: string }
 > = {
-  high:   { dot: "bg-danger",    text: "text-danger-ink",    bg: "bg-panel border-danger-ink" },
+  high:   { dot: "bg-cta",    text: "text-attn",    bg: "bg-panel border-attn" },
   medium: { dot: "bg-accent", text: "text-accent", bg: "bg-panel border-accent" },
   low:    { dot: "bg-grey",   text: "text-ink-soft",   bg: "bg-panel/40 border-line" },
 };

@@ -450,12 +450,12 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
 
       {/* ── Error / warning banners ── */}
       {error && (
-        <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="alert">
+        <p className="text-sm text-attn bg-panel border border-attn rounded-lg px-4 py-3" role="alert">
           {error}
         </p>
       )}
       {anyWarning && (
-        <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="status">
+        <p className="text-sm text-attn bg-panel border border-attn rounded-lg px-4 py-3" role="status">
           Some images could not be compressed under 99 KB at acceptable quality — those tiles are flagged below. Inspect them before downloading; the ZIP still contains the lowest-quality version the encoder could produce.
         </p>
       )}
@@ -631,7 +631,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                         className={`text-[10px] font-mono px-2 py-0.5 rounded ${
                           aspectOk
                             ? "bg-header-bg/70 text-accent"
-                            : "bg-panel text-danger-ink border border-danger-ink"
+                            : "bg-panel text-attn border border-attn"
                         }`}
                         title={aspectOk ? "Dimensions match spec" : "Wrong dimensions — letterboxing or wrong aspect"}
                       >
@@ -640,7 +640,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                       <span
                         className={`text-[10px] font-mono px-2 py-0.5 rounded ${
                           item.sizeWarning
-                            ? "bg-panel text-danger-ink border border-danger-ink"
+                            ? "bg-panel text-attn border border-attn"
                             : "bg-header-bg/70 text-ink-soft"
                         }`}
                         title={item.sizeWarning ? "Couldn't compress under 99 KB" : ""}

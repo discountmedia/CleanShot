@@ -15,8 +15,8 @@ Tailwind's default colour families are **deleted** in `@theme` (`--color-zinc-*:
 ### Three hard constraints
 
 1. **Every grey is a true neutral — `r == g == b`.** No slate, no blue-grey, no warm grey. Tailwind has no true-neutral ramp (`zinc-900` is `#18181b`, r24 g24 b27 — blue-dominant), which is why the families are gone.
-2. **No clay, amber, mustard, orange or terracotta anywhere.** The "attention" colour is **red**, not amber.
-3. **The only blue-dominant colours permitted in the codebase are the two CTA purples** (`#914EA6`, `#743E85`). Nothing else may have blue as its strongest channel.
+2. **No clay, amber, mustard, orange or terracotta anywhere.** The "attention" colour is **purple** (`attn`). It was briefly red; red is now reserved for genuinely destructive controls only.
+3. **The only blue-dominant colours permitted are the three house purples** (`#914EA6`, `#743E85`, `#B786C6`). `#B786C6` is unavoidably blue-dominant — every colour at hue 285° is — so making attention purple widened this constraint from two to three. Nothing else may have blue as its strongest channel.
 
 Audit by channel, not by eye — old blue-greys hide in placeholders, empty states and letterbox backgrounds no design review ever looks at:
 
@@ -43,19 +43,23 @@ find .next -name '*.css' -path '*static*' | xargs grep -ohE '#[0-9A-Fa-f]{6}' | 
 | grey | `grey` | `#9A9A9A` | Secondary tags, neutral pills |
 | muted | `muted` | `#8E8E8E` | Disabled / archived / inactive |
 | accent | `accent` | `#95EA00` | Brand lime — "good" states, progress |
+| attn | `attn` | `#B786C6` | **Attention + error**: text, borders, rules, status dots. 5.35:1 page / 4.81:1 card |
 | cta | `cta` | `#914EA6` | Primary buttons |
 | ctaDark | `cta-dark` | `#743E85` | Primary button hover |
-| danger | `danger` | `#C22B2B` | **FILLED red only**, under white text |
-| dangerInk | `danger-ink` | `#E85D5D` | Red **text**, borders, status dots, rules on dark |
+| danger | `danger` | `#C22B2B` | **DESTRUCTIVE controls only** — filled, under white text |
+| dangerInk | `danger-ink` | `#E85D5D` | Hairline border on a filled destructive button |
 | dangerDark | `danger-dark` | `#8E1D1D` | Destructive button hover |
 
 ---
 
 ## 2. Semantics — three colours, three meanings
 
-- **lime** = brand identity and "good": complete, active, done, all-clear, progress.
-- **purple** = action. **Primary buttons and nothing else.**
-- **red** = attention **and** error. They share the red family; that is intentional.
+- **lime** (`accent`) = brand identity and "good": complete, active, done, all-clear, progress.
+- **purple** (`cta`) = action. Primary buttons.
+- **purple** (`attn`) = attention **and** error — text, borders, rules, status dots.
+- **red** (`danger`) = **destructive controls only.** Currently exactly three: the two ✕ remove buttons and Clear All. Nothing else in the app is red.
+
+**Red is not a general accent.** Before this palette, red was the brand accent, so `Approve →`, `Download ZIP`, `Retry`, `Regenerate now` and `Send to admin` were all red despite being ordinary actions. They are purple now. If you find yourself reaching for red, ask whether the control actually destroys something.
 
 **Do not add a fourth accent. Do not reintroduce a second green. Do not use amber for warnings.**
 
@@ -63,8 +67,8 @@ Consequences worth knowing:
 
 - The old **blue** "skip/utility" button is now a **neutral ghost button** (`bg-panel` → `hover:bg-panel-hi`), because purple is reserved for primary actions.
 - The old **yellow** field hint is now **lime** — the brand "look here" highlight. Lime is 10.4:1 on `bg`, so lime text and rules are safe anywhere on the page.
-- The old **amber** warning tone is now **red** (`danger-ink` on `bg-panel`).
-- **Per-provider identity hues are gone.** A three-accent palette can't encode six model colours. Provider selection is shown structurally (raised surface + lime border) and differentiated by name plus the speed pill (lime "Fast" / red "Slow").
+- The old **amber** warning tone is now **purple** (`attn` on `bg-panel`).
+- **Per-provider identity hues are gone.** The palette can't encode six model colours. Provider selection is shown structurally (raised surface + lime border) and differentiated by name plus the speed pill (lime "Fast" / purple "Slow").
 
 ---
 
@@ -88,7 +92,7 @@ Header and footer are **DARKER** than the page (`#131313` on `#242424`), while c
 |---|---|---|
 | Filled **lime** or filled **grey** | `text-header-bg` (`#131313`) | White on `#95EA00` is ~1.5:1 and effectively unreadable. Covers filled badges, count pills, active pills, **checklist ticks**, toggle knobs. |
 | Filled **purple** or filled **red** | `text-white` | 5.5:1 and 5.2:1 — correct. |
-| Red as **text** or a hairline rule | `text-danger-ink` (`#E85D5D`, 4.6:1) | **Never** `danger` `#C22B2B` as text — 2.7:1 on `#242424`, fails AA. |
+| Attention as **text** or a hairline rule | `text-attn` (`#B786C6`) | **Never** a CTA purple as text — `#914EA6` is 2.84:1 and `#743E85` is 2.05:1, both fail AA. The CTA purples are fill-only. |
 | Lime as text or rule | `text-accent` | 10.4:1 on `bg` — safe anywhere. |
 
 Two automated checks worth re-running after any bulk change:
@@ -122,7 +126,7 @@ inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em]
 |---|---|
 | **Primary / proceed / approve / commit** | `border-cta bg-cta hover:bg-cta-dark text-white` |
 | **Secondary / skip / utility (ghost)** | `border-line bg-panel hover:bg-panel-hi text-ink` |
-| **Destructive / cancel / clear / start-over** | `border-danger-ink bg-danger hover:bg-danger-dark text-white` |
+| **Destructive (only if it really destroys)** | `border-danger-ink bg-danger hover:bg-danger-dark text-white` |
 | **Disabled** | `border-line bg-panel-hi text-muted cursor-not-allowed` |
 
 Buttons stay **flat** — no drop shadows, and no coloured shadows at all (the `shadow-*-900/40` tints were removed with the palette).
@@ -146,9 +150,9 @@ The toggle switch (`ToggleSwitch` in `EnhancePanel.tsx`) follows it: track `bg-a
 | Standard card | `rounded-xl border border-line bg-panel p-4` (`p-5` roomy) |
 | Recessed / letterbox | `bg-well border border-line` |
 | Info callout (`TipBanner` `tone="info"`) | `border-line bg-panel`, icon `text-accent`, title `text-ink` |
-| Warn callout (`tone="warn"`) | `border-danger-ink bg-panel`, icon + title `text-danger-ink` |
+| Warn callout (`tone="warn"`) | `border-attn bg-panel`, icon + title `text-attn` |
 | Success card | `rounded-xl border-2 border-accent bg-panel px-5 py-4` |
-| Error card | `border border-danger-ink bg-panel rounded-lg px-4 py-3 text-danger-ink` |
+| Error card | `border border-attn bg-panel rounded-lg px-4 py-3 text-attn` |
 | Drag-and-drop zone | `border-2 border-dashed rounded-xl p-8 text-center` — idle `border-line`, hover/dragging `border-accent bg-panel-hi/40`, disabled `border-line opacity-50` |
 | Image scrims over photos | `bg-header-bg/70` … `/95` (token, not raw black) |
 | Radius scale | cards `rounded-xl`; buttons/inputs `rounded-lg`; pills `rounded` |
@@ -211,10 +215,11 @@ Fonts load via `next/font/google` in [`app/layout.tsx`](apps/web/app/layout.tsx)
 - ❌ Any Tailwind palette family (`zinc-*`, `blue-*`, `amber-*`, …) — they generate no CSS by design
 - ❌ Raw hex in a component — add a token instead
 - ❌ A grey where `r != g != b`
-- ❌ Amber/orange for warnings — warnings are red
+- ❌ Amber/orange for warnings — warnings are purple (`attn`)
+- ❌ Red for anything that doesn't actually destroy something
 - ❌ Purple for anything but a primary button
 - ❌ White text on a lime or grey fill (~1.5:1)
-- ❌ `danger` `#C22B2B` as text colour (2.7:1) — use `danger-ink`
+- ❌ A CTA purple as text (2.84:1 / 2.05:1) — use `attn` `#B786C6`
 - ❌ `font-display` combined with a `font-bold`-family class
 - ❌ A second colour vocabulary in a prop union (`color="blue"`) — name props by role (`good`, `attention`, `neutral`, `muted`)
 - ❌ Full-width buttons, coloured drop shadows, multiple stacked callouts per tab

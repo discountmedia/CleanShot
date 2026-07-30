@@ -97,8 +97,8 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
 
             {/* Headline rule — bright red callout so nobody misses it. */}
             {detailsOpen && (
-            <div className="rounded-lg border-2 border-danger-ink bg-panel px-4 py-3">
-              <p className="text-base text-danger-ink leading-relaxed font-bold">
+            <div className="rounded-lg border-2 border-attn bg-panel px-4 py-3">
+              <p className="text-base text-attn leading-relaxed font-bold">
                 Fill in as many of these fields as you can — but ONLY with
                 information you actually know is correct.
               </p>
@@ -186,7 +186,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
               htmlFor="meta-make"
               className="flex items-center gap-1 text-sm uppercase tracking-[0.16em] font-bold text-ink mb-1.5"
             >
-              Make <span className="text-danger-ink" aria-label="required">*</span>
+              Make <span className="text-attn" aria-label="required">*</span>
             </label>
             <input
               id="meta-make"
@@ -198,8 +198,8 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
               aria-invalid={!makeValid || undefined}
               className={`w-full bg-panel border rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:border-transparent transition ${
                 makeValid
-                  ? "border-line focus:ring-danger-ink"
-                  : "border-danger-ink focus:ring-danger-ink"
+                  ? "border-line focus:ring-attn"
+                  : "border-attn focus:ring-attn"
               }`}
             />
           </div>
@@ -214,7 +214,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
           </button>
 
           <span
-            className={`text-sm ml-auto mb-2 ${makeValid ? "text-accent" : "text-danger-ink"}`}
+            className={`text-sm ml-auto mb-2 ${makeValid ? "text-accent" : "text-attn"}`}
           >
             {makeValid ? "✓ Ready to enhance" : "Enter the Make to continue"}
           </span>
@@ -234,7 +234,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
                 value={meta[key] ?? ""}
                 onChange={(e) => update(key, e.target.value)}
                 placeholder={placeholder}
-                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
               />
               <span className="text-base text-accent font-semibold leading-relaxed">
                 {hint}

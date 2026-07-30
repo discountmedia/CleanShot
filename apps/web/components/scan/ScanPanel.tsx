@@ -587,7 +587,7 @@ export function ScanPanel({
         title="Scan tab — what this does"
         steps={[
           <>Three AI quality checkers (Gemini, OpenAI, Claude) each look at every image and vote pass or fail.</>,
-          <>Each card shows the consensus verdict at the top — <span className="text-accent font-semibold">PASS</span> means all agree, <span className="text-accent font-semibold">MIXED</span> means they disagree, <span className="text-danger-ink font-semibold">FAIL</span> means all flagged a problem.</>,
+          <>Each card shows the consensus verdict at the top — <span className="text-accent font-semibold">PASS</span> means all agree, <span className="text-accent font-semibold">MIXED</span> means they disagree, <span className="text-attn font-semibold">FAIL</span> means all flagged a problem.</>,
           <>Click any card to expand it and read the specific issues each AI found.</>,
           <>Use <span className="font-semibold text-ink">↻ Regenerate</span> on a failing image to get a fresh AI version that targets the flagged issues.</>,
           <>When done, click <span className="font-semibold text-ink">Approve N → Export</span> at the bottom to queue all undecided cards into the Save &amp; Export section.</>,
@@ -685,7 +685,7 @@ export function ScanPanel({
                   key={u.id}
                   className={`
                     relative rounded-lg overflow-hidden border bg-panel
-                    ${u.status === "error" ? "border-danger-ink" : "border-line"}
+                    ${u.status === "error" ? "border-attn" : "border-line"}
                   `}
                 >
                   {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -708,7 +708,7 @@ export function ScanPanel({
                         </>
                       )}
                       {u.status === "error" && (
-                        <span className="text-[10px] text-danger-ink text-center">{u.error ?? "Upload failed"}</span>
+                        <span className="text-[10px] text-attn text-center">{u.error ?? "Upload failed"}</span>
                       )}
                     </div>
                   )}
@@ -799,7 +799,7 @@ export function ScanPanel({
           </div>
 
           {scanError && (
-            <p className="text-sm text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3" role="alert">
+            <p className="text-sm text-attn bg-panel border border-attn rounded-lg px-4 py-3" role="alert">
               {scanError}
             </p>
           )}

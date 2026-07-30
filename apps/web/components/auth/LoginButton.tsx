@@ -51,7 +51,7 @@ export function LoginButton({ callbackUrl }: { callbackUrl?: string }) {
       </button>
 
       {error && (
-        <p className="text-xs text-danger-ink text-center" role="alert">{error}</p>
+        <p className="text-xs text-attn text-center" role="alert">{error}</p>
       )}
     </div>
   );

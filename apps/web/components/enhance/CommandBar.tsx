@@ -60,16 +60,16 @@ export function CommandBar({
           </span>
           {undecidedCount > 0 && (
             <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-danger" />
-              <span className="text-danger-ink tabular-nums font-bold">
+              <span className="w-2.5 h-2.5 rounded-full bg-cta" />
+              <span className="text-attn tabular-nums font-bold">
                 {undecidedCount} need a pick
               </span>
             </span>
           )}
           {heldCount > 0 && (
             <span className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-danger" />
-              <span className="text-danger-ink tabular-nums font-bold">{heldCount} held</span>
+              <span className="w-2.5 h-2.5 rounded-full bg-cta" />
+              <span className="text-attn tabular-nums font-bold">{heldCount} held</span>
             </span>
           )}
         </div>

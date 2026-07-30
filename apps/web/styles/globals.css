@@ -11,16 +11,25 @@
         no warm grey. The previous restyle shipped #454549 and #5A5A60,
         which are blue-tinted; those are gone.
      2. No clay / amber / mustard / orange / terracotta anywhere. The
-        "attention" colour is RED, not amber.
-     3. The ONLY blue-dominant colours permitted in the codebase are the two
-        CTA purples (--color-cta #914EA6, --color-cta-dark #743E85).
+        "attention" colour is PURPLE (--color-attn). It was briefly red; the
+        operator replaced red with purple 2026-07-30, and red is now reserved
+        for genuinely destructive controls only.
+     3. The ONLY blue-dominant colours permitted are the THREE house purples:
+        --color-cta #914EA6, --color-cta-dark #743E85, --color-attn #B786C6.
+        Note #B786C6 is unavoidably blue-dominant (r183 g134 b198) — every
+        colour at hue 285° is. Making attention purple therefore widened this
+        constraint from two permitted purples to three; that is a deliberate
+        amendment, not a leak. Nothing else may have blue as its strongest
+        channel.
 
    Semantics — three colours, three meanings. Do not add a fourth accent:
      • lime   (accent) = brand identity and "good": complete, active, done,
                          all-clear, progress.
      • purple (cta)    = action. Primary buttons and NOTHING else.
-     • red    (danger) = attention AND error. They intentionally share the
-                         red family.
+     • purple (attn)   = ATTENTION and error. Light purple #B786C6, because
+                         the CTA purples fail AA as text on dark.
+     • red    (danger) = DESTRUCTIVE controls only — the ✕ remove buttons and
+                         Clear All. Nothing else is red.
 
    Elevation is three-level and deliberately unconventional: header and
    footer are DARKER than the page (#131313 on #242424) while cards are
@@ -47,10 +56,23 @@
   --color-cta:        #914EA6;   /* primary buttons (white text, 5.5:1) */
   --color-cta-dark:   #743E85;   /* primary button hover */
 
-  /* Red is split three ways by USE, and mixing them up is the easiest
-     contrast bug to ship:
+  /* ATTENTION — light purple. Same hue (285.7°) and saturation as --color-cta,
+     lightened until it passes AA as text: 5.35:1 on --color-bg and 4.81:1 on
+     --color-panel. Use for attention TEXT, borders, hairline rules and status
+     dots.
+
+     Why this token exists: the CTA purples cannot be used as text on dark —
+     #914EA6 is 2.84:1 and #743E85 is 2.05:1, both well under AA. They are
+     FILL colours only (white on #914EA6 is 5.46:1, which is fine). */
+  --color-attn:        #B786C6;
+
+  /* Red is now reserved for GENUINELY DESTRUCTIVE controls only — the two ✕
+     remove buttons and Clear All. Everything that used to be red because it
+     inherited the old brand-red accent (Approve, Download ZIP, Retry,
+     Regenerate, Send to admin, status dots) is purple now: those are actions
+     and attention, not destruction.
        danger      — FILLED red only, under WHITE text (5.2:1).
-       danger-ink  — red TEXT, borders, status dots, hairline rules (4.6:1).
+       danger-ink  — the hairline border on a filled destructive button.
                      NEVER use --color-danger as text: 2.7:1, fails AA.
        danger-dark — destructive button hover. */
   --color-danger:      #C22B2B;

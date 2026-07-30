@@ -56,7 +56,7 @@ export function ScanCommandBar({
             <span className="text-ink-soft tabular-nums">{mixedCount} mixed</span>
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-danger" />
+            <span className="w-2 h-2 rounded-full bg-cta" />
             <span className="text-ink-soft tabular-nums">{failCount} fail</span>
           </span>
           {scanningCount > 0 && (

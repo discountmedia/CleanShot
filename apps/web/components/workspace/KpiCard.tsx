@@ -14,7 +14,7 @@ export type KpiColor =
 const VALUE_COLORS: Record<KpiColor, string> = {
   neutral:   "text-ink",
   good:      "text-accent",
-  attention: "text-danger-ink",
+  attention: "text-attn",
   muted:     "text-muted",
 };
 

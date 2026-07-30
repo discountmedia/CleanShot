@@ -51,7 +51,7 @@ function KpiRow() {
   return (
     <section aria-label="Admin KPIs">
       {error && (
-        <p className="mb-2 text-xs text-danger-ink">Couldn&apos;t load KPIs: {error}</p>
+        <p className="mb-2 text-xs text-attn">Couldn&apos;t load KPIs: {error}</p>
       )}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <KpiCard
@@ -173,7 +173,7 @@ function UsersTab({ onSelectUser }: { onSelectUser: (email: string) => void }) {
   }, []);
 
   if (loading) return <p className="text-sm text-ink-faint">Loading users…</p>;
-  if (error)   return <p className="text-sm text-danger-ink">{error}</p>;
+  if (error)   return <p className="text-sm text-attn">{error}</p>;
   if (!data || data.length === 0) {
     return <p className="text-sm text-ink-faint">No users yet.</p>;
   }
@@ -295,7 +295,7 @@ function ProjectsTab({
       {loading ? (
         <p className="text-sm text-ink-faint">Loading projects…</p>
       ) : error ? (
-        <p className="text-sm text-danger-ink">{error}</p>
+        <p className="text-sm text-attn">{error}</p>
       ) : !data || data.length === 0 ? (
         <p className="text-sm text-ink-faint">No saved projects yet.</p>
       ) : (
@@ -398,7 +398,7 @@ function ProjectSetsPanel({ projectId }: { projectId: string }) {
   }
 
   if (error) {
-    return <p className="text-xs text-danger-ink">{error}</p>;
+    return <p className="text-xs text-attn">{error}</p>;
   }
 
   if (!data || data.sets.length === 0) {
@@ -529,7 +529,7 @@ function UsageTab() {
       {loading ? (
         <p className="text-sm text-ink-faint">Loading usage…</p>
       ) : error ? (
-        <p className="text-sm text-danger-ink">{error}</p>
+        <p className="text-sm text-attn">{error}</p>
       ) : !data ? null : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           <section className="rounded-xl border border-line bg-well/60 overflow-hidden">
@@ -555,7 +555,7 @@ function UsageTab() {
                     <tr key={i} className="border-t border-line">
                       <td className="px-3 py-1.5 font-mono text-ink-soft">{r.provider} · {r.model}</td>
                       <td className="px-3 py-1.5 text-ink-soft">{r.operation}</td>
-                      <td className={`px-3 py-1.5 font-semibold ${r.status === "failed" ? "text-danger-ink" : "text-accent"}`}>{r.status}</td>
+                      <td className={`px-3 py-1.5 font-semibold ${r.status === "failed" ? "text-attn" : "text-accent"}`}>{r.status}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-ink-soft">{r.callCount}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-ink-soft">{r.avgLatencyMs ?? "—"}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-ink-soft">{r.totalCostUsd.toFixed(4)}</td>
@@ -616,7 +616,7 @@ function UsageTab() {
                       <td className="px-3 py-1.5 font-mono text-ink-soft">{r.day}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-ink-soft">{r.callCount}</td>
                       <td className="px-3 py-1.5 text-right tabular-nums text-accent">{r.successCount}</td>
-                      <td className="px-3 py-1.5 text-right tabular-nums text-danger-ink">{r.failedCount}</td>
+                      <td className="px-3 py-1.5 text-right tabular-nums text-attn">{r.failedCount}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -717,7 +717,7 @@ function SupportTab() {
       {loading ? (
         <p className="text-base text-ink">Loading tickets…</p>
       ) : error ? (
-        <p className="text-base text-danger-ink">{error}</p>
+        <p className="text-base text-attn">{error}</p>
       ) : !tickets || tickets.length === 0 ? (
         <p className="text-base text-ink">No tickets in this view.</p>
       ) : (
@@ -732,7 +732,7 @@ function SupportTab() {
                   <span className={`text-xs uppercase tracking-[0.16em] font-bold px-2.5 py-1 rounded border ${
                     t.type === "feature"
                       ? "text-grey bg-panel-hi/60 border-line"
-                      : "text-danger-ink bg-panel border-danger-ink"
+                      : "text-attn bg-panel border-attn"
                   }`}>
                     {t.type === "feature" ? "Feature" : "Support"}
                   </span>
@@ -807,7 +807,7 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
         <div className="max-w-screen-2xl mx-auto px-6 py-5 flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
             <h1 className="text-2xl font-bold tracking-tight text-ink">CleanShot Admin</h1>
-            <span className="text-sm uppercase tracking-[0.16em] font-bold text-danger-ink bg-panel border border-danger-ink rounded px-2.5 py-1">
+            <span className="text-sm uppercase tracking-[0.16em] font-bold text-attn bg-panel border border-attn rounded px-2.5 py-1">
               ADMIN
             </span>
           </div>
@@ -827,7 +827,7 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
                 onClick={() => setTab(t.id)}
                 className={`px-5 py-3 text-base font-bold uppercase tracking-[0.14em] border-b-2 transition-colors ${
                   active
-                    ? "border-danger-ink text-ink"
+                    ? "border-attn text-ink"
                     : "border-transparent text-ink-soft hover:text-ink"
                 }`}
               >

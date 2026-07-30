@@ -284,7 +284,7 @@ export function TweakDialog({
           )}
 
           {submitError && (
-            <p className="text-base font-medium text-danger-ink bg-panel border border-danger-ink rounded px-3 py-2">
+            <p className="text-base font-medium text-attn bg-panel border border-attn rounded px-3 py-2">
               {submitError}
             </p>
           )}

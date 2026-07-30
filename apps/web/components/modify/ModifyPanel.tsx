@@ -619,7 +619,7 @@ export function ModifyPanel({
               <div
                 key={u.id}
                 className={`relative rounded-lg overflow-hidden border bg-panel ${
-                  u.status === "error" ? "border-danger-ink" : "border-line"
+                  u.status === "error" ? "border-attn" : "border-line"
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -641,7 +641,7 @@ export function ModifyPanel({
                       </>
                     )}
                     {u.status === "error" && (
-                      <span className="text-[10px] text-danger-ink text-center">{u.error ?? "Upload failed"}</span>
+                      <span className="text-[10px] text-attn text-center">{u.error ?? "Upload failed"}</span>
                     )}
                   </div>
                 )}
@@ -934,7 +934,7 @@ export function ModifyPanel({
               )}
 
               {error && (
-                <p className="text-base text-danger-ink bg-panel border border-danger-ink rounded-lg px-4 py-3">
+                <p className="text-base text-attn bg-panel border border-attn rounded-lg px-4 py-3">
                   {error}
                 </p>
               )}

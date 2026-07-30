@@ -22,7 +22,7 @@ const CHIPS: readonly ChipDef[] = [
   { id: "all",      label: "All" },
   { id: "pass",     label: "Pass",     color: "text-accent border-accent bg-panel" },
   { id: "mixed",    label: "Mixed",    color: "text-accent border-accent bg-panel" },
-  { id: "fail",     label: "Fail",     color: "text-danger-ink border-danger-ink bg-panel" },
+  { id: "fail",     label: "Fail",     color: "text-attn border-attn bg-panel" },
   { id: "scanning", label: "Scanning", color: "text-ink-soft border-line bg-panel" },
 ] as const;
 
@@ -36,7 +36,7 @@ export function ScanFilterChips({ counts, active, onChange }: ScanFilterChipsPro
         const inactiveClass = c.color
           ? "text-ink-soft border-line bg-transparent hover:border-ink-faint hover:text-ink"
           : "text-ink border-line bg-panel hover:border-ink-faint";
-        const activeClass = c.color ?? "border-danger-ink bg-panel text-danger-ink";
+        const activeClass = c.color ?? "border-attn bg-panel text-attn";
         return (
           <button
             key={c.id}

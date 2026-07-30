@@ -110,7 +110,7 @@ function FilterBar({
           {isFiltered && (
             <button
               onClick={() => onChange(EMPTY_FILTERS)}
-              className="text-sm uppercase tracking-[0.18em] font-semibold text-danger-ink hover:text-danger-ink transition-colors"
+              className="text-sm uppercase tracking-[0.18em] font-semibold text-attn hover:text-attn transition-colors"
             >
               Clear filters
             </button>
@@ -129,7 +129,7 @@ function FilterBar({
             value={filters.query}
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
             placeholder="Make, model, filename, or folder…"
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
           />
         </label>
 
@@ -142,7 +142,7 @@ function FilterBar({
             type="date"
             value={filters.startDate}
             onChange={(e) => onChange({ ...filters, startDate: e.target.value })}
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
           />
         </label>
         <label className="flex flex-col gap-1.5">
@@ -153,7 +153,7 @@ function FilterBar({
             type="date"
             value={filters.endDate}
             onChange={(e) => onChange({ ...filters, endDate: e.target.value })}
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
           />
         </label>
 
@@ -165,7 +165,7 @@ function FilterBar({
           <select
             value={filters.make}
             onChange={(e) => onChange({ ...filters, make: e.target.value })}
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
           >
             <option value="">All makes</option>
             {availableMakes.map((m) => (
@@ -180,7 +180,7 @@ function FilterBar({
           <select
             value={filters.model}
             onChange={(e) => onChange({ ...filters, model: e.target.value })}
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-danger-ink focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
           >
             <option value="">All models</option>
             {availableModels.map((m) => (
@@ -241,9 +241,9 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
           {daysLeft !== null && (
             <span className={`text-[10px] uppercase tracking-[0.18em] font-semibold px-2 py-1 rounded border ${
               expired
-                ? "text-danger-ink border-danger-ink bg-panel"
+                ? "text-attn border-attn bg-panel"
                 : daysLeft <= 5
-                  ? "text-danger-ink border-danger-ink bg-panel"
+                  ? "text-attn border-attn bg-panel"
                   : "text-ink-faint border-line bg-panel"
             }`}>
               {expired ? "Expired" : `${daysLeft}d left`}
@@ -255,7 +255,7 @@ function ApprovalSetCard({ set }: { set: ApprovalSet }) {
             <a
               href={set.zipSignedUrl}
               download
-              className="text-[10px] uppercase tracking-[0.18em] font-semibold text-ink bg-danger hover:bg-danger-dark border border-danger-ink transition-colors px-3 py-1.5 rounded"
+              className="text-[10px] uppercase tracking-[0.18em] font-semibold text-white bg-cta hover:bg-cta-dark border border-attn transition-colors px-3 py-1.5 rounded"
               aria-label={`Download ZIP for ${set.dirName}`}
             >
               Download ZIP
@@ -426,7 +426,7 @@ export function HistoryList({
 
   if (error) {
     return (
-      <div className="text-center py-12 text-danger-ink text-sm" role="alert">
+      <div className="text-center py-12 text-attn text-sm" role="alert">
         {error}
       </div>
     );
@@ -517,7 +517,7 @@ export function HistoryList({
           <p className="text-ink-faint text-sm">No approval sets match the current filters.</p>
           <button
             onClick={() => setFilters(EMPTY_FILTERS)}
-            className="mt-3 text-[10px] uppercase tracking-[0.18em] font-semibold text-danger-ink hover:text-danger-ink transition-colors"
+            className="mt-3 text-[10px] uppercase tracking-[0.18em] font-semibold text-attn hover:text-attn transition-colors"
           >
             Clear filters
           </button>

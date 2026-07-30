@@ -96,12 +96,12 @@ export const GENERIC_AUTHORS: readonly PromptAuthor[] = [
 
 /**
  * Chip classes when SELECTED. The house palette has three accents (lime =
- * good/active, purple = primary buttons only, red = attention/error), so it
+ * good/active, purple = action + attention, red = destructive only), so it
  * cannot encode six per-provider identity hues — the old blue/green/orange/
  * purple/cyan/fuchsia set is gone. Selection is now shown structurally, the
  * same way the equipment cards and toggles show it: RAISED SURFACE + LIME
  * BORDER. Per-model differentiation is carried by the provider name and the
- * speed pill (lime "Fast" vs red "Slow") instead of by hue.
+ * speed pill (lime "Fast" vs purple "Slow") instead of by hue.
  *
  * All providers share one ON style deliberately — a previous per-provider
  * sweep left gemini's ON state byte-identical to its OFF state, so selecting
@@ -124,8 +124,8 @@ export const ENHANCE_PROVIDER_CHIP_ON: Record<EnhanceProvider, string> = {
 export interface EnhanceProviderMeta {
   speedLabel:   "Fast" | "Fastest" | "Moderate" | "Slow";
   /** Tailwind classes for the speed pill. Tone tracks the label: lime for
-   *  fast ("good"), red for slow (the palette's attention colour — there is
-   *  no amber middle tone, so "Moderate" also reads neutral). */
+   *  fast ("good"), purple `attn` for slow (the palette's attention colour —
+   *  there is no amber middle tone, so "Moderate" also reads neutral). */
   speedClass:   string;
   /** One-sentence "what this is" line shown under the provider name. */
   description:  string;
@@ -143,7 +143,7 @@ export const ENHANCE_PROVIDER_META: Record<EnhanceProvider, EnhanceProviderMeta>
   },
   openai: {
     speedLabel:  "Slow",
-    speedClass:  "text-danger-ink bg-panel border-danger-ink",
+    speedClass:  "text-attn bg-panel border-attn",
     description: "Slower but can be more literal. gpt-5 reasons + dispatches the image_generation tool.",
     titleClass:  "text-ink",
   },

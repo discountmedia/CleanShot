@@ -261,7 +261,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       {/* Body */}
       <main className="flex-1 px-6 py-6 space-y-6 max-w-screen-2xl w-full mx-auto">
         {sessionError && (
-          <div className="rounded-xl border border-danger-ink bg-panel px-4 py-3 text-sm text-danger-ink">
+          <div className="rounded-xl border border-attn bg-panel px-4 py-3 text-sm text-attn">
             Could not start a workspace session: {sessionError}
           </div>
         )}

@@ -54,11 +54,11 @@ const TONE: Record<NonNullable<TipBannerProps["tone"]>, {
     title:  "text-ink",
   },
   warn: {
-    border: "border-danger-ink",
+    border: "border-attn",
     bg:     "bg-panel",
-    iconBg: "bg-panel border-danger-ink",
-    icon:   "text-danger-ink",
-    title:  "text-danger-ink",
+    iconBg: "bg-panel border-attn",
+    icon:   "text-attn",
+    title:  "text-attn",
   },
 };
 

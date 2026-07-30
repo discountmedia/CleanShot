@@ -168,8 +168,8 @@ export function ScanCard({
                   aria-pressed={regenOpen}
                   className={`text-xs uppercase tracking-[0.18em] font-semibold transition-colors px-3 py-2 rounded border ${
                     regenOpen
-                      ? "text-danger-ink bg-danger border-danger-ink"
-                      : "text-danger-ink hover:text-ink bg-panel hover:bg-danger-dark border-danger-ink hover:border-danger-ink"
+                      ? "text-attn bg-cta border-attn"
+                      : "text-attn hover:text-ink bg-panel hover:bg-cta-dark border-attn hover:border-attn"
                   }`}
                 >
                   ↻ Regenerate
@@ -179,7 +179,7 @@ export function ScanCard({
                 <button
                   type="button"
                   onClick={onApprove}
-                  className="text-xs uppercase tracking-[0.18em] font-semibold text-ink bg-danger hover:bg-danger-dark border border-danger-ink px-3 py-2 rounded transition-colors"
+                  className="text-xs uppercase tracking-[0.18em] font-semibold text-white bg-cta hover:bg-cta-dark border border-attn px-3 py-2 rounded transition-colors"
                 >
                   Approve →
                 </button>
@@ -232,7 +232,7 @@ export function ScanCard({
               </div>
             )}
             {!isScanning && consensus?.verdict === "fail" && (
-              <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-danger flex items-center justify-center text-white text-base font-bold">
+              <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-cta flex items-center justify-center text-white text-base font-bold">
                 ✗
               </div>
             )}
@@ -340,19 +340,19 @@ function ProviderDetail({ providerResults, expanded, onToggle }: ProviderDetailP
             const barColor =
               pct >= 80 ? "bg-accent"
               : pct >= 50 ? "bg-accent"
-              : "bg-danger";
+              : "bg-cta";
             return (
               <div
                 key={p}
                 className={`rounded-md border px-2.5 py-2 ${
-                  isPass ? "border-accent bg-panel" : "border-danger-ink bg-panel"
+                  isPass ? "border-accent bg-panel" : "border-attn bg-panel"
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
                   <span className={`text-[10px] font-bold uppercase tracking-[0.16em] ${SCAN_PROVIDER_TEXT[p]}`}>
                     {SCAN_PROVIDER_LABELS[p]}
                   </span>
-                  <span className={`text-[10px] font-semibold ${isPass ? "text-accent" : "text-danger-ink"}`}>
+                  <span className={`text-[10px] font-semibold ${isPass ? "text-accent" : "text-attn"}`}>
                     {isPass ? "✓ pass" : "✗ fail"}
                   </span>
                 </div>

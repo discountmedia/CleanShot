@@ -130,7 +130,7 @@ export function SourceCompareCard({
             <span className="text-sm uppercase tracking-[0.14em] font-bold text-ink tabular-nums whitespace-nowrap">
               {completedCount}/{totalCount} complete
               {failedCount > 0 && (
-                <span className="text-danger-ink ml-1">· {failedCount} failed</span>
+                <span className="text-attn ml-1">· {failedCount} failed</span>
               )}
             </span>
           )}
@@ -170,7 +170,7 @@ export function SourceCompareCard({
               className={`flex items-center gap-1 text-xs uppercase tracking-[0.16em] font-bold px-2.5 py-1 rounded border ${
                 judgeResult.anyPass
                   ? "text-accent bg-panel border-accent"
-                  : "text-danger-ink bg-panel border-danger-ink"
+                  : "text-attn bg-panel border-attn"
               }`}
             >
               ★ Best of {judgeResult.rankings.length}
@@ -179,7 +179,7 @@ export function SourceCompareCard({
             </span>
           )}
           {showPickPrompt && (
-            <span className="text-xs uppercase tracking-[0.16em] font-bold text-danger-ink bg-panel border border-danger-ink px-2.5 py-1 rounded">
+            <span className="text-xs uppercase tracking-[0.16em] font-bold text-attn bg-panel border border-attn px-2.5 py-1 rounded">
               pick a winner
             </span>
           )}
@@ -195,7 +195,7 @@ export function SourceCompareCard({
             aria-pressed={held}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded border-2 text-sm font-bold uppercase tracking-[0.14em] transition-colors ${
               held
-                ? "border-danger-ink bg-panel text-danger-ink hover:bg-panel-hi"
+                ? "border-attn bg-panel text-attn hover:bg-panel-hi"
                 : "border-line bg-transparent text-ink hover:border-ink-faint hover:text-ink"
             }`}
           >
@@ -300,14 +300,14 @@ export function SourceCompareCard({
               so the operator can address them in one place rather than
               hunting for the red thumb. */}
           {failedVariants.length > 0 && (
-            <div className="mt-1 flex flex-col gap-2 rounded border border-danger-ink bg-panel px-4 py-3">
+            <div className="mt-1 flex flex-col gap-2 rounded border border-attn bg-panel px-4 py-3">
               {failedVariants.map(({ provider, variant }) => (
                 <div
                   key={provider}
                   className="flex items-center justify-between gap-3"
                 >
-                  <div className="text-sm text-danger-ink min-w-0">
-                    <span className="font-bold uppercase tracking-[0.14em] text-danger-ink">
+                  <div className="text-sm text-attn min-w-0">
+                    <span className="font-bold uppercase tracking-[0.14em] text-attn">
                       {ENHANCE_PROVIDER_LABELS[provider]} failed
                     </span>
                     {variant.error && (
@@ -319,7 +319,7 @@ export function SourceCompareCard({
                   <button
                     type="button"
                     onClick={() => onRetry(provider)}
-                    className="shrink-0 text-sm uppercase tracking-[0.14em] font-bold text-danger-ink hover:text-ink bg-panel hover:bg-danger-dark border-2 border-danger-ink hover:border-danger-ink px-3 py-1.5 rounded transition-colors"
+                    className="shrink-0 text-sm uppercase tracking-[0.14em] font-bold text-attn hover:text-ink bg-panel hover:bg-cta-dark border-2 border-attn hover:border-attn px-3 py-1.5 rounded transition-colors"
                   >
                     ↻ Retry {ENHANCE_PROVIDER_LABELS[provider]}
                   </button>
@@ -426,7 +426,7 @@ function VariantThumb({
       className={`group relative flex flex-col items-stretch text-left rounded-lg overflow-hidden border transition-all
         ${
           chosen
-            ? "border-danger-ink ring-2 ring-danger-ink/40"
+            ? "border-attn ring-2 ring-attn/40"
             : "border-line hover:border-line"
         }
         ${isComplete ? "cursor-pointer" : "cursor-default"}`}
@@ -474,7 +474,7 @@ function VariantThumb({
               }}
               title={`Regenerate this variant with ${ENHANCE_PROVIDER_LABELS[provider]}`}
               aria-label={`Regenerate ${ENHANCE_PROVIDER_LABELS[provider]} variant`}
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-danger-dark text-danger-ink hover:text-ink border-2 border-danger-ink hover:border-danger-ink transition-colors shadow-lg"
+              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-cta-dark text-attn hover:text-ink border-2 border-attn hover:border-attn transition-colors shadow-lg"
             >
               <svg
                 className="w-5 h-5"
@@ -490,7 +490,7 @@ function VariantThumb({
                 />
               </svg>
             </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-danger-ink rounded-md px-3 py-1.5 text-sm font-bold text-danger-ink shadow-2xl opacity-0 group-hover/regen:opacity-100 transition-opacity duration-150 z-20">
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-attn rounded-md px-3 py-1.5 text-sm font-bold text-attn shadow-2xl opacity-0 group-hover/regen:opacity-100 transition-opacity duration-150 z-20">
               Regenerate — run {ENHANCE_PROVIDER_LABELS[provider]} again
             </span>
           </div>
@@ -660,7 +660,7 @@ function VariantThumb({
         {isFailed && (
           <div className="absolute inset-0 bg-header-bg/80 flex flex-col items-center justify-center gap-1.5 px-2">
             <svg
-              className="w-6 h-6 text-danger-ink"
+              className="w-6 h-6 text-attn"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -672,14 +672,14 @@ function VariantThumb({
                 d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z"
               />
             </svg>
-            <span className="text-[10px] uppercase tracking-[0.16em] text-danger-ink">
+            <span className="text-[10px] uppercase tracking-[0.16em] text-attn">
               Failed
             </span>
           </div>
         )}
 
         {chosen && (
-          <div className="absolute inset-x-0 bottom-0 bg-danger px-2 py-1 flex items-center justify-center gap-1">
+          <div className="absolute inset-x-0 bottom-0 bg-cta px-2 py-1 flex items-center justify-center gap-1">
             <span className="text-[9px] uppercase tracking-[0.18em] font-bold text-ink">
               Winner
             </span>
@@ -689,12 +689,12 @@ function VariantThumb({
 
       <div
         className={`px-2 py-1.5 flex items-center justify-between border-t ${
-          chosen ? "border-danger-ink bg-panel" : "border-line bg-well"
+          chosen ? "border-attn bg-panel" : "border-line bg-well"
         }`}
       >
         <span
           className={`text-[10px] font-bold uppercase tracking-[0.16em] ${
-            chosen ? "text-danger-ink" : "text-ink-soft"
+            chosen ? "text-attn" : "text-ink-soft"
           }`}
         >
           {ENHANCE_PROVIDER_LABELS[provider]}
