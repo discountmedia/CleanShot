@@ -53,9 +53,42 @@ const TAB_PREFETCH: Partial<Record<TabId, () => Promise<unknown>>> = {
   history: loadHistoryList,
 };
 
-import { createSession } from "@/lib/api";
+import { createSession, exchangeHandoffToken } from "@/lib/api";
+import { readHandoffToken, stripHandoffToken, type HandoffFailureReason } from "@/lib/handoff";
 import { getRestriction } from "@/lib/access-control";
+import { AlertBanner } from "./AlertBanner";
 import type { ForkliftMeta } from "@/lib/types";
+
+/**
+ * How the workspace acquired (or is acquiring) its session.
+ *
+ * The phase is decided ONCE, synchronously, in a lazy useState initializer
+ * during the first render pass — not in an effect. There is then exactly one
+ * session effect, which switches on this value. Two effects cannot race to
+ * create a session because there is only one, so nothing depends on effect
+ * ordering (which is not a contract).
+ *
+ *   "exchanging" — a handoff token was in the URL fragment on arrival; we're
+ *                  trading it for the session ingest already created.
+ *   "creating"   — no token. Normal cold load: mint an empty session. This path
+ *                  is byte-for-byte today's behaviour.
+ *   "ready"      — sessionId is known. Written EXACTLY ONCE, by whichever
+ *                  branch won. There is never an interim session that gets
+ *                  swapped out from under a mounted panel.
+ *
+ * HYDRATION CONSTRAINT: readHandoffToken() returns null on the server (no
+ * `location`), so the server initialises to "creating" while the client
+ * initialises to "exchanging" on an import load. That is only safe because both
+ * pre-ready phases render IDENTICAL markup — the phase changes what we *do*,
+ * never what we *paint*, until "ready". Import-specific copy belongs after
+ * ready, alongside the grid. If pre-ready import copy is ever wanted, the
+ * escape hatch is a post-mount flag; don't assume it's impossible, but don't
+ * build it now.
+ */
+type SessionInit =
+  | { phase: "exchanging"; token: string }
+  | { phase: "creating" }
+  | { phase: "ready"; sessionId: string; handoffId?: string; expectedCount?: number };
 
 // Cross-panel asset shape. Each panel emits these as its output.
 interface PipelineAsset {
@@ -150,10 +183,32 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // previous batch.
   const [pipelineGeneration, setPipelineGeneration] = useState(0);
 
-  // One session per workspace mount. Created lazily on first render so unauthed
-  // dev sessions still get a working pipeline.
-  const [sessionId, setSessionId] = useState<string | null>(null);
+  // One session per workspace mount — either minted empty (normal load) or
+  // adopted from a media-auditor handoff (import load). See SessionInit.
+  //
+  // The token read happens HERE, in the initializer, so the import-vs-normal
+  // decision is made during the first render pass rather than in a second
+  // effect that could race the session-creating one.
+  const [init, setInit] = useState<SessionInit>(() => {
+    const token = readHandoffToken();
+    return token ? { phase: "exchanging", token } : { phase: "creating" };
+  });
   const [sessionError, setSessionError] = useState<string | null>(null);
+  /**
+   * Set when an import was attempted and did not come through. Purely
+   * informational — the workspace is fully usable underneath it, because every
+   * exchange failure degrades to a normal empty session rather than leaving the
+   * operator behind a gate.
+   */
+  const [importFailure, setImportFailure] = useState<HandoffFailureReason | null>(null);
+
+  // All the `{sessionId && <Panel …>}` gates below read this. Null until the
+  // session is actually known, which is what keeps the pre-ready shell up.
+  // NOTE: `handoffId` / `expectedCount` deliberately have no derived consts yet
+  // — they live on `init` and get consumed by the session-read mapper and the
+  // handoff poller (steps 3 and 4). Reading them from `init` at that point keeps
+  // this diff free of unused locals.
+  const sessionId = init.phase === "ready" ? init.sessionId : null;
 
   // Cross-panel pipeline state. The flow is curated by the user:
   //   Enhance → "Send to Scan" → enhancedAssets  (what Scan tab analyzes)
@@ -168,19 +223,69 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // of `userEmail` on the Resize tab (no separate state needed).
   const [meta, setMeta] = useState<Partial<ForkliftMeta>>({});
 
+  /**
+   * The ONE session effect. Switches on the phase decided during first render.
+   *
+   * Invariant: every path out of "exchanging" reaches a usable workspace —
+   * either the import's session or a fresh empty one. The only way to end up
+   * permanently gated is createSession() itself failing, which is exactly
+   * today's `sessionError` behaviour, unchanged.
+   */
   useEffect(() => {
+    if (init.phase === "ready") return;
+
     let cancelled = false;
-    createSession()
-      .then(({ sessionId }) => {
-        if (!cancelled) setSessionId(sessionId);
-      })
-      .catch((err: Error) => {
-        if (!cancelled) setSessionError(err.message);
-      });
+
+    /** Normal path + the tail of every degrade path. */
+    const mintEmptySession = () =>
+      createSession()
+        .then(({ sessionId }) => {
+          if (!cancelled) setInit({ phase: "ready", sessionId });
+        })
+        .catch((err: Error) => {
+          if (!cancelled) setSessionError(err.message);
+        });
+
+    if (init.phase === "creating") {
+      void mintEmptySession();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // phase === "exchanging"
+    const token = init.token;
+    void (async () => {
+      const result = await exchangeHandoffToken(token);
+      if (cancelled) return;
+
+      // Strip on BOTH outcomes. A dead token in the address bar is still a
+      // token in the address bar, and it must not survive a back-navigation.
+      stripHandoffToken();
+
+      if (result.ok) {
+        setInit({
+          phase: "ready",
+          sessionId: result.sessionId,
+          handoffId: result.handoffId,
+          expectedCount: result.expectedCount,
+        });
+        return;
+      }
+
+      // Degrade: consumed-but-recoverable is handled server-side (the same
+      // authenticated user re-presenting a spent token gets the session it
+      // already created, which arrives here as ok:true). Everything that lands
+      // in this branch is either terminally refused or unreachable, so fall
+      // back to a normal empty session and say so.
+      setImportFailure(result.reason);
+      await mintEmptySession();
+    })();
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [init]);
 
   const allTabs = [
     { id: "enhance" as const, label: "Enhance" },
@@ -264,6 +369,24 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           <div className="rounded-xl border border-attn bg-panel px-4 py-3 text-sm text-attn">
             Could not start a workspace session: {sessionError}
           </div>
+        )}
+
+        {/* Import degrade notice. The workspace below this is fully usable — an
+            empty session was minted instead. Dismissible; never blocking. */}
+        {importFailure && (
+          <AlertBanner
+            severity="warn"
+            title={
+              importFailure === "rejected"
+                ? "Your photo import didn't come through"
+                : "Couldn't reach the import service"
+            }
+            body={
+              importFailure === "rejected"
+                ? "The import link has expired or belongs to a different account. Started a fresh workspace instead — send the photos over again from the unit page."
+                : "We couldn't confirm your import, so we started a fresh workspace. If the photos don't show up, send them over again from the unit page."
+            }
+          />
         )}
 
         {/* Active panel — panels stay mounted to preserve in-progress state

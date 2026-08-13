@@ -3,6 +3,7 @@
 // The browser NEVER calls FastAPI directly — all requests go through Next.js Route Handlers.
 // FASTAPI_INTERNAL_KEY is server-only and never in this file.
 
+import { HANDOFF_EXCHANGE_TIMEOUT_MS, type HandoffExchangeResult } from "./handoff";
 import type {
   EnhanceToggles,
   ForkliftMeta,
@@ -38,6 +39,59 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export async function createSession(): Promise<{ sessionId: string }> {
   return post("/api/sessions", {});
+}
+
+// ─── Handoff (media-auditor import) ───────────────────────────────────────────
+
+/**
+ * Exchange a single-use handoff token for the session ingest already created.
+ *
+ * Deliberately does NOT throw on rejection — the caller's whole job is to
+ * degrade to a normal session, so a refused import is an expected outcome, not
+ * an exception. Returns a discriminated union instead. The only unbounded
+ * failure mode (a hung upstream) is capped by
+ * HANDOFF_EXCHANGE_TIMEOUT_MS, since the operator is behind a gate for the
+ * entire call.
+ *
+ * The token is passed in the request body and is never logged, thrown, or
+ * echoed into an error message.
+ */
+export async function exchangeHandoffToken(
+  token: string,
+): Promise<HandoffExchangeResult> {
+  const abort = new AbortController();
+  const timer = setTimeout(() => abort.abort(), HANDOFF_EXCHANGE_TIMEOUT_MS);
+  try {
+    const res = await fetch("/api/handoff/exchange", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token }),
+      cache: "no-store",
+      signal: abort.signal,
+    });
+    if (!res.ok) {
+      // Status class only — the route collapses upstream detail to a fixed
+      // string, so there is nothing more specific to learn here by design.
+      return { ok: false, reason: res.status >= 500 ? "unavailable" : "rejected" };
+    }
+    const data = (await res.json()) as {
+      sessionId: string;
+      handoffId: string;
+      expectedCount: number;
+    };
+    return {
+      ok: true,
+      sessionId: data.sessionId,
+      handoffId: data.handoffId,
+      expectedCount: data.expectedCount,
+    };
+  } catch {
+    // Network error or our own timeout abort. Both mean "no answer", not
+    // "refused" — the import itself may be perfectly fine.
+    return { ok: false, reason: "unavailable" };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
