@@ -609,7 +609,11 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
               <a
                 href={zipUrl}
                 download={zipFilename}
-                className="bg-panel hover:bg-panel-hi text-ink text-sm font-semibold px-4 py-2 rounded-lg transition-colors inline-flex items-center gap-2"
+                /* Was bg-panel on a dark card, i.e. dark-on-dark and
+                   effectively invisible. Lime fill with near-black text is the
+                   brightest thing the palette has, and text-header-bg is
+                   mandatory on a lime fill (white is ~1.5:1). */
+                className="bg-accent hover:bg-accent/85 text-header-bg text-base font-bold px-5 py-2.5 rounded-lg transition-colors inline-flex items-center gap-2 shadow-lg"
               >
                 Download ZIP
                 <span className="text-[10px] font-mono opacity-80">{formatBytes(zipSizeBytes)}</span>
@@ -619,7 +623,12 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {previewItems.map((item) => {
-              const aspectOk = item.width === 1024 && item.height === 731;
+              // Ratio test, not fixed dimensions. PRO export emits the
+              // source's full resolution now, so hardcoding 1024x731 flagged
+              // every correct export as wrong. 1.38-1.42 is the band the crop
+              // audit accepts as 7:5.
+              const ratio = item.height > 0 ? item.width / item.height : 0;
+              const aspectOk = ratio >= 1.38 && ratio <= 1.42;
               const dimensionsLabel = `${item.width}×${item.height}`;
               return (
                 <figure

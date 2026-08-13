@@ -769,3 +769,17 @@ async def mark_ingest_item_failed(
         item_id,
         error[:300],
     )
+
+
+async def bump_job_retry_count(
+    conn: asyncpg.Connection, job_id: uuid.UUID
+) -> None:
+    """
+    Mark this job as being re-run. The frontend shows a "Retrying" badge while
+    status is still processing and this is > 0, so a second pass reads as
+    deliberate instead of looking hung.
+    """
+    await conn.execute(
+        "UPDATE jobs SET retry_count = retry_count + 1, updated_at = now() WHERE id = $1",
+        job_id,
+    )

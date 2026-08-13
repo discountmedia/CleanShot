@@ -698,13 +698,16 @@ export function ScanPanel({
                     <div className="absolute inset-0 bg-header-bg/60 flex flex-col items-center justify-center p-2 gap-1">
                       {u.status === "uploading" && (
                         <>
-                          <div className="w-full bg-panel-hi rounded-full h-1.5">
+                          {/* The fill used to be bg-panel-hi on a bg-panel-hi
+                              track -- same colour, so there was nothing to see.
+                              Lime fill on a dark well now actually reads. */}
+                          <div className="w-full bg-well rounded-full h-2.5 border border-line">
                             <div
-                              className="bg-panel-hi h-1.5 rounded-full transition-all"
+                              className="bg-accent h-2.5 rounded-full transition-all"
                               style={{ width: `${u.progress}%` }}
                             />
                           </div>
-                          <span className="text-[10px] text-ink-soft">{u.progress}%</span>
+                          <span className="text-xs font-bold text-accent">{u.progress}%</span>
                         </>
                       )}
                       {u.status === "error" && (

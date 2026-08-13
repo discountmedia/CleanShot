@@ -27,6 +27,7 @@ from google.genai import types
 
 from cleanshot_api.core.config import get_settings
 from cleanshot_api.db import queries
+from cleanshot_api.services.image_processing import apply_adjustments
 from cleanshot_api.services.pricing import estimate_cost_usd
 from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
@@ -1202,6 +1203,44 @@ async def _tweak_with_gemini(
     raise ValueError(_describe_gemini_no_image(response, "tweak"))
 
 
+# Deterministic colour correction applied to Gemini output only. Slider units
+# match the Modify tab (-100..+100, 0 = no change), so these route through the
+# exact same pyvips maths the darkroom uses.
+GEMINI_SATURATION_LIFT = 12
+GEMINI_CONTRAST_LIFT = 8
+
+_LANDSCAPE_DIRECTIVE = (
+    "\n\nORIENTATION (non-negotiable): the output image MUST be LANDSCAPE, "
+    "wider than it is tall, at approximately a 7:5 width-to-height ratio. "
+    "Do not return a portrait or square image. Do not add sky above or ground "
+    "below to reach a taller frame. Keep the machine fully in frame across its "
+    "full width."
+)
+
+
+def _is_portrait(image_bytes: bytes) -> bool:
+    """
+    True when the image is taller than it is wide.
+
+    Deliberately a plain orientation test, not an aspect-band test: the export
+    path already crops to exactly 7:5, so a slightly-off landscape frame is
+    fine and does not justify a second paid model call. Only a portrait frame
+    actually loses the ends of the machine.
+
+    Unreadable bytes return False -- a decode problem is not an orientation
+    problem, and the caller's normal error path should surface it.
+    """
+    # pyvips is imported lazily throughout this module rather than at module
+    # scope; kept consistent here.
+    import pyvips
+
+    try:
+        probe = pyvips.Image.new_from_buffer(image_bytes, "")
+        return probe.height > probe.width
+    except Exception:
+        return False
+
+
 async def _enhance_with_openai(
     openai_client: Any,
     gcs_uri: str,
@@ -1247,7 +1286,13 @@ async def _enhance_with_openai(
                 ],
             }
         ],
-        tools=[{"type": "image_generation"}],
+        # size is the ONLY reliable lever for orientation here. Prompt wording
+        # alone does not hold -- gpt-5 was handing back portrait crops of
+        # landscape equipment, which then had to be centre-cropped to 7:5 on
+        # export and lost the machine's ends. 1536x1024 is the tool's landscape
+        # option and is 1.5:1, the closest available to our 1.4:1 house ratio,
+        # so the export crop trims a little width rather than inventing height.
+        tools=[{"type": "image_generation", "size": "1536x1024"}],
         tool_choice={"type": "image_generation"},
     )
 
@@ -2022,6 +2067,34 @@ async def _run_enhance(
             output_bytes = await _enhance_with_openai(
                 openai_client, payload.input_gcs_uri, prompt
             )
+            # OpenAI still occasionally returns a PORTRAIT image even with the
+            # landscape `size` set. Every downstream consumer assumes 7:5
+            # landscape, and a portrait output survives export only by being
+            # centre-cropped -- which cuts the forks off one end and the
+            # counterweight off the other. So verify and re-run ONCE.
+            #
+            # Bounded to a single extra attempt on purpose: each one is a paid
+            # gpt-5 call, and if the model is going to comply it complies on the
+            # retry. A second portrait is passed through and dealt with at
+            # export rather than billed again.
+            if _is_portrait(output_bytes):
+                logger.warning(
+                    "job %s: OpenAI returned portrait output, re-running once",
+                    payload.job_id,
+                )
+                async with pool.acquire() as conn:
+                    await queries.bump_job_retry_count(conn, payload.job_id)
+                await request.app.state.openai_image_rate_limiter.acquire()
+                output_bytes = await _enhance_with_openai(
+                    openai_client,
+                    payload.input_gcs_uri,
+                    prompt + _LANDSCAPE_DIRECTIVE,
+                )
+                if _is_portrait(output_bytes):
+                    logger.warning(
+                        "job %s: OpenAI returned portrait twice; passing through",
+                        payload.job_id,
+                    )
         elif payload.provider == "grok":
             provider_model = ENHANCE_MODEL_GROK
             # xAI doesn't publish a per-minute cap for /v1/images/edits.
@@ -2068,6 +2141,29 @@ async def _run_enhance(
             async with gemini_semaphore:
                 output_bytes = await _enhance_with_gemini(
                     genai_aistudio_client, payload.input_gcs_uri, prompt
+                )
+            # Gemini comes back noticeably flatter than OpenAI on the same
+            # source -- desaturated and low-contrast, which reads as "washed
+            # out" sitting next to the OpenAI variant in the picker. Corrected
+            # deterministically here rather than by asking the model to be more
+            # saturated: prompt wording is not a reliable lever on this model
+            # (see the warehouse-electric finding in CLAUDE.md), and a pyvips
+            # pass costs nothing per image where another generation costs money.
+            #
+            # THESE VALUES ARE A STARTING POINT, NOT MEASURED. Chosen small so a
+            # wrong guess reads as flat rather than garish. If they need tuning,
+            # grade a batch side by side against OpenAI first -- do not nudge
+            # them blind.
+            if output_bytes:
+                output_bytes = await asyncio.to_thread(
+                    apply_adjustments,
+                    output_bytes,
+                    brightness=0,
+                    contrast=GEMINI_CONTRAST_LIFT,
+                    saturation=GEMINI_SATURATION_LIFT,
+                    rotation_deg=0.0,
+                    crop_aspect="free",
+                    crop_zoom=100,
                 )
 
         if not output_bytes:

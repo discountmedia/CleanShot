@@ -152,13 +152,14 @@ function ThumbnailCard({
           )}
           {file.status === "uploading" && (
             <>
-              <div className="w-full bg-panel-hi rounded-full h-1.5">
+              {/* Same fill==track bug as the Scan tab had. */}
+              <div className="w-full bg-well rounded-full h-2.5 border border-line">
                 <div
-                  className="bg-panel-hi h-1.5 rounded-full transition-all"
+                  className="bg-accent h-2.5 rounded-full transition-all"
                   style={{ width: `${file.progress}%` }}
                 />
               </div>
-              <span className="text-xs text-ink-soft">{file.progress}%</span>
+              <span className="text-xs font-bold text-accent">{file.progress}%</span>
             </>
           )}
           {file.status === "error" && (

@@ -125,6 +125,11 @@ CREATE TABLE IF NOT EXISTS jobs (
 );
 CREATE INDEX IF NOT EXISTS idx_jobs_session ON jobs(session_id);
 CREATE INDEX IF NOT EXISTS idx_jobs_status  ON jobs(status);
+-- Idempotent post-create patch: how many times this job's provider call was
+-- re-run for a correctable defect (currently: OpenAI returning a portrait
+-- image). Drives the "Retrying" badge on the variant thumb so a second pass
+-- looks intentional rather than stuck. Plain int, no enum -- lesson #12 N/A.
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0;
 
 -- scan_results
 CREATE TABLE IF NOT EXISTS scan_results (

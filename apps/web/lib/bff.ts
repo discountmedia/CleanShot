@@ -81,6 +81,7 @@ export function snakeJobToCamel(j: Record<string, unknown>): Record<string, unkn
     status:          j.status,
     inputAssetId:    j.input_asset_id,
     outputAssetId:   j.output_asset_id,
+    retryCount:      j.retry_count,
     error:           j.error,
     createdAt:       j.created_at,
     updatedAt:       j.updated_at,

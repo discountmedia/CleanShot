@@ -381,8 +381,14 @@ interface VariantThumbProps {
 
 function VariantThumb({
   provider, variant, chosen, nowMs,
-  onChoose, onRegen, onErase, onTweak, onIdeogramEdit, onIdeogramInpaint,
+  onChoose, onTweak,
 }: VariantThumbProps) {
+  // onRegen / onErase / onIdeogramEdit / onIdeogramInpaint are still ACCEPTED
+  // (the parent forwards them and EnhancePanel still owns the dialogs) but are
+  // no longer rendered: the operator asked for a single Tweak action on the
+  // variant thumb. Left on the interface as dead-but-harmless plumbing, the
+  // same pattern this repo uses for dormant providers -- restoring a tool is
+  // re-adding its button, not re-wiring a backend.
   const status = variant?.job?.status ?? (variant ? "queued" : "idle");
   const isComplete = status === "complete";
   const isProcessing = status === "queued" || status === "processing";
@@ -464,37 +470,6 @@ function VariantThumb({
             The three quick-action icons (regen / tweak / erase) cluster in
             the top-left in a clear "↻ ✎ ⌫" order. Each one wraps a `group`
             so a styled hover-tooltip can fade in below the button. */}
-        {isComplete && (
-          <div className="group/regen absolute top-2 left-2 z-10">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onRegen();
-              }}
-              title={`Regenerate this variant with ${ENHANCE_PROVIDER_LABELS[provider]}`}
-              aria-label={`Regenerate ${ENHANCE_PROVIDER_LABELS[provider]} variant`}
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-cta-dark text-attn hover:text-ink border-2 border-attn hover:border-attn transition-colors shadow-lg"
-            >
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
-                />
-              </svg>
-            </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-attn rounded-md px-3 py-1.5 text-sm font-bold text-attn shadow-2xl opacity-0 group-hover/regen:opacity-100 transition-opacity duration-150 z-20">
-              Regenerate — run {ENHANCE_PROVIDER_LABELS[provider]} again
-            </span>
-          </div>
-        )}
 
         {/* Per-variant tweak — opens the Gemini text-edit dialog. */}
         {isComplete && (
@@ -507,7 +482,11 @@ function VariantThumb({
               }}
               title="Tweak with text — small targeted edits (Gemini)"
               aria-label="Open Gemini tweak tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-ink-soft hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
+              /* Bright blue with the name spelled out. Deliberately a literal
+                 hex rather than a palette token: every house colour is either
+                 lime, a purple, a neutral, or red, and the operator asked for
+                 this one to read as bright blue and be unmissable. */
+              className="inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full bg-[#0A84FF] hover:bg-[#3D9BFF] text-white border-2 border-[#0A84FF] hover:border-[#3D9BFF] transition-colors shadow-lg"
             >
               {/* Pencil / magic-wand icon */}
               <svg
@@ -523,6 +502,7 @@ function VariantThumb({
                   d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.536L16.732 3.732z"
                 />
               </svg>
+              <span className="text-sm font-bold leading-none">Tweak</span>
             </button>
             <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-ink-soft shadow-2xl opacity-0 group-hover/tweak:opacity-100 transition-opacity duration-150 z-20">
               Tweak with text — Gemini (&ldquo;remove the propane tank&rdquo;)
@@ -533,107 +513,23 @@ function VariantThumb({
         {/* Per-variant Ideogram edit — sibling to Tweak (Gemini), routed
             through Ideogram /v1/edit. Cyan accent to read as a sibling
             of the blue Gemini Tweak. */}
-        {isComplete && (
-          <div className="group/ideogram-edit absolute top-2 left-24 z-10">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onIdeogramEdit();
-              }}
-              title="Edit with text — Ideogram (typography-strong, best for decals)"
-              aria-label="Open Ideogram edit tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-grey hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
-            >
-              {/* Type / typography icon — distinguishes Ideogram (text-strong) from Gemini's general pencil */}
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M4 6h16M9 6v14M15 6v14"
-                />
-              </svg>
-            </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-grey shadow-2xl opacity-0 group-hover/ideogram-edit:opacity-100 transition-opacity duration-150 z-20">
-              Edit with text — Ideogram (best for decals + signage)
-            </span>
-          </div>
-        )}
 
         {/* Per-variant erase — opens the BFL flux-tools/erase-v1 mask dialog. */}
-        {isComplete && (
-          <div className="group/erase absolute top-2 left-35 z-10">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onErase();
-              }}
-              title="Erase with brush — paint over the area to remove it (Flux)"
-              aria-label="Open erase tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-grey hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
-            >
-              {/* Eraser icon */}
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M16.862 4.487l3.65 3.65a2 2 0 010 2.828L9.172 22.305H5.025a1 1 0 01-1-1V17.16a2 2 0 01.586-1.414L16.034 4.487a2 2 0 012.828 0z"
-                />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M13 7l4 4" />
-              </svg>
-            </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-grey shadow-2xl opacity-0 group-hover/erase:opacity-100 transition-opacity duration-150 z-20">
-              Erase with brush — Flux (paint over what to remove)
-            </span>
-          </div>
-        )}
 
         {/* Per-variant Ideogram inpaint — sibling to Flux Erase, routed
             through Ideogram /v1/ideogram-v3/inpaint. Rose accent so it
             visually pairs with the purple Flux eraser. */}
-        {isComplete && (
-          <div className="group/ideogram-inpaint absolute top-2 left-46 z-10">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onIdeogramInpaint();
-              }}
-              title="Inpaint with brush — Ideogram (typography-strong, best for decals)"
-              aria-label="Open Ideogram inpaint tool for this variant"
-              className="inline-flex items-center justify-center w-9 h-9 rounded-full bg-header-bg/80 hover:bg-panel-hi text-grey hover:text-ink border-2 border-line hover:border-line transition-colors shadow-lg"
-            >
-              {/* Brush/paint icon — distinguishes Ideogram inpaint from Flux eraser */}
-              <svg
-                className="w-5 h-5"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-                strokeWidth={2.5}
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M9.53 16.122a3 3 0 00-5.78 1.128 2.25 2.25 0 01-2.4 2.245 4.5 4.5 0 008.4-2.245c0-.399-.078-.78-.22-1.128zm0 0a15.998 15.998 0 003.388-1.62m-5.043-.025a15.994 15.994 0 011.622-3.395m3.42 3.42a15.995 15.995 0 004.764-4.648l3.876-5.814a1.151 1.151 0 00-1.597-1.597L14.146 6.32a15.996 15.996 0 00-4.649 4.763m3.42 3.42a6.776 6.776 0 00-3.42-3.42"
-                />
-              </svg>
-            </button>
-            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-grey shadow-2xl opacity-0 group-hover/ideogram-inpaint:opacity-100 transition-opacity duration-150 z-20">
-              Inpaint with brush — Ideogram (best for decals + signage)
-            </span>
+
+        {/* A second provider pass is in flight (currently: OpenAI handed back a
+            portrait image and is being re-run). Without this the thumb just
+            sits on its spinner for twice as long and looks hung. */}
+        {isProcessing && (variant?.job?.retryCount ?? 0) > 0 && (
+          <div className="absolute top-2 right-2 z-10 inline-flex items-center gap-1.5 rounded-full bg-[#0A84FF] px-2.5 py-1 shadow-lg">
+            <svg className="w-3 h-3 animate-spin text-white" viewBox="0 0 24 24" fill="none">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+            </svg>
+            <span className="text-[11px] font-bold text-white leading-none">Retrying</span>
           </div>
         )}
 

@@ -47,6 +47,13 @@ AI_DISCLAIMER_WATERMARK = (
 _DISCLAIMER_LABEL_COLOR = "#22c55e"
 
 
+# Watermark sizing. Proportional so legibility holds at any export resolution;
+# see the docstring in _apply_disclaimer_watermark for why it stopped being a
+# fixed point size.
+_DISCLAIMER_PT_RATIO = 0.027
+_DISCLAIMER_MIN_PT = 15
+
+
 def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     """
     Burn AI_DISCLAIMER_WATERMARK into the bottom-right corner of `img`.
@@ -56,8 +63,13 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     and dark backgrounds. The output bytes carry the watermark permanently
     — the customer-facing listing photo cannot have it stripped.
 
-    Sized for 1024-px-wide exports; on smaller images the relative
-    proportion shifts but the watermark stays legible.
+    Font size SCALES WITH IMAGE WIDTH rather than being fixed. It used to be a
+    flat 15pt, tuned when every export was exactly 1024px wide. Now that PRO
+    export emits the source's full resolution, a fixed size shrinks in relative
+    terms as the image grows -- the bigger the export, the less legible the
+    disclaimer. The owner's complaint was specifically that it is hard to read
+    on mobile, where a listing photo is displayed a few hundred pixels wide.
+    So: proportional size, heavier weight, and a stronger shadow.
     """
     # Pango markup so the label and body can carry different colours in a
     # single text render. Roboto matches the web-app preview font; falls
@@ -68,15 +80,26 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
         f'<span foreground="{_DISCLAIMER_LABEL_COLOR}">{label}</span>'
         f'<span foreground="#ffffff">{body}</span>'
     )
+    # ~2.7% of image width, so the disclaimer occupies the same fraction of the
+    # frame at any export size and survives being scaled down for a mobile
+    # listing. Floor of 15 keeps it at least as large as the old fixed size, so
+    # this can only ever increase legibility, never reduce it.
+    font_pt = max(_DISCLAIMER_MIN_PT, round(img.width * _DISCLAIMER_PT_RATIO))
+
     # rgba=True renders the coloured text directly (4-band sRGB + alpha).
+    # Black (not Bold) for the extra stroke weight the owner asked for -- Roboto
+    # ships a 900 weight, and Pango picks it up by name. Falls back through
+    # fontconfig if Roboto Black is absent, which is why the Dockerfile installs
+    # fonts-roboto (lesson #20).
     text_img = pyvips.Image.text(
         markup,
-        font="Roboto Bold 15",
+        font=f"Roboto Black {font_pt}",
         dpi=72,
         rgba=True,
     )
 
-    margin = 12
+    # Margin scales too, so the text doesn't crowd the corner on a large export.
+    margin = max(12, round(img.width * 0.012))
     x = img.width  - text_img.width  - margin
     y = img.height - text_img.height - margin
     # Bail if the export is too small to host the watermark at all
@@ -97,8 +120,11 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     # (errors: "vips_colourspace: no known route from 'multiband' to
     # 'srgb'"). Forcing the interpretation tells libvips to treat the
     # 4 bands as srgb+alpha.
+    # Shadow alpha raised 0.72 -> 0.85: at the larger font the text sits over
+    # more varied background, and the heavier drop makes it readable against a
+    # bright sky or a white wall.
     shadow = coverage.new_from_image([0, 0, 0]).bandjoin(
-        (coverage * 0.72).cast("uchar"),
+        (coverage * 0.85).cast("uchar"),
     ).copy(interpretation="srgb")
     # Foreground: the coloured text at ~98% alpha — nearly opaque so the
     # disclaimer reads clearly while still being a burned-in watermark.

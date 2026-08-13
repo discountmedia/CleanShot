@@ -131,6 +131,9 @@ class JobRecord(BaseModel):
     cloud_tasks_name: str | None = None
     idempotency_key: str
     error: str | None = None
+    # >0 while a provider call is being re-run for a correctable defect.
+    # Default keeps older rows valid.
+    retry_count: int = 0
     created_at: datetime
     updated_at: datetime
 

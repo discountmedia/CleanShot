@@ -289,6 +289,8 @@ export interface JobRecord {
   status: JobStatus;
   inputAssetId: string;
   outputAssetId?: string;
+  /** >0 while the provider call is being re-run. Drives the "Retrying" badge. */
+  retryCount?: number;
   error?: string;
   createdAt: string;
   updatedAt: string;
