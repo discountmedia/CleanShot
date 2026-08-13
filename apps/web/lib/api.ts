@@ -4,7 +4,7 @@
 // FASTAPI_INTERNAL_KEY is server-only and never in this file.
 
 import { HANDOFF_EXCHANGE_TIMEOUT_MS, type HandoffExchangeResult } from "./handoff";
-import type { ServerSessionState } from "./import-hydrate";
+import type { HandoffStatus, ServerSessionState } from "./import-hydrate";
 import type {
   EnhanceToggles,
   ForkliftMeta,
@@ -74,6 +74,20 @@ export async function getSessionState(
  * The token is passed in the request body and is never logged, thrown, or
  * echoed into an error message.
  */
+/**
+ * Per-photo import status. Drives the progress poller.
+ *
+ * Throws on any non-OK so the poller can classify — it treats a 404 as terminal
+ * (the handoff is gone, nothing more will ever land) and a transient error as
+ * worth one more tick.
+ */
+export async function getHandoffStatus(
+  handoffId: string,
+  signal?: AbortSignal,
+): Promise<HandoffStatus> {
+  return get(`/api/handoff/${handoffId}`, signal);
+}
+
 export async function exchangeHandoffToken(
   token: string,
 ): Promise<HandoffExchangeResult> {

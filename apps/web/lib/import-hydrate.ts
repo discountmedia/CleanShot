@@ -34,6 +34,35 @@ export interface ServerAsset {
 
 export interface ServerSessionState {
   assets?: ServerAsset[];
+  /**
+   * `handoff_id` is how a RELOADED page discovers it has an import worth
+   * polling. The exchange token is stripped from the address bar immediately, so
+   * the URL cannot carry it, and the handoff record outlives nothing — this
+   * reverse link on the session is the only durable path back to the poller.
+   */
+  session?: {
+    id?: string;
+    handoff_id?: string | null;
+  };
+}
+
+/** One photo's import status, camelCased by the BFF from IngestItemStatus. */
+export interface HandoffItem {
+  itemId: string;
+  filename: string;
+  status: "pending" | "landed" | "failed";
+  assetId?: string | null;
+  error?: string | null;
+}
+
+export interface HandoffStatus {
+  handoffId: string;
+  sessionId: string;
+  total: number;
+  statusCounts: Record<string, number>;
+  /** No item still pending. Landed AND failed both count — this is terminal. */
+  complete: boolean;
+  items: HandoffItem[];
 }
 
 /**
@@ -102,23 +131,88 @@ export function mapImportedAsset(
 }
 
 /**
- * Reconcile a freshly-read import set against what the grid currently holds.
+ * A photo that hasn't landed yet, or failed to.
  *
- * THE READ IS AUTHORITATIVE. Rows that came from the server are replaced
- * wholesale by what the server just said exists — so an item that ingest never
- * produced (crop yielded fewer than the handoff expected) is reconciled away
- * rather than left as a permanent skeleton, and a re-read can't duplicate rows.
+ * `expectedCount` seeds these before the first status response arrives so the
+ * grid paints N tiles immediately instead of growing from empty. Once the poller
+ * answers, the item list replaces them — which is also how a SHORTFALL is
+ * handled: if crop produced fewer photos than the handoff expected, the extra
+ * seeded tiles simply aren't in the item list and get reconciled away.
+ */
+export function placeholderRow(
+  id: string,
+  filename: string,
+  opts?: { error?: string | null },
+): UploadFile {
+  return {
+    id,
+    origin: "import",
+    filename,
+    // No preview to show yet; ThumbnailCard renders the status overlay instead.
+    previewUrl: "",
+    status: opts?.error ? "error" : "importing",
+    progress: 0,
+    error: opts?.error ?? undefined,
+  };
+}
+
+/** N anonymous tiles for the first paint, before any per-photo detail exists. */
+export function seedPlaceholders(
+  count: number,
+  makeId: () => string,
+): UploadFile[] {
+  return Array.from({ length: Math.max(0, count) }, (_, i) =>
+    placeholderRow(makeId(), `Photo ${i + 1}`),
+  );
+}
+
+/**
+ * Turn the poller's item list into grid rows for everything NOT yet landed.
  *
- * Upload-origin rows are untouched: the operator's in-flight picks are theirs,
- * and the server has no opinion about them.
+ * Landed items are deliberately excluded: those come from the session read,
+ * which is the authoritative source for what exists and is the only place a
+ * signed preview URL is available. This function only covers the two states the
+ * session read cannot express — still copying, and failed with a reason.
+ *
+ * EVERY item ends up in exactly one of the three buckets, which is what
+ * guarantees no tile spins forever.
+ */
+export function unlandedRows(
+  items: HandoffItem[],
+  makeId: () => string,
+): UploadFile[] {
+  return items
+    .filter((it) => it.status !== "landed")
+    .map((it) =>
+      placeholderRow(makeId(), it.filename || "Imported photo", {
+        error: it.status === "failed" ? it.error || "Import failed" : null,
+      }),
+    );
+}
+
+/**
+ * Reconcile the grid against the server's current truth.
+ *
+ * THE READ IS AUTHORITATIVE. Import rows are rebuilt wholesale from what the
+ * server just said — landed assets from the session read, plus the poller's
+ * pending/failed rows — so a re-read cannot duplicate, and a seeded placeholder
+ * for a photo that never existed is reconciled away rather than left spinning.
+ *
+ * Upload-origin rows are untouched: the operator's own picks are theirs and the
+ * server has no opinion about them.
+ *
+ * `unlanded` is optional so the pre-poller path (a reload with no handoff, where
+ * only landed assets are knowable) keeps working unchanged.
  */
 export function reconcileImports(
   current: UploadFile[],
   hydrated: UploadFile[],
+  unlanded: UploadFile[] = [],
 ): UploadFile[] {
   const keptUploads = current.filter((f) => f.origin === "upload");
   // Preserve any preview URL we already refreshed for an asset we still hold,
-  // so reconciling doesn't hand a known-expired URL back to the <img>.
+  // so reconciling doesn't hand a known-expired URL back to the <img>, and keep
+  // the row's id stable so React doesn't remount the tile on every poll.
   const previousByAssetId = new Map(
     current
       .filter((f) => f.origin === "import" && f.assetId)
@@ -128,6 +222,8 @@ export function reconcileImports(
     const prev = h.assetId ? previousByAssetId.get(h.assetId) : undefined;
     return prev ? { ...h, id: prev.id, previewUrl: prev.previewUrl } : h;
   });
-  // Imports first: they arrived before anything the operator has picked since.
-  return [...imports, ...keptUploads];
+  // Landed first, then the ones still in flight or failed, then the operator's
+  // own uploads. Landed-first keeps finished work from jumping around as the
+  // remaining tiles resolve.
+  return [...imports, ...unlanded, ...keptUploads];
 }

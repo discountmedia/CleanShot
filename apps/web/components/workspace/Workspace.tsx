@@ -62,6 +62,7 @@ import {
   writeStoredSessionId,
   type HandoffFailureReason,
 } from "@/lib/handoff";
+import { selectImportableAssets, type ServerAsset } from "@/lib/import-hydrate";
 import { getRestriction } from "@/lib/access-control";
 import { AlertBanner } from "./AlertBanner";
 import type { ForkliftMeta } from "@/lib/types";
@@ -108,14 +109,16 @@ type SessionInit =
   | {
       phase: "ready";
       sessionId: string;
+      /** Present when there's an import to watch. Drives the progress poller. */
       handoffId?: string;
+      /** Seeds placeholder tiles for the first paint. Not authoritative. */
       expectedCount?: number;
       /**
-       * True when this session pre-existed us (adopted via exchange, or resumed
-       * from storage) and may therefore hold assets to hydrate. False for a
-       * session we just minted — nothing to read, so no wasted round trip.
+       * Assets known at the moment we became ready, or null when there is no
+       * import at all. `[]` and `null` differ: `[]` means "an import exists but
+       * nothing has landed yet", `null` means "don't hydrate".
        */
-      hydrate: boolean;
+      initialAssets?: ServerAsset[] | null;
     };
 
 // Cross-panel asset shape. Each panel emits these as its output.
@@ -235,12 +238,23 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
 
   // All the `{sessionId && <Panel …>}` gates below read this. Null until the
   // session is actually known, which is what keeps the pre-ready shell up.
-  // NOTE: `handoffId` / `expectedCount` deliberately have no derived consts yet
-  // — they live on `init` and get consumed by the session-read mapper and the
-  // handoff poller (steps 3 and 4). Reading them from `init` at that point keeps
-  // this diff free of unused locals.
   const sessionId = init.phase === "ready" ? init.sessionId : null;
-  const shouldHydrate = init.phase === "ready" && init.hydrate;
+  const handoffId = init.phase === "ready" ? (init.handoffId ?? null) : null;
+  const expectedCount = init.phase === "ready" ? (init.expectedCount ?? 0) : 0;
+  /**
+   * Assets already known at the moment the session became ready.
+   *
+   * This is how the duplicate session read got collapsed. Previously the resume
+   * path read the session to validate the stored id and EnhancePanel read it
+   * again to hydrate. Now the validating read's result is handed straight down.
+   *
+   *   resume    → the validated read's assets
+   *   exchange  → [] — the exchange JUST created this session, so it is empty by
+   *               construction and a read would be a guaranteed-empty round
+   *               trip. The poller drives the first real read as photos land.
+   *   creating  → null, meaning "no import, don't hydrate at all"
+   */
+  const initialAssets = init.phase === "ready" ? (init.initialAssets ?? null) : null;
 
   // Cross-panel pipeline state. The flow is curated by the user:
   //   Enhance → "Send to Scan" → enhancedAssets  (what Scan tab analyzes)
@@ -275,8 +289,9 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           // Not stored: a freshly-minted empty session has nothing worth
           // resuming, and storing it would change today's behaviour (reload
           // currently gives you a clean workspace). Only sessions that hold
-          // imports get a carrier.
-          if (!cancelled) setInit({ phase: "ready", sessionId, hydrate: false });
+          // imports get a carrier. initialAssets stays null — no import, so
+          // EnhancePanel skips hydration entirely.
+          if (!cancelled) setInit({ phase: "ready", sessionId });
         })
         .catch((err: Error) => {
           if (!cancelled) setSessionError(err.message);
@@ -294,11 +309,22 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       void (async () => {
         try {
           // The session read doubles as the validity probe — there is no cheaper
-          // existence endpoint. A stale id from a purged session, or one whose
-          // ownership check now refuses us, throws here.
-          await getSessionState(storedId);
+          // existence endpoint. A stale id from a purged session, or one the
+          // auth check now refuses, throws here.
+          //
+          // Its result is passed DOWN rather than discarded: EnhancePanel used to
+          // re-read the same session to hydrate, which was one wasted round trip
+          // on every resume.
+          const state = await getSessionState(storedId);
           if (cancelled) return;
-          setInit({ phase: "ready", sessionId: storedId, hydrate: true });
+          setInit({
+            phase: "ready",
+            sessionId: storedId,
+            // The session's own reverse link is how a reloaded page finds its
+            // import — the token was stripped from the URL long ago.
+            handoffId: state.session?.handoff_id ?? undefined,
+            initialAssets: selectImportableAssets(state),
+          });
         } catch {
           if (cancelled) return;
           // Expected case, NOT an exception worth surfacing: the stored handle
@@ -331,7 +357,11 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
           sessionId: result.sessionId,
           handoffId: result.handoffId,
           expectedCount: result.expectedCount,
-          hydrate: true,
+          // Empty by construction: the exchange just created this session and
+          // the copies are still in flight. Reading it here would be a
+          // guaranteed-empty round trip in front of the gate. The poller
+          // triggers the first real read as photos land.
+          initialAssets: [],
         });
         return;
       }
@@ -477,7 +507,9 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
             {sessionId && (
               <EnhancePanel
                 sessionId={sessionId}
-                hydrateImports={shouldHydrate}
+                initialImportAssets={initialAssets}
+                handoffId={handoffId}
+                expectedImportCount={expectedCount}
                 meta={meta}
                 onMetaChange={setMeta}
                 onSendToScan={handleSendToScan}

@@ -49,9 +49,13 @@ import {
 import {
   mapImportedAsset,
   reconcileImports,
+  seedPlaceholders,
   selectImportableAssets,
+  unlandedRows,
+  type HandoffItem,
   type ServerAsset,
 } from "../../lib/import-hydrate";
+import { useHandoffPoller } from "../../lib/useHandoffPoller";
 import { buildRecommendedPrompt } from "../../lib/recommended-prompt";
 import { useJobPoller } from "../../lib/polling";
 import {
@@ -71,6 +75,7 @@ import {
 import { EraseDialog, type EraseDialogResult } from "./EraseDialog";
 import { TweakDialog, type TweakDialogResult } from "./TweakDialog";
 import { TipBanner } from "../workspace/TipBanner";
+import { AlertBanner } from "../workspace/AlertBanner";
 // Modify-tab darkroom controls relocated to live INSIDE Enhance below the
 // variants grid (2026-06-01) — the Modify tab itself is being deleted.
 // Embedded mode hides the TipBanner + standalone uploader.
@@ -161,6 +166,15 @@ function ThumbnailCard({
           )}
           {file.status === "pending" && (
             <span className="text-xs text-ink-soft">Queued</span>
+          )}
+          {file.status === "importing" && (
+            <>
+              <svg className="animate-spin w-6 h-6 text-accent" viewBox="0 0 24 24" fill="none">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8z" />
+              </svg>
+              <span className="text-xs text-accent text-center">Importing…</span>
+            </>
           )}
         </div>
       )}
@@ -290,12 +304,26 @@ export interface CompletedEnhanceItem {
 export interface EnhancePanelProps {
   sessionId: string;
   /**
-   * True when this session pre-existed the page load (adopted from a
-   * media-auditor handoff, or resumed from sessionStorage) and may hold
-   * imported assets to pull in. False for a freshly-minted session, where the
-   * read would always come back empty.
+   * Import assets already known when the session became ready.
+   *
+   *   null — no import in play; skip hydration entirely (freshly-minted session)
+   *   []   — an import exists but nothing has landed yet (just-exchanged token)
+   *   [..] — assets from the resume path's validating read
+   *
+   * Passing them down is what removed the duplicate session read: the resume
+   * path had to read the session to validate the stored id, and this panel used
+   * to read the same session again to hydrate.
    */
-  hydrateImports?: boolean;
+  initialImportAssets?: ServerAsset[] | null;
+  /** Present when there's an import to watch. Drives the progress poller. */
+  handoffId?: string | null;
+  /**
+   * Seeds placeholder tiles for the first paint so the grid doesn't grow from
+   * empty. A SEED ONLY — the server is authoritative for what actually exists,
+   * and a shortfall (crop produced fewer photos than expected) is reconciled
+   * away rather than left as a stuck tile.
+   */
+  expectedImportCount?: number;
   meta: Partial<ForkliftMeta>;
   onMetaChange: (meta: Partial<ForkliftMeta>) => void;
   onSendToScan: (items: CompletedEnhanceItem[]) => void;
@@ -322,7 +350,9 @@ export interface EnhancePanelProps {
 
 export function EnhancePanel({
   sessionId,
-  hydrateImports = false,
+  initialImportAssets = null,
+  handoffId = null,
+  expectedImportCount = 0,
   meta,
   onMetaChange,
   onSendToScan,
@@ -338,48 +368,51 @@ export function EnhancePanel({
 
   // ─── Core state ─────────────────────────────────────────────────────────
 
-  const [files, setFiles] = useState<UploadFile[]>([]);
+  /**
+   * Placeholder tiles for an inbound import are seeded in the INITIALIZER, not
+   * an effect: the point is that the grid paints the right number of tiles on
+   * the first frame rather than growing from empty as photos land. Doing it in
+   * an effect would be one commit late and a setState-inside-an-effect.
+   *
+   * This panel only mounts once the session is ready, so `expectedImportCount`
+   * is already known on the first render and never changes afterwards.
+   *
+   * Seeded tiles are a SEED, not truth — every one is reconciled against the
+   * server (see reconcileImports), so a shortfall disappears rather than
+   * spinning.
+   */
+  const [files, setFiles] = useState<UploadFile[]>(() =>
+    expectedImportCount > 0
+      ? seedPlaceholders(expectedImportCount, uuidv4)
+      : [],
+  );
   const [toggles, setToggles] = useState<EnhanceToggles>(DEFAULT_TOGGLES);
   const setMeta = onMetaChange;
 
   /**
-   * Hydrate imported photos from the server.
+   * Turn a set of server assets (+ the poller's not-yet-landed items) into grid
+   * rows and reconcile them in.
    *
-   * The SESSION READ is the source of truth here, not the handoff poller —
-   * which is why this runs identically whether the operator just arrived from
-   * media-auditor or reloaded an hour later. The handoff record is TTL'd; the
-   * assets are permanent. There is no handoffId in this code path at all, and
-   * that's the point.
-   *
-   * Runs once per session. Step 4 adds the poller, whose only job is to say
-   * "re-read now" as items land and to go terminal — it will call back into
-   * this same mapper rather than becoming a second source of grid state.
+   * The SESSION READ is the source of truth for what exists; the poller only
+   * contributes the two states a read cannot express (still copying, failed).
+   * That split is why hydration works identically for someone who just arrived
+   * from media-auditor and someone who reloaded an hour later with no handoff at
+   * all — the handoff record is TTL'd, the assets are permanent.
    */
-  useEffect(() => {
-    if (!hydrateImports || !sessionId) return;
-    let cancelled = false;
-
-    void (async () => {
-      let importable: ServerAsset[];
-      try {
-        importable = selectImportableAssets(await getSessionState(sessionId));
-      } catch {
-        // Includes the ownership 404. Nothing to show and nothing to say — the
-        // workspace is already usable and empty, which is a valid state.
-        return;
-      }
-      if (cancelled || importable.length === 0) return;
-
+  const applyImportState = useCallback(
+    async (
+      assets: ServerAsset[],
+      unlandedItems: HandoffItem[],
+      isCancelled: () => boolean,
+    ) => {
       // One signed GET URL per asset: the session read returns gs:// URIs, not
       // fetchable URLs. Settled (not all-or-nothing) so one bad mint doesn't
       // cost the operator the whole import — a row with no preview still
       // enhances, per the isEnhanceable() invariant.
-      const minted = await Promise.allSettled(
-        importable.map((a) => getAssetUrl(a.id)),
-      );
-      if (cancelled) return;
+      const minted = await Promise.allSettled(assets.map((a) => getAssetUrl(a.id)));
+      if (isCancelled()) return;
 
-      const hydrated = importable.map((a, i) => {
+      const hydrated = assets.map((a, i) => {
         const m = minted[i];
         return mapImportedAsset(
           a,
@@ -387,13 +420,70 @@ export function EnhancePanel({
           uuidv4(),
         );
       });
-      setFiles((prev) => reconcileImports(prev, hydrated));
-    })();
+      setFiles((prev) =>
+        reconcileImports(prev, hydrated, unlandedRows(unlandedItems, uuidv4)),
+      );
+    },
+    [],
+  );
+
+  /**
+   * First paint. Seeds placeholders from expectedCount and maps whatever the
+   * session already had, without a read of its own — Workspace handed both down.
+   */
+  useEffect(() => {
+    if (initialImportAssets === null) return;
+    let cancelled = false;
+    const isCancelled = () => cancelled;
+
+    // NOTE: placeholders are NOT seeded here. They're seeded in the `files`
+    // state initializer, which puts them on the very first frame (the actual
+    // goal) instead of one commit later, and avoids a setState-in-an-effect.
+    if (initialImportAssets.length > 0) {
+      const assets = initialImportAssets;
+      void (async () => {
+        await applyImportState(assets, [], isCancelled);
+      })();
+    }
 
     return () => {
       cancelled = true;
     };
-  }, [hydrateImports, sessionId]);
+  }, [initialImportAssets, applyImportState]);
+
+  /**
+   * Progress poller. Its ONLY jobs are to say "re-read now" as photos land and
+   * to go terminal — it is never a source of asset data.
+   */
+  const cancelledRef = useRef(false);
+  useEffect(() => {
+    cancelledRef.current = false;
+    return () => {
+      cancelledRef.current = true;
+    };
+  }, []);
+
+  const handoffProgress = useHandoffPoller(
+    handoffId,
+    (status) => {
+      if (!sessionId) return;
+      void (async () => {
+        let assets: ServerAsset[] = [];
+        try {
+          assets = selectImportableAssets(await getSessionState(sessionId));
+        } catch {
+          // Keep whatever is already on screen. The poller will tick again, and
+          // if the reads keep failing it surfaces "unavailable" on its own.
+          return;
+        }
+        await applyImportState(
+          assets,
+          status.items.filter((it) => it.status !== "landed"),
+          () => cancelledRef.current,
+        );
+      })();
+    },
+  );
 
   // True when the operator has changed a toggle since the most recent batch
   // reached a terminal state. Drives the "re-enhance with new toggles"
@@ -1684,6 +1774,40 @@ export function EnhancePanel({
           your photos so you can pick the best one.
         </p>
       </TipBanner>
+
+      {/* ── Import progress / outcome ──
+          The poller stops on a terminal state, and a stalled or unreachable
+          import must SAY so rather than leaving tiles spinning. Whatever landed
+          is already usable underneath this. */}
+      {handoffId && handoffProgress.status && !handoffProgress.outcome && (
+        <p className="text-sm font-mono text-ink-soft">
+          Bringing in your photos…{" "}
+          {handoffProgress.status.statusCounts.landed ?? 0} of{" "}
+          {handoffProgress.status.total} ready
+        </p>
+      )}
+      {handoffProgress.outcome === "timeout" && (
+        <AlertBanner
+          severity="warn"
+          title="Some photos are still on their way"
+          body="We stopped waiting after five minutes. What arrived is ready to enhance — reload to check for the rest, or send them over again from the unit page."
+        />
+      )}
+      {handoffProgress.outcome === "unavailable" && (
+        <AlertBanner
+          severity="warn"
+          title="Lost track of the import"
+          body="We can't reach the import status right now. Anything that already arrived is ready to enhance; reload to pick the rest up."
+        />
+      )}
+      {handoffProgress.outcome === "complete" &&
+        (handoffProgress.status?.statusCounts.failed ?? 0) > 0 && (
+          <AlertBanner
+            severity="warn"
+            title={`${handoffProgress.status?.statusCounts.failed} photo(s) didn't come through`}
+            body="The tiles marked in the grid show why. Everything else imported fine and is ready to enhance."
+          />
+        )}
 
       {/* ── Per-variant Erase dialog (singleton) — Flux backend ── */}
       <EraseDialog

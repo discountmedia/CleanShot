@@ -197,7 +197,24 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
 
 // ─── Upload ───────────────────────────────────────────────────────────────────
 
-export type UploadStatus = "pending" | "compressing" | "uploading" | "done" | "error";
+/**
+ * "importing" is the media-auditor equivalent of compressing/uploading: the
+ * bytes are being copied server-side and the grid is showing a placeholder.
+ *
+ * It is deliberately NOT "pending". "pending" means "the operator picked this
+ * and the Enhance button should upload it" — `handleEnhanceAll` filters on it
+ * and `pendingCount` drives the button label. An in-flight import that looked
+ * pending would inflate that count and make the button promise work it cannot
+ * do. It is also not "done", so `isEnhanceable` excludes it until the bytes
+ * actually land.
+ */
+export type UploadStatus =
+  | "pending"
+  | "compressing"
+  | "uploading"
+  | "importing"
+  | "done"
+  | "error";
 
 /**
  * Where a grid item came from.
