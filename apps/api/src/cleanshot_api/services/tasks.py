@@ -25,6 +25,7 @@ from cleanshot_api.models.schemas import (
     CleanupTaskPayload,
     EnhanceTaskPayload,
     EraseTaskPayload,
+    IngestCopyTaskPayload,
     ScanTaskPayload,
     TweakTaskPayload,
 )
@@ -176,6 +177,32 @@ def enqueue_tweak(payload: TweakTaskPayload) -> str:
         url=f"{settings.worker_url}/worker/tweak",
         payload=payload.model_dump(mode="json"),
         task_id=task_id,
+    )
+    response = client.create_task(parent=queue_path, task=task)
+    return response.name
+
+
+def enqueue_ingest_copy(payload: IngestCopyTaskPayload) -> str:
+    """
+    Enqueue one photo copy for the media-auditor import.
+
+    Own queue (cleanshot-ingest-copy), not the shared gen queue - see the
+    TASKS_QUEUE_INGEST comment in core/config.py for why. Task id is derived
+    from the ingest item, so a duplicate enqueue for the same item collapses
+    rather than copying the bytes twice.
+    """
+    settings = get_settings()
+    client = _tasks_client()
+    queue_path = (
+        f"projects/{settings.gcp_project}"
+        f"/locations/{settings.tasks_location}"
+        f"/queues/{settings.tasks_queue_ingest}"
+    )
+    task = _make_task(
+        queue_path=queue_path,
+        url=f"{settings.worker_url}/worker/ingest-copy",
+        payload=payload.model_dump(mode="json"),
+        task_id=f"ingest-{payload.item_id}",
     )
     response = client.create_task(parent=queue_path, task=task)
     return response.name

@@ -286,7 +286,7 @@ async def get_session(
     conn: asyncpg.Connection, session_id: uuid.UUID
 ) -> SessionRecord | None:
     row = await conn.fetchrow(
-        "SELECT id, created_at, last_seen_at FROM sessions WHERE id = $1",
+        "SELECT id, created_at, last_seen_at, handoff_id FROM sessions WHERE id = $1",
         session_id,
     )
     return SessionRecord(**dict(row)) if row else None
@@ -579,3 +579,192 @@ async def create_consensus_result(
     for key in ("divergent_providers", "merged_anomalies", "high_confidence_anomalies"):
         data[key] = json.loads(data[key])
     return ConsensusResultRecord(**data)
+
+
+# ---------------------------------------------------------------------------
+# Ingest handoffs (media-auditor photo import)
+# ---------------------------------------------------------------------------
+#
+# Durable by design. The polling endpoint is the only way an operator watches
+# their import land, so its state must survive a cache outage — see the schema
+# comment in migrate.py.
+
+
+async def create_handoff(
+    conn: asyncpg.Connection,
+    *,
+    session_id: uuid.UUID,
+    user_email: str,
+    source_batch_id: str,
+    stock_number: str | None,
+    token_hash: str,
+    token_expires_at: datetime,
+    expected_count: int,
+) -> uuid.UUID:
+    """Insert the handoff row. Stores the token's SHA-256, never the token."""
+    row = await conn.fetchrow(
+        """
+        INSERT INTO ingest_handoffs
+            (session_id, user_email, source_batch_id, stock_number,
+             token_hash, token_expires_at, expected_count)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id
+        """,
+        session_id,
+        user_email.lower(),
+        source_batch_id,
+        stock_number,
+        token_hash,
+        token_expires_at,
+        expected_count,
+    )
+    assert row is not None
+    return row["id"]
+
+
+async def set_session_handoff(
+    conn: asyncpg.Connection, session_id: uuid.UUID, handoff_id: uuid.UUID
+) -> None:
+    await conn.execute(
+        "UPDATE sessions SET handoff_id = $2 WHERE id = $1",
+        session_id,
+        handoff_id,
+    )
+
+
+async def create_ingest_item(
+    conn: asyncpg.Connection,
+    *,
+    handoff_id: uuid.UUID,
+    session_id: uuid.UUID,
+    source_batch_id: str,
+    source_url: str,
+    filename: str,
+) -> uuid.UUID:
+    row = await conn.fetchrow(
+        """
+        INSERT INTO ingest_items
+            (handoff_id, session_id, source_batch_id, source_url, filename)
+        VALUES ($1, $2, $3, $4, $5)
+        RETURNING id
+        """,
+        handoff_id,
+        session_id,
+        source_batch_id,
+        source_url,
+        filename,
+    )
+    assert row is not None
+    return row["id"]
+
+
+async def get_handoff_by_token_hash(
+    conn: asyncpg.Connection, token_hash: str
+) -> dict | None:
+    row = await conn.fetchrow(
+        """
+        SELECT id, session_id, user_email, token_expires_at, consumed_at,
+               expected_count
+        FROM ingest_handoffs
+        WHERE token_hash = $1
+        """,
+        token_hash,
+    )
+    return dict(row) if row else None
+
+
+async def mark_handoff_consumed(
+    conn: asyncpg.Connection, handoff_id: uuid.UUID
+) -> None:
+    """
+    First-exchange stamp. Idempotent by the COALESCE — a re-presented token
+    keeps its original consumption time rather than being refused, because
+    reload and back-navigation are normal user behaviour.
+    """
+    await conn.execute(
+        "UPDATE ingest_handoffs SET consumed_at = COALESCE(consumed_at, now()) WHERE id = $1",
+        handoff_id,
+    )
+
+
+async def get_handoff(conn: asyncpg.Connection, handoff_id: uuid.UUID) -> dict | None:
+    row = await conn.fetchrow(
+        "SELECT id, session_id, expected_count FROM ingest_handoffs WHERE id = $1",
+        handoff_id,
+    )
+    return dict(row) if row else None
+
+
+async def get_ingest_items(
+    conn: asyncpg.Connection, handoff_id: uuid.UUID
+) -> list[dict]:
+    rows = await conn.fetch(
+        """
+        SELECT id, filename, status, asset_id, error
+        FROM ingest_items
+        WHERE handoff_id = $1
+        ORDER BY created_at
+        """,
+        handoff_id,
+    )
+    return [dict(r) for r in rows]
+
+
+async def find_landed_item_by_hash(
+    conn: asyncpg.Connection, source_batch_id: str, content_hash: str
+) -> dict | None:
+    """
+    Dedupe lookup: has this exact byte content already landed for this batch?
+    Covers both a re-sent batch and a Cloud Tasks retry that failed after the
+    asset row was written.
+    """
+    row = await conn.fetchrow(
+        """
+        SELECT id, asset_id
+        FROM ingest_items
+        WHERE source_batch_id = $1 AND content_hash = $2 AND status = 'landed'
+        LIMIT 1
+        """,
+        source_batch_id,
+        content_hash,
+    )
+    return dict(row) if row else None
+
+
+async def mark_ingest_item_landed(
+    conn: asyncpg.Connection,
+    *,
+    item_id: uuid.UUID,
+    asset_id: uuid.UUID,
+    content_hash: str,
+) -> None:
+    await conn.execute(
+        """
+        UPDATE ingest_items
+        SET status = 'landed', asset_id = $2, content_hash = $3,
+            error = NULL, updated_at = now()
+        WHERE id = $1
+        """,
+        item_id,
+        asset_id,
+        content_hash,
+    )
+
+
+async def mark_ingest_item_failed(
+    conn: asyncpg.Connection, *, item_id: uuid.UUID, error: str
+) -> None:
+    """
+    Terminal failure with a reason the operator can act on. Truncated because
+    this string is rendered on a grid tile, and an upstream stack trace is not
+    an error message.
+    """
+    await conn.execute(
+        """
+        UPDATE ingest_items
+        SET status = 'failed', error = $2, updated_at = now()
+        WHERE id = $1
+        """,
+        item_id,
+        error[:300],
+    )

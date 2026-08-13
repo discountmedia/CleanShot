@@ -221,6 +221,73 @@ CREATE TABLE IF NOT EXISTS consensus_results (
     high_confidence_anomalies   JSONB NOT NULL DEFAULT '[]',
     created_at                  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- ─── media-auditor → CleanShot photo import ─────────────────────────────────
+--
+-- One handoff row per "send this unit's photos to CleanShot" click, and one
+-- item row per photo in it.
+--
+-- Deliberately DURABLE rather than Valkey-backed. The polling endpoint is the
+-- only way an operator sees their import land, so it must not depend on a cache
+-- being up — /jobs/batch hard-503s without Valkey and that is not an acceptable
+-- shape here. Postgres is the single source of truth; there is no dual-write to
+-- keep consistent.
+--
+-- `status` is plain TEXT, not a Postgres enum, so adding a state later is a code
+-- change rather than an ALTER TYPE dance (hard-won lesson #12).
+CREATE TABLE IF NOT EXISTS ingest_handoffs (
+    id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    session_id          UUID NOT NULL REFERENCES sessions(id),
+    -- Who clicked. The exchange refuses a token presented by anyone else.
+    user_email          TEXT NOT NULL,
+    -- Caller's stable id for this batch. Half of the dedupe key.
+    source_batch_id     TEXT NOT NULL,
+    -- Source unit's stock number; copied onto each asset's source_ref.
+    stock_number        TEXT,
+    -- SHA-256 of the exchange token, never the token itself: a DB dump must not
+    -- yield a usable credential.
+    token_hash          TEXT NOT NULL,
+    token_expires_at    TIMESTAMPTZ NOT NULL,
+    -- Set on first successful exchange. NOT a lock: the same user re-presenting
+    -- a consumed token gets the same session back, because reload and
+    -- back-navigation are normal behaviour.
+    consumed_at         TIMESTAMPTZ,
+    expected_count      INT NOT NULL,
+    created_at          TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingest_handoffs_token
+    ON ingest_handoffs(token_hash);
+CREATE INDEX IF NOT EXISTS idx_ingest_handoffs_session
+    ON ingest_handoffs(session_id);
+
+CREATE TABLE IF NOT EXISTS ingest_items (
+    id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    handoff_id      UUID NOT NULL REFERENCES ingest_handoffs(id),
+    session_id      UUID NOT NULL REFERENCES sessions(id),
+    source_batch_id TEXT NOT NULL,
+    source_url      TEXT NOT NULL,
+    filename        TEXT NOT NULL,
+    -- 'pending' | 'landed' | 'failed'. Every item reaches one of the terminal
+    -- two, so the UI never holds a permanent skeleton.
+    status          TEXT NOT NULL DEFAULT 'pending',
+    error           TEXT,
+    asset_id        UUID REFERENCES assets(id),
+    content_hash    TEXT,
+    created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_items_handoff ON ingest_items(handoff_id);
+-- Dedupe on (source_batch_id, checksum): re-sending a batch, or a Cloud Tasks
+-- retry after a partial success, reuses the landed asset instead of copying the
+-- bytes again. Partial index because content_hash is only known post-fetch.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ingest_items_dedupe
+    ON ingest_items(source_batch_id, content_hash)
+    WHERE content_hash IS NOT NULL;
+
+-- Lets a reloaded page discover whether its session has an import worth polling
+-- without the handoff id being in the URL. Additive, same shape as the
+-- user_email patch above.
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_id UUID;
 """
 
 

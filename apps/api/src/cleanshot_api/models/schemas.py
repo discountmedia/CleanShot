@@ -82,6 +82,11 @@ class SessionRecord(BaseModel):
     id: uuid.UUID
     created_at: datetime
     last_seen_at: datetime
+    # Set when this session was created by a media-auditor handoff. Lets a
+    # reloaded page discover it has an import worth polling without the handoff
+    # id being in the URL — the token is stripped from the address bar
+    # immediately after exchange, so the URL cannot be the carrier.
+    handoff_id: uuid.UUID | None = None
 
 
 class ProjectRecord(BaseModel):
@@ -598,6 +603,103 @@ class ExportProPreviewResponse(BaseModel):
 # ---------------------------------------------------------------------------
 # Session state (full reconstruction payload for GET /sessions/{id})
 # ---------------------------------------------------------------------------
+
+
+# ---------------------------------------------------------------------------
+# media-auditor → CleanShot photo import (handoff)
+# ---------------------------------------------------------------------------
+
+
+class IngestImage(BaseModel):
+    """
+    One photo to copy in.
+
+    A URL, not bytes: media-auditor never stores photo bytes — it crawls
+    `image_urls` off the live listing and hands those to fal by reference. So the
+    handoff passes references too and CleanShot fetches them server-side.
+    """
+    url: str
+    # Optional display name. Falls back to the URL's basename, so the operator
+    # sees something recognisable in the grid either way.
+    filename: str | None = None
+
+
+class IngestHandoffRequest(BaseModel):
+    # Caller's stable id for this batch. Half the dedupe key with the per-photo
+    # checksum, so re-sending the same batch cannot duplicate assets.
+    source_batch_id: str = Field(min_length=1, max_length=200)
+    # Source unit's stock number — media-auditor's unit ids ARE stock numbers.
+    # Copied onto every asset's source_ref so an asset can still be traced back
+    # to a unit after the handoff row is gone.
+    stock_number: str | None = Field(default=None, max_length=64)
+    images: list[IngestImage] = Field(min_length=1, max_length=150)
+    # Optional equipment metadata, pre-filled into the workspace MetaCard so the
+    # operator doesn't retype what media-auditor already knows.
+    make: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=100)
+    year: int | None = Field(default=None, ge=1900, le=2100)
+
+
+class IngestHandoffResponse(BaseModel):
+    handoff_id: uuid.UUID
+    # Single-use, short-TTL. Travels to the browser in a URL FRAGMENT and is
+    # exchanged for the session. Never logged, never echoed in an error.
+    exchange_token: str
+    expected_count: int
+
+
+class IngestExchangeRequest(BaseModel):
+    """
+    The token is an UNCONSTRAINED `str` on purpose.
+
+    There is no custom RequestValidationError handler on this app, so FastAPI's
+    default 422 body echoes the offending `input` value for each error `loc`. A
+    constrained token field (min_length / pattern / UUID) would therefore reflect
+    a malformed token straight back to the caller, and the web BFF forwards
+    upstream bodies. Validation happens in the handler, which returns fixed
+    strings. Do not add validators here.
+    """
+    token: str
+
+
+class IngestExchangeResponse(BaseModel):
+    session_id: uuid.UUID
+    handoff_id: uuid.UUID
+    expected_count: int
+
+
+class IngestItemStatus(BaseModel):
+    item_id: uuid.UUID
+    filename: str
+    status: Literal["pending", "landed", "failed"]
+    asset_id: uuid.UUID | None = None
+    # Human-readable failure cause. Present only on status == "failed".
+    error: str | None = None
+
+
+class IngestHandoffStatus(BaseModel):
+    """
+    Mirrors GET /api/v1/jobs/batch/{batch_id}'s envelope — same
+    total / status_counts / complete triple — rather than inventing a second
+    progress shape for the frontend to learn.
+    """
+    handoff_id: uuid.UUID
+    session_id: uuid.UUID
+    total: int
+    status_counts: dict[str, int]
+    # True once no item is still pending. Terminal: the poller stops here.
+    complete: bool
+    items: list[IngestItemStatus]
+
+
+class IngestCopyTaskPayload(BaseModel):
+    item_id: uuid.UUID
+    handoff_id: uuid.UUID
+    session_id: uuid.UUID
+    source_batch_id: str
+    source_url: str
+    filename: str
+    stock_number: str | None = None
 
 
 class SessionState(BaseModel):

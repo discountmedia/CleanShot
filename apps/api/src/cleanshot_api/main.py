@@ -43,6 +43,7 @@ from cleanshot_api.routers import (
     admin,
     approvals,
     export,
+    ingest,
     jobs,
     modify,
     operations,
@@ -262,6 +263,7 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 app.include_router(sessions.router)
 app.include_router(jobs.router)
+app.include_router(ingest.router)
 app.include_router(operations.router)
 app.include_router(modify.router)
 app.include_router(upload.router)

@@ -7,6 +7,7 @@ from cleanshot_api.models.schemas import (
     CleanupTaskPayload,
     EnhanceTaskPayload,
     EraseTaskPayload,
+    IngestCopyTaskPayload,
     ScanTaskPayload,
     TweakTaskPayload,
 )
@@ -16,6 +17,7 @@ from cleanshot_api.workers.enhance_worker import (
     handle_erase_task,
     handle_tweak_task,
 )
+from cleanshot_api.workers.ingest_worker import handle_ingest_copy_task
 from cleanshot_api.workers.scan_worker import handle_scan_task
 
 router = APIRouter(prefix="/worker", tags=["worker"])
@@ -106,3 +108,19 @@ async def worker_tweak(
     Gemini call happens in background.
     """
     return await handle_tweak_task(payload, background_tasks, request)
+
+
+@router.post(
+    "/ingest-copy",
+    dependencies=[Depends(require_tasks_auth)],
+)
+async def worker_ingest_copy(
+    payload: IngestCopyTaskPayload,
+    background_tasks: BackgroundTasks,
+    request: Request,
+) -> dict:
+    """
+    Cloud Tasks target for one media-auditor photo copy.
+    OIDC-authenticated. Quick-acknowledge: HTTP 200 before the fetch runs.
+    """
+    return await handle_ingest_copy_task(payload, background_tasks, request)

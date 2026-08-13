@@ -54,6 +54,17 @@ class Settings(BaseSettings):
     # -------------------------------------------------------------------------
     tasks_queue_gen: str = Field("cleanshot-image-gen", alias="TASKS_QUEUE_GEN")
     tasks_queue_scan: str = Field("cleanshot-image-scan", alias="TASKS_QUEUE_SCAN")
+    # Dedicated queue for media-auditor photo copies. NOT cleanshot-image-gen:
+    # that queue dispatches at 1.5/s and a 60-job enhance batch sitting in front
+    # of an 8-photo import would stall the import for minutes, which defeats
+    # "photos appear as they land". Copies are cheap (HTTP GET + GCS write), so
+    # this queue wants a high dispatch rate.
+    # OPERATOR PREREQUISITE — create it before this ships:
+    #   gcloud tasks queues create cleanshot-ingest-copy \
+    #     --location=us-central1 --project=cleanshot-493512 \
+    #     --max-dispatches-per-second=10 --max-concurrent-dispatches=20 \
+    #     --max-attempts=3 --min-backoff=5s --max-backoff=60s
+    tasks_queue_ingest: str = Field("cleanshot-ingest-copy", alias="TASKS_QUEUE_INGEST")
     tasks_location: str = Field("us-central1", alias="TASKS_LOCATION")
     # OIDC service account email for Cloud Tasks → worker auth
     tasks_oidc_sa: str = Field(..., alias="TASKS_OIDC_SA")

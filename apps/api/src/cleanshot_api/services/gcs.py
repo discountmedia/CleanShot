@@ -57,6 +57,42 @@ def _client() -> storage.Client:
     )
 
 
+def _originals_object_name(session_id: uuid.UUID, filename: str) -> str:
+    """
+    THE object layout for the originals bucket. One definition, because the
+    filename is recovered from the basename on the way back out — the asset row
+    has no filename column, so the frontend derives the display name from this
+    path (see lib/import-hydrate.filenameFromGcsUri). Change the shape here and
+    imported photos lose their names.
+    """
+    return f"session/{session_id}/{uuid.uuid4()}/{filename}"
+
+
+def upload_bytes(
+    *,
+    session_id: uuid.UUID,
+    filename: str,
+    content_type: str,
+    data: bytes,
+) -> str:
+    """
+    Server-side write into the originals bucket. Returns the gs:// URI.
+
+    Used by the media-auditor import, which copies photos in from URLs. That
+    path is one-object-per-photo and reuses this bucket + object layout, but it
+    does NOT round-trip through a signed PUT URL: minting a URL only to PUT to
+    it from the same process would be two extra network hops for nothing. The
+    browser upload path still uses `mint_upload_url` — it has to, the bytes are
+    on the client.
+    """
+    settings = get_settings()
+    client = _client()
+    object_name = _originals_object_name(session_id, filename)
+    blob = client.bucket(settings.gcs_bucket_originals).blob(object_name)
+    blob.upload_from_string(data, content_type=content_type)
+    return f"gs://{settings.gcs_bucket_originals}/{object_name}"
+
+
 def mint_upload_url(
     *,
     session_id: uuid.UUID,
@@ -71,7 +107,7 @@ def mint_upload_url(
     credentials, _ = _get_credentials()
     client = storage.Client(project=settings.gcp_project, credentials=credentials)
 
-    object_name = f"session/{session_id}/{uuid.uuid4()}/{filename}"
+    object_name = _originals_object_name(session_id, filename)
     blob = client.bucket(settings.gcs_bucket_originals).blob(object_name)
 
     signed_url: str = blob.generate_signed_url(
