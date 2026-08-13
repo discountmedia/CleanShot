@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from typing import Literal
 
-from cleanshot_api.core.security import require_api_key
+from cleanshot_api.core.security import require_api_key, require_authenticated_user
 from cleanshot_api.db import queries
 from cleanshot_api.db.pool import get_pool
 from cleanshot_api.models.schemas import (
@@ -38,7 +38,7 @@ router = APIRouter(prefix="/api/v1", tags=["scan-results", "regen"])
 
 @router.get(
     "/scan/results/{job_id}",
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(require_authenticated_user)],
 )
 async def get_scan_results(
     job_id: uuid.UUID,

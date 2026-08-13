@@ -4,7 +4,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException, status
 
-from cleanshot_api.core.security import require_api_key
+from cleanshot_api.core.security import require_api_key, require_authenticated_user
 from cleanshot_api.db.pool import get_pool
 from cleanshot_api.db import queries
 from cleanshot_api.models.schemas import (
@@ -42,11 +42,10 @@ async def create_session(
 @router.get(
     "/sessions/{session_id}",
     response_model=SessionState,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(require_authenticated_user)],
 )
 async def get_session(
     session_id: uuid.UUID,
-    x_user_email: str | None = Header(default=None, alias="X-User-Email"),
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> SessionState:
     """
@@ -57,25 +56,16 @@ async def get_session(
     photos appear after a media-auditor handoff, and how they survive a page
     reload (the handoff record is TTL'd; the assets are not).
 
-    ACCESS: session-scoped. The caller must be the user the session is
-    attributed to. Sessions with a NULL `user_email` are unowned (pre-SSO rows,
-    or created by a direct API call that sent no identity header) and stay
-    readable — there is no owner to protect, and denying them would break
-    legacy rows. Everything else requires a matching X-User-Email.
+    ACCESS: any signed-in tenant user (`require_authenticated_user`). NOT
+    ownership-scoped — editors work a shared queue, so a second editor opening
+    a session someone else created is normal work. `sessions.user_email` exists
+    for admin-dashboard attribution, not for access control; a NULL value is
+    unremarkable here.
     """
     async with pool.acquire() as conn:
         session = await queries.get_session(conn, session_id)
-        owner = await queries.get_session_user_email(conn, session_id)
-
-        # Missing and forbidden return the SAME 404 with the SAME fixed body,
-        # deliberately: a distinct 403 on mismatch would confirm that a session
-        # id exists, which is exactly what an id-guessing probe wants to learn.
-        # Nothing from the request reaches the response — same no-echo
-        # discipline as the handoff exchange route.
-        if session is None or (
-            owner is not None
-            and (x_user_email is None or x_user_email.lower() != owner.lower())
-        ):
+        if session is None:
+            # Fixed string, nothing from the request echoed back.
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Session not found",

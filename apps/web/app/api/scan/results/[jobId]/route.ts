@@ -5,6 +5,8 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
+import { authedHeaders } from "@/lib/bff";
+
 export const maxDuration = 10;
 export const dynamic = "force-dynamic";
 
@@ -17,7 +19,8 @@ export async function GET(
   const res = await fetch(
     `${process.env.FASTAPI_INTERNAL_URL}/api/v1/scan/results/${jobId}`,
     {
-      headers: { "X-Api-Key": process.env.FASTAPI_INTERNAL_KEY! },
+      // Identity forwarded for FastAPI's require_authenticated_user.
+      headers: await authedHeaders(process.env.FASTAPI_INTERNAL_KEY!),
       signal: request.signal,
       cache: "no-store",
     }

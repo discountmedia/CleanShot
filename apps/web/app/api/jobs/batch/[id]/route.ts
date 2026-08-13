@@ -5,7 +5,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { forwardError, getFastApiEnv, snakeJobToCamel } from "@/lib/bff";
+import { authedHeaders, forwardError, getFastApiEnv, snakeJobToCamel } from "@/lib/bff";
 
 export const maxDuration = 10;
 export const dynamic = "force-dynamic";
@@ -28,8 +28,9 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
 
   const { id } = await ctx.params;
 
+  // Identity forwarded for FastAPI's require_authenticated_user.
   const res = await fetch(`${env.base}/api/v1/jobs/batch/${id}`, {
-    headers: { "X-Api-Key": env.key },
+    headers: await authedHeaders(env.key),
     signal: request.signal,
     cache: "no-store",
   });

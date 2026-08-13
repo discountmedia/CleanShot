@@ -6,7 +6,7 @@ import uuid
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
-from cleanshot_api.core.security import require_api_key
+from cleanshot_api.core.security import require_api_key, require_authenticated_user
 from cleanshot_api.db import queries
 from cleanshot_api.db.pool import get_pool
 from cleanshot_api.models.schemas import JobRecord
@@ -19,7 +19,7 @@ _CACHE_TTL = 3  # seconds — matches frontend polling interval
 @router.get(
     "/jobs/{job_id}",
     response_model=JobRecord,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(require_authenticated_user)],
 )
 async def get_job(
     job_id: uuid.UUID,
@@ -61,7 +61,7 @@ async def get_job(
 
 @router.get(
     "/jobs/batch/{batch_id}",
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(require_authenticated_user)],
 )
 async def get_batch_status(
     batch_id: uuid.UUID,

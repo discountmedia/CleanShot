@@ -4,10 +4,44 @@
 // each route file stays as a thin proxy.
 
 import { NextResponse } from "next/server";
+import { headers } from "next/headers";
+
+import { getSessionEmail } from "./auth";
 
 interface FastApiEnv {
   base: string;
   key:  string;
+}
+
+/**
+ * Resolve the signed-in tenant user for the X-User-Email header.
+ *
+ * FastAPI's `require_authenticated_user` gates the session / job / asset /
+ * scan-result reads on this header being present. It is an AUTHENTICATION
+ * check, not ownership — editors share a queue, so the value is never compared
+ * against a row. Forwarding it is therefore idempotent and cannot break a
+ * shared-queue workflow; omitting it 404s the read.
+ *
+ * Mirrors the bypass semantics of app/page.tsx and /api/sessions: with
+ * AUTH_ENABLED off the workspace runs as `dev@local`, which counts as
+ * authenticated.
+ */
+export async function resolveUserEmail(): Promise<string | null> {
+  if (process.env.AUTH_ENABLED === "true") {
+    return getSessionEmail(await headers());
+  }
+  return "dev@local";
+}
+
+/**
+ * {X-Api-Key} plus the identity header when we have one. For GET proxies that
+ * don't send a JSON body — use `jsonHeaders` + a manual merge for POSTs.
+ */
+export async function authedHeaders(key: string): Promise<Record<string, string>> {
+  const out: Record<string, string> = { "X-Api-Key": key };
+  const email = await resolveUserEmail();
+  if (email) out["X-User-Email"] = email;
+  return out;
 }
 
 /** Pulls FASTAPI_INTERNAL_URL / KEY or returns a 500 NextResponse if missing. */

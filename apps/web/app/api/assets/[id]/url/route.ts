@@ -5,7 +5,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { forwardError, getFastApiEnv } from "@/lib/bff";
+import { authedHeaders, forwardError, getFastApiEnv } from "@/lib/bff";
 
 export const maxDuration = 10;
 export const dynamic = "force-dynamic";
@@ -25,8 +25,10 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
 
   const { id } = await ctx.params;
 
+  // Identity forwarded for FastAPI's require_authenticated_user. Omit it and
+  // every thumbnail refresh 404s.
   const res = await fetch(`${env.base}/api/v1/assets/${id}/url`, {
-    headers: { "X-Api-Key": env.key },
+    headers: await authedHeaders(env.key),
     signal: request.signal,
     cache: "no-store",
   });

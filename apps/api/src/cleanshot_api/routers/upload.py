@@ -5,7 +5,7 @@ import uuid
 import asyncpg
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from cleanshot_api.core.security import require_api_key
+from cleanshot_api.core.security import require_api_key, require_authenticated_user
 from cleanshot_api.db import queries
 from cleanshot_api.db.pool import get_pool
 from cleanshot_api.models.schemas import (
@@ -67,7 +67,7 @@ async def mint_upload_url(
 @router.get(
     "/assets/{asset_id}/url",
     response_model=SignedGetUrlResponse,
-    dependencies=[Depends(require_api_key)],
+    dependencies=[Depends(require_api_key), Depends(require_authenticated_user)],
 )
 async def mint_asset_read_url(
     asset_id: uuid.UUID,

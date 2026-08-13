@@ -7,10 +7,8 @@
 // camelCase, it can transform at the call site.
 
 import { type NextRequest, NextResponse } from "next/server";
-import { headers } from "next/headers";
 
-import { getFastApiEnv } from "@/lib/bff";
-import { getSessionEmail } from "@/lib/auth";
+import { authedHeaders, getFastApiEnv } from "@/lib/bff";
 
 export const maxDuration = 10;
 export const dynamic = "force-dynamic";
@@ -25,23 +23,13 @@ export async function GET(request: NextRequest, ctx: RouteContext) {
 
   const { id } = await ctx.params;
 
-  // Identity for the session-ownership check on the FastAPI side. Enforcement
-  // lives in the handler, not here — this API takes a shared X-Api-Key and is
-  // callable directly, so the BFF is a convenience layer and cannot be the
-  // security boundary. Without this header a session that HAS an owner reads
-  // as not-found, so forgetting it locks out the only legitimate caller.
-  let userEmail: string | null;
-  if (process.env.AUTH_ENABLED === "true") {
-    userEmail = await getSessionEmail(await headers());
-  } else {
-    userEmail = "dev@local";
-  }
-
-  const fwd: Record<string, string> = { "X-Api-Key": env.key };
-  if (userEmail) fwd["X-User-Email"] = userEmail;
-
+  // Identity for FastAPI's require_authenticated_user. Enforcement lives in the
+  // handler, not here — this API takes a shared X-Api-Key and is callable
+  // directly, so the BFF is a convenience layer and cannot be the security
+  // boundary. Without this header the read 404s, so forgetting it locks out the
+  // only legitimate caller.
   const res = await fetch(`${env.base}/api/v1/sessions/${id}`, {
-    headers: fwd,
+    headers: await authedHeaders(env.key),
     signal: request.signal,
     cache: "no-store",
   });
