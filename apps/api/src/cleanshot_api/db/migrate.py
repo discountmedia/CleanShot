@@ -57,13 +57,14 @@ CREATE TABLE IF NOT EXISTS sessions (
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS user_email TEXT;
 CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email);
 
--- projects  (8 required fields enforced at API layer AND here via NOT NULL)
+-- projects  (required fields enforced at API layer AND here via NOT NULL --
+-- EXCEPT `year`, see the ALTER below)
 CREATE TABLE IF NOT EXISTS projects (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     session_id  UUID NOT NULL REFERENCES sessions(id),
     title       TEXT NOT NULL,
     make        TEXT NOT NULL,
-    year        INT  NOT NULL,
+    year        INT,          -- nullable since 2026-08-13; see the ALTER below
     model       TEXT NOT NULL,
     tire_type   TEXT NOT NULL,
     capacity    TEXT NOT NULL,
@@ -74,6 +75,12 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (session_id, title)
 );
+-- Idempotent post-create patch: `year` was NOT NULL, and because the web form
+-- silently substituted the current year for a blank field, a unit with an
+-- unknown year got confidently stamped with the wrong one -- and that number
+-- went into the export filenames. An unknown year is now recorded as unknown.
+-- DROP NOT NULL is idempotent, so this is safe on every startup.
+ALTER TABLE projects ALTER COLUMN year DROP NOT NULL;
 
 -- assets
 CREATE TABLE IF NOT EXISTS assets (

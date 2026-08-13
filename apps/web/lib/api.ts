@@ -355,7 +355,8 @@ export interface SaveProjectInput {
   sessionId: string;
   title: string;
   make: string;
-  year: number;
+  /** Optional and NOT defaulted. null means "unknown", which is a real answer. */
+  year: number | null;
   model: string;
   tireType: string;
   capacity: string;

@@ -94,7 +94,8 @@ class ProjectRecord(BaseModel):
     session_id: uuid.UUID
     title: str
     make: str
-    year: int
+    # Nullable -- an unknown year is stored as unknown, never guessed.
+    year: int | None
     model: str
     tire_type: str
     capacity: str
@@ -456,11 +457,19 @@ class CleanupBatchResponse(BaseModel):
 
 
 class SaveProjectRequest(BaseModel):
-    """All 8 fields are required server-side — no field is optional after save."""
+    """
+    Save-before-export payload.
+
+    `year` is OPTIONAL and has NO default. It used to be required, and the web
+    form silently substituted the current year when the operator left it blank —
+    so a unit with an unknown year got confidently labelled 2026 and that wrong
+    number went into the export filenames. A blank year is now carried through as
+    NULL and simply omitted from the filename. Every other field stays required.
+    """
     session_id: uuid.UUID
     title: str = Field(min_length=1, max_length=200)
     make: str = Field(min_length=1, max_length=100)
-    year: int = Field(ge=1900, le=2100)
+    year: int | None = Field(default=None, ge=1900, le=2100)
     model: str = Field(min_length=1, max_length=100)
     tire_type: str = Field(min_length=1, max_length=100)
     capacity: str = Field(min_length=1, max_length=50)

@@ -73,20 +73,26 @@ const EMPTY_FORM: ProjectForm = {
 };
 
 function validateForm(form: ProjectForm): { valid: boolean; yearNum: number | null } {
-  // Only make + model gate the Save action. Year is parsed if provided
-  // (1900-2100) and defaults to the current year when blank. The rest are
-  // nice-to-have free text (placeholder-substituted server-side).
+  // Only make + model gate the Save action.
+  //
+  // Year is OPTIONAL and has NO DEFAULT. It used to be required, and a blank
+  // field was silently filled with `new Date().getFullYear()` — so a unit whose
+  // year nobody knew got confidently labelled with the current year, and that
+  // wrong number was baked into every export filename. A guess that looks like
+  // data is worse than a blank. Blank now stays blank all the way to the DB
+  // column, and the filename simply omits the year.
+  //
+  // An out-of-range or non-numeric entry also yields null rather than blocking
+  // Save — the field is a strong recommendation, not a gate.
   const yearRaw = form.year.trim();
   let yearNum: number | null = null;
-  if (yearRaw.length === 0) {
-    yearNum = new Date().getFullYear();
-  } else {
+  if (yearRaw.length > 0) {
     const parsed = Number.parseInt(yearRaw, 10);
     if (Number.isInteger(parsed) && parsed >= 1900 && parsed <= 2100) {
       yearNum = parsed;
     }
   }
-  const valid = form.make.trim().length > 0 && form.model.trim().length > 0 && yearNum !== null;
+  const valid = form.make.trim().length > 0 && form.model.trim().length > 0;
   return { valid, yearNum };
 }
 
@@ -203,7 +209,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
   // ─── Save ───────────────────────────────────────────────────────────────────
 
   const handleSave = async () => {
-    if (!formValid || yearNum === null) return;
+    // yearNum === null is a VALID save now (unknown year). Only formValid gates.
+    if (!formValid) return;
     setError(null);
     setIsSaving(true);
     try {
@@ -436,7 +443,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             placeholder="8FGU25" hint="Model number from the data plate." />
           <TextField label="Year" value={form.year}
             onChange={(v) => updateField("year", v.replace(/[^0-9]/g, "").slice(0, 4))}
-            placeholder="defaults to current year" hint="Model year (1900–2100). Leave blank for current year." />
+            placeholder="strongly recommended"
+            hint="Model year (1900–2100). Strongly recommended — it goes in the export filename. Left blank it stays blank; nothing is guessed." />
           <TextField label="Username" value={form.username} onChange={(v) => updateField("username", v)}
             placeholder="defaults to your login email" hint="Who's saving this — defaults to your account email." />
           <TextField label="Capacity" value={form.capacity} onChange={(v) => updateField("capacity", v)}
@@ -541,7 +549,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
               ? "No assets queued"
               : previewItems.length > 0
                 ? `Re-resize ${orderedAssets.length} image${orderedAssets.length !== 1 ? "s" : ""} (PRO)`
-                : `PRO export — 1024×731 (${orderedAssets.length})`}
+                : `PRO export — 7:5, full resolution (${orderedAssets.length})`}
       </button>
 
       {/* ── Streaming progress ── */}

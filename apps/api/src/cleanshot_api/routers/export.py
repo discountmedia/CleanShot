@@ -62,7 +62,7 @@ def _build_pro_filename(
     *,
     make: str,
     model: str,
-    year: int,
+    year: int | None,
     index: int,
     total: int,
     provider: str | None = None,
@@ -86,7 +86,9 @@ def _build_pro_filename(
     parts = [
         _sanitize_filename_part(make),
         _sanitize_filename_part(model),
-        _sanitize_filename_part(str(year)),
+        # `if year else ""` matters: an unknown year is None, and str(None)
+        # would put the literal text "None" in every exported filename.
+        _sanitize_filename_part(str(year) if year else ""),
     ]
     parts = [p for p in parts if p]
     base = "_".join(parts) if parts else "forklift"
@@ -106,7 +108,7 @@ def _build_pro_filename(
     return f"{base}_{seq}{provider_part}.jpg"
 
 
-def _build_zip_filename(*, make: str, model: str, year: int) -> str:
+def _build_zip_filename(*, make: str, model: str, year: int | None) -> str:
     """
     Meta-derived name for the bundled ZIP so the operator's download is
     labelled with the unit instead of a generic 'cleanshot_pro_export.zip'.
@@ -159,7 +161,8 @@ async def export_pro_preset(
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> Response:
     """
-    PRO preset: 1024px, 7×5 crop, JPEG ≤100 kb per asset.
+    PRO preset: largest 7:5 crop the source supports, JPEG Q92. No byte-size
+    target — PRO resizes and compresses on its own end.
     Returns a ZIP for multi-asset batches, single JPEG for single asset.
     X-Warning header set if target size was unachievable after 10 iterations.
     """

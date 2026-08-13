@@ -448,7 +448,8 @@ async def save_project(
     session_id: uuid.UUID,
     title: str,
     make: str,
-    year: int,
+    # Nullable: an unknown year is recorded as unknown rather than guessed.
+    year: int | None,
     model: str,
     tire_type: str,
     capacity: str,

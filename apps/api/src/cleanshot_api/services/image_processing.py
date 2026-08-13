@@ -4,7 +4,8 @@ Server-side image processing with pyvips (libvips 8.18+).
 Used by the export endpoints only. All generative AI work happens in workers.
 
 Rules per Phase 2 v2.5:
-  PRO export:    1024px longest edge, 7×5 (1024×731) crop, JPEG ≤100 kb
+  PRO export:    largest 7:5 crop the source supports, JPEG Q92, no size target
+                 (PRO resizes + compresses downstream — see export_pro)
                  Cap at 10 compression iterations. On failure, return closest
                  size with X-Warning: target-size-unachievable header.
   Custom export: min 100px, min 50kb, crop-not-letterbox enforced absolutely.
@@ -110,56 +111,85 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     return img
 
 
+# True 7:5. 1024×731 (the old fixed target) is 1.4007 — inside the 1.38–1.42
+# band the crop audit accepts, but there's no reason to bake in the rounding
+# error now that the output dimensions are derived rather than hardcoded.
+_PRO_ASPECT = 7 / 5
+
+# Never emit something smaller than the old fixed target, so this change cannot
+# regress an export. Sources at or above 7:5 width already clear this easily; the
+# floor only bites on an unusually small input, which gets upscaled as before.
+_PRO_MIN_WIDTH = 1024
+
+# Fixed high quality, no size target. PRO does its own resizing and compression
+# now, so shrinking to fit a byte budget here would just throw away detail that
+# PRO is about to resample anyway. 92 is visually lossless for listing photos at
+# a sane file size.
+_PRO_JPEG_QUALITY = 92
+
+
 def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = False) -> ExportResult:
     """
-    PRO preset: 1024×731 (7:5), zoom-to-fill, JPEG ≤100 kb.
-    Crop-not-letterbox: always fills the frame.
+    PRO preset: the LARGEST 7:5 crop the source supports, JPEG at fixed high
+    quality. Crop-not-letterbox: always fills the frame.
 
-    When `ai_disclaimer=True`, burns the AI_DISCLAIMER_WATERMARK string
-    into the bottom-right corner BEFORE the quality-iteration loop so
-    the watermark is encoded into the final JPEG bytes.
+    Resolution policy changed 2026-08-13. This used to force 1024×731 and then
+    iterate JPEG quality down until the file fit under 100 kb. PRO now handles
+    resizing and compression itself, so both of those steps were destroying
+    detail for no reason — a 2048px enhance output was being halved on the way
+    out and then re-compressed downstream. We now crop at native resolution and
+    hand PRO the biggest clean 7:5 frame we have.
+
+    NOTE on how high "higher resolution" actually goes: uploads are capped at
+    1024px on the long edge client-side (MAX_LONG_EDGE in lib/compress.ts), so
+    for a browser-uploaded source this yields ~1024×731 as before — the win only
+    materialises when the source is bigger than that. Raising or removing that
+    cap is a separate decision with real latency/cost consequences for the
+    model calls; see open item #6 in CLAUDE.md.
+
+    When `ai_disclaimer=True`, burns the AI_DISCLAIMER_WATERMARK string into the
+    bottom-right corner BEFORE encoding, so it lands in the final JPEG bytes.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
-    target_w, target_h = 1024, 731
+    # Step 1: the largest 7:5 rectangle that fits inside the source. Whichever
+    # axis is proportionally longer is the one we trim.
+    if img.width / img.height >= _PRO_ASPECT:
+        target_h = img.height
+        target_w = round(target_h * _PRO_ASPECT)
+    else:
+        target_w = img.width
+        target_h = round(target_w / _PRO_ASPECT)
 
-    # Step 1: Cover-fit scale — pick the LARGER of the two ratios so the
-    # image is guaranteed to cover the target box in both dimensions.
-    # Previous version used `1024 / max(w, h)` (longest-edge fit), which
-    # for inputs already close to 7:5 produced a result smaller than
-    # 1024×731 on one axis. smartcrop then returned the full (sub-target)
-    # image and the final JPEG had the wrong aspect ratio — looked like
-    # letterboxing on listing platforms. Cover-fit matches what
-    # export_custom does and guarantees both target dimensions are
-    # achievable before cropping.
-    scale = max(target_w / img.width, target_h / img.height)
-    img = img.resize(scale, kernel="lanczos3")
+    # Step 2: only ever scale UP, and only to the floor. A source big enough to
+    # clear _PRO_MIN_WIDTH is never downscaled — that is the whole point of the
+    # change.
+    if target_w < _PRO_MIN_WIDTH:
+        scale = _PRO_MIN_WIDTH / target_w
+        img = img.resize(scale, kernel="lanczos3")
+        target_w = _PRO_MIN_WIDTH
+        target_h = round(target_w / _PRO_ASPECT)
+        # Guard the rounding: after an upscale the derived height can land one
+        # pixel outside the image, and smartcrop rejects a box bigger than its
+        # input.
+        target_h = min(target_h, img.height)
+        target_w = min(target_w, img.width)
 
-    # Step 2: Smart crop to 1024×731 (7:5 ratio)
+    # Step 3: attention-weighted crop to the computed box.
     img = img.smartcrop(target_w, target_h, interesting="attention")
 
-    # Step 2b: Optional disclaimer watermark — applied AFTER the crop so
-    # it lands at a fixed pixel offset from the final corner regardless
-    # of the source aspect ratio.
+    # Step 3b: Optional disclaimer watermark — applied AFTER the crop so it lands
+    # at a fixed pixel offset from the final corner regardless of source aspect.
     if ai_disclaimer:
         img = _apply_disclaimer_watermark(img)
 
-    # Step 3: JPEG compression loop targeting ≤100 kb
-    quality = 85
-    max_size = 100 * 1024  # 100 kb
-    data = b""
-    size_warning = False
+    # Step 4: single encode. No quality-iteration loop, so `size_warning` can no
+    # longer be raised here — there is no size target left to miss.
+    data = img.write_to_buffer(
+        ".jpg", Q=_PRO_JPEG_QUALITY, optimize_coding=True
+    )
 
-    for attempt in range(10):
-        data = img.write_to_buffer(".jpg", Q=quality, optimize_coding=True)
-        if len(data) <= max_size:
-            break
-        quality -= 8
-        if quality < 20:
-            size_warning = True
-            break
-
-    return ExportResult(data=data, content_type="image/jpeg", size_warning=size_warning)
+    return ExportResult(data=data, content_type="image/jpeg", size_warning=False)
 
 
 # ─── Modify (darkroom) adjustments ────────────────────────────────────────────
