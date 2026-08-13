@@ -199,17 +199,68 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
 
 export type UploadStatus = "pending" | "compressing" | "uploading" | "done" | "error";
 
+/**
+ * Where a grid item came from.
+ *
+ *   "upload" — the operator picked it in the browser. Carries a real `File`
+ *              and a `blob:` previewUrl.
+ *   "import" — it was copied into this session server-side by the
+ *              media-auditor handoff. There is NO `File` (the bytes never
+ *              touched this browser) and previewUrl is a signed GCS GET URL.
+ *
+ * This is an EXPLICIT field rather than something inferred from
+ * `file === undefined`, because three separate behaviours key off it — the
+ * object-URL revoke guards, the batch auto-reset carve-out, and the hard
+ * guard on the upload path — and a named predicate survives refactoring in a
+ * way that an incidental undefined check does not.
+ */
+export type UploadOrigin = "upload" | "import";
+
 export interface UploadFile {
-  id: string;              // client-side UUID
-  file: File;              // the ORIGINAL file the user picked; preserved for thumbnail
-  previewUrl: string;      // object URL for thumbnail (original)
+  id: string;              // client-side UUID — assigned for BOTH origins (grid key + removeFile lookup)
+  origin: UploadOrigin;
+  /**
+   * The ORIGINAL file the operator picked; preserved for the thumbnail.
+   * Present ONLY when origin === "upload" — an imported asset's bytes live in
+   * GCS and were never in this browser. Read `filename` instead of
+   * `file.name` for anything user-visible.
+   */
+  file?: File;
+  /** Display name. Always populated: `file.name` for uploads, the server-side object name for imports. */
+  filename: string;
+  /**
+   * Thumbnail source.
+   *   origin "upload" → `blob:` object URL (must be revoked; never expires)
+   *   origin "import" → signed GCS GET URL (must NOT be revoked; expires in 1h,
+   *                     refreshed once on <img> error — see ThumbnailCard)
+   */
+  previewUrl: string;
   status: UploadStatus;
   progress: number;        // 0–100
   error?: string;
-  assetId?: string;        // populated after successful upload
+  assetId?: string;        // populated after successful upload; present from the start on imports
   gcsUri?: string;
   compressedSize?: number; // bytes after compression (if applied)
   uploadedFilename?: string; // populated after JPEG conversion + rename; what actually hit GCS
+  /**
+   * Provenance for imported assets — the source unit's stock number, joined
+   * through at ingest. Never set for origin === "upload". Display only.
+   */
+  sourceRef?: string;
+}
+
+/**
+ * A grid item can be handed to the enhance queue iff it has a server-side
+ * assetId.
+ *
+ * INVARIANT — `previewUrl` is deliberately NOT part of this test. An imported
+ * asset whose signed preview URL has expired is still perfectly enhanceable,
+ * because the enqueue path sends `assetId` and never touches the preview. If
+ * you are about to add a previewUrl check here, you are about to make an
+ * expired thumbnail block real work. Don't.
+ */
+export function isEnhanceable(f: UploadFile): boolean {
+  return f.status === "done" && !!f.assetId;
 }
 
 // ─── Jobs ────────────────────────────────────────────────────────────────────

@@ -113,7 +113,7 @@ export function SourceCompareCard({
   const showJudgeBadge =
     judgeResult !== null && chosen !== null && chosen === judgeResult.winnerProvider;
 
-  const filename = file.uploadedFilename ?? file.file.name;
+  const filename = file.uploadedFilename ?? file.filename;
 
   return (
     <article className="rounded-xl border border-line bg-well/60 overflow-hidden">

@@ -31,6 +31,7 @@ import {
   DEFAULT_TOGGLES,
   TOGGLE_LABELS,
   TOGGLE_DESCRIPTIONS,
+  isEnhanceable,
   type EnhanceToggles,
   type ForkliftMeta,
   type JobRecord,
@@ -73,13 +74,48 @@ const MAX_UPLOADS = 150;
 
 // ─── Pending-upload thumbnail (used in the drop-zone grid) ─────────────────
 
-function ThumbnailCard({ file }: { file: UploadFile }) {
+function ThumbnailCard({
+  file,
+  onPreviewExpired,
+}: {
+  file: UploadFile;
+  /** Re-mints the signed GET URL for an imported asset whose preview 404'd. */
+  onPreviewExpired: (file: UploadFile) => void;
+}) {
+  // Imported previews are signed GCS GET URLs with a 1-hour life
+  // (_SIGNED_URL_EXPIRY_GET in services/gcs.py — a SHARED constant also used by
+  // export download links, so it is deliberately not lengthened for our
+  // convenience). When one expires the <img> errors, we re-mint ONCE, and then
+  // give up and show a placeholder rather than looping the BFF.
+  //
+  // An expired preview is cosmetic ONLY. The asset stays fully enhanceable
+  // because the enqueue path sends assetId — see isEnhanceable() in lib/types.
+  const [previewDead, setPreviewDead] = useState(false);
+  const retriedRef = useRef(false);
+
+  const handleError = () => {
+    if (file.origin !== "import" || retriedRef.current) {
+      setPreviewDead(true);
+      return;
+    }
+    retriedRef.current = true;
+    onPreviewExpired(file);
+  };
+
   return (
     <div className="relative group rounded-lg overflow-hidden bg-panel border border-line">
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      {previewDead ? (
+        <div className="w-full aspect-square flex items-center justify-center bg-well px-2 text-center">
+          <span className="text-[10px] font-mono text-ink-faint">
+            preview unavailable
+          </span>
+        </div>
+      ) : (
+      /* eslint-disable-next-line @next/next/no-img-element */
       <img
         src={file.previewUrl}
-        alt={file.file.name}
+        alt={file.filename}
+        onError={handleError}
         /* Explicit 1:1 dims belt-and-suspender the aspect-square
            Tailwind class — the CSS already enforces the square but
            the width/height attrs let the browser establish the aspect
@@ -89,6 +125,7 @@ function ThumbnailCard({ file }: { file: UploadFile }) {
         height={300}
         className="w-full aspect-square object-cover"
       />
+      )}
 
       {file.status !== "done" && (
         <div className="absolute inset-0 bg-header-bg/60 flex flex-col items-center justify-center gap-2 p-2">
@@ -135,8 +172,16 @@ function ThumbnailCard({ file }: { file: UploadFile }) {
         </div>
       )}
 
+      {/* Provenance for imported assets — the source unit's stock number.
+          Display only; nothing is built on this beyond showing it. */}
+      {file.origin === "import" && file.sourceRef && (
+        <div className="absolute top-1.5 left-1.5 bg-header-bg/70 rounded px-1.5 py-0.5 text-[10px] font-mono text-ink-soft">
+          {file.sourceRef}
+        </div>
+      )}
+
       <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1.5 translate-y-full group-hover:translate-y-0 transition-transform">
-        <p className="text-xs text-white truncate">{file.file.name}</p>
+        <p className="text-xs text-white truncate">{file.filename}</p>
       </div>
     </div>
   );
@@ -505,7 +550,7 @@ export function EnhancePanel({
               jobId:         job.id,
               provider,
               outputAssetId: job.outputAssetId as string,
-              filename:      file.uploadedFilename ?? file.file.name,
+              filename:      file.uploadedFilename ?? file.filename,
               outputUrl:     url,
               sourceAssetId: file.assetId ?? "",
             });
@@ -690,7 +735,9 @@ export function EnhancePanel({
     const slice = arr.slice(0, allowed);
     const newFiles: UploadFile[] = slice.map((f) => ({
       id: uuidv4(),
+      origin: "upload",
       file: f,
+      filename: f.name,
       previewUrl: URL.createObjectURL(f),
       status: "pending",
       progress: 0,
@@ -708,13 +755,46 @@ export function EnhancePanel({
     if (e.dataTransfer.files) addFiles(e.dataTransfer.files);
   };
 
+  /**
+   * Release a grid item's object URL. Only "upload" items HAVE one — an
+   * import's previewUrl is a signed https:// GCS URL, and calling
+   * revokeObjectURL on it is a silent no-op today but a lie about what the
+   * value is. Keyed on origin so the intent is greppable.
+   */
+  const releasePreview = (f: UploadFile) => {
+    if (f.origin === "upload") URL.revokeObjectURL(f.previewUrl);
+  };
+
   const removeFile = (id: string) => {
     setFiles((prev) => {
       const f = prev.find((x) => x.id === id);
-      if (f) URL.revokeObjectURL(f.previewUrl);
+      if (f) releasePreview(f);
       return prev.filter((x) => x.id !== id);
     });
   };
+
+  /**
+   * Re-mint an imported asset's signed preview URL after the <img> errored.
+   * ThumbnailCard caps this at one attempt per item, so this cannot loop.
+   *
+   * Takes the whole file rather than an id so the fetch stays OUT of a
+   * setFiles updater — updaters must be pure (React may invoke them twice, and
+   * React Compiler's purity rule flags impure component-scoped callbacks; see
+   * hard-won lesson #9).
+   */
+  const refreshImportPreview = useCallback((f: UploadFile) => {
+    if (f.origin !== "import" || !f.assetId) return;
+    void getAssetUrl(f.assetId)
+      .then(({ url }) => {
+        setFiles((cur) =>
+          cur.map((x) => (x.id === f.id ? { ...x, previewUrl: url } : x)),
+        );
+      })
+      .catch(() => {
+        /* Swallowed: ThumbnailCard already fell back to the placeholder, and
+           the asset stays enhanceable regardless — see isEnhanceable(). */
+      });
+  }, []);
 
   const updateFile = useCallback((id: string, patch: Partial<UploadFile>) => {
     setFiles((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
@@ -727,7 +807,22 @@ export function EnhancePanel({
     index: number,
     total: number,
   ) => {
-    const { id, file } = uploadFile;
+    const { id, file, origin } = uploadFile;
+
+    // HARD GUARD. Imported assets are already in GCS and have no local `File`;
+    // sending one down this path would hand `convertToJpeg` an undefined and
+    // re-upload bytes that are already there. handleEnhanceAll only selects
+    // "pending" items and imports are "done", so this is unreachable today —
+    // which is exactly why it is asserted rather than assumed. A future edit to
+    // the Enhance button must fail loudly here, not silently corrupt a batch.
+    // Imports reach the queue through the assetId path instead (handleReEnhance).
+    if (origin === "import" || !file) {
+      console.error(
+        "[enhance] refusing to run the upload pipeline on an imported asset",
+        { id, origin },
+      );
+      return;
+    }
 
     updateFile(id, { status: "compressing" });
     const targetFilename = buildEnhanceFilename(meta, index, total);
@@ -931,10 +1026,17 @@ export function EnhancePanel({
       if (allTerminal) {
         // Drop fully-handled files from the upload grid so the previous
         // batch's thumbnails don't linger next to the new pending ones.
-        files
-          .filter((f) => f.status !== "pending")
-          .forEach((f) => URL.revokeObjectURL(f.previewUrl));
-        setFiles((prev) => prev.filter((f) => f.status === "pending"));
+        //
+        // CARVE-OUT: imported assets SURVIVE this wipe. They land as "done"
+        // (already in GCS), so the status test alone would silently delete the
+        // operator's whole media-auditor import the first time they ran a
+        // second enhance batch. The exception is keyed on `origin` rather than
+        // on status precisely so it reads as intentional and doesn't get
+        // "simplified" away by someone who doesn't know why it's here.
+        const survives = (f: UploadFile) =>
+          f.status === "pending" || f.origin === "import";
+        files.filter((f) => !survives(f)).forEach(releasePreview);
+        setFiles((prev) => prev.filter(survives));
         setEnhanceJobs(new Map());
         setCompleted(new Map());
         setSentJobIds(new Set());
@@ -977,7 +1079,12 @@ export function EnhancePanel({
    * new jobs against the same GCS object.
    */
   const handleReEnhance = useCallback(async () => {
-    const eligible = files.filter((f) => f.status === "done" && f.assetId);
+    // isEnhanceable() rather than an inline test: it carries the invariant that
+    // previewUrl is NOT part of eligibility, so an imported asset with an
+    // expired thumbnail still enhances. This is also the path imported assets
+    // take into the queue — they arrive already "done" with an assetId, so
+    // they need no upload.
+    const eligible = files.filter(isEnhanceable);
     if (eligible.length === 0) return;
     if (!metaGate) {
       setGlobalError(
@@ -1458,7 +1565,9 @@ export function EnhancePanel({
   }, [files, enhanceJobs]);
 
   const handleClearAll = () => {
-    files.forEach((f) => URL.revokeObjectURL(f.previewUrl));
+    // Explicit operator action, so imports go too — unlike the automatic
+    // batch wipe above, which carves them out.
+    files.forEach(releasePreview);
     setFiles([]);
     setEnhanceJobs(new Map());
     setCompleted(new Map());
@@ -1617,11 +1726,11 @@ export function EnhancePanel({
           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-11 gap-2">
             {files.map((f) => (
               <div key={f.id} className="relative group">
-                <ThumbnailCard file={f} />
+                <ThumbnailCard file={f} onPreviewExpired={refreshImportPreview} />
                 <button
                   onClick={() => removeFile(f.id)}
                   className="absolute -top-1.5 -right-1.5 bg-danger rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-                  aria-label={`Remove ${f.file.name}`}
+                  aria-label={`Remove ${f.filename}`}
                 >
                   <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -1843,9 +1952,7 @@ export function EnhancePanel({
 
       {/* ── Enhance button ── */}
       {(() => {
-        const reEnhanceCount = files.filter(
-          (f) => f.status === "done" && f.assetId,
-        ).length;
+        const reEnhanceCount = files.filter(isEnhanceable).length;
         const canReEnhance =
           togglesDirty && batchTerminal && reEnhanceCount > 0;
         const buttonActive =
