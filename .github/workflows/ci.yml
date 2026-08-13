@@ -6,8 +6,19 @@ on:
   pull_request:
     branches: [main]
 
+# Two SEPARATE jobs on purpose.
+#
+# These used to be one job with the audit as an early step, so when the audit
+# started failing (2026-06-05, transitive advisories via next/postcss) the job
+# died before `pnpm typecheck` ever ran. `tsc` is this repo's actual deploy gate
+# and it silently stopped running in CI for ten weeks while the run stayed red
+# for an unrelated reason.
+#
+# Split so each signal stands alone: a red audit no longer hides a green — or a
+# broken — typecheck. Neither job gates deployment; web deploys come from
+# Vercel's Git integration and the API from deploy-api.yml.
 jobs:
-  typecheck-and-test:
+  typecheck:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v5
@@ -22,11 +33,38 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Security audit
-        run: pnpm audit --audit-level=high
-
       - name: Type check
         run: pnpm typecheck
 
+      # NOTE: `pnpm test` resolves to `pnpm --filter cleanshot-web test --run`,
+      # and apps/web has no `test` script — so this is currently a NO-OP that
+      # always passes. It is not coverage. The Python suite in apps/api/tests
+      # has never run in CI at all. Kept as the hook to wire real tests into;
+      # don't read a green tick here as "tests passed".
       - name: Unit tests
         run: pnpm test
+
+  security-audit:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: '11.1.2'
+
+      - run: pnpm install --frozen-lockfile
+
+      # Deliberately still BLOCKING within this job — the advisories are real and
+      # should stay visibly red until fixed, rather than being silenced with
+      # continue-on-error. As of 2026-08-13: 21 high, needing `next` >= 16.2.11
+      # and `better-auth` >= 1.6.22 (both direct deps) plus overrides for
+      # sharp / axios / form-data / js-yaml / brace-expansion / nanoid / postcss.
+      # Bumping better-auth touches live Microsoft SSO, so that upgrade wants a
+      # Preview deploy and a real sign-in test, not a drive-by patch.
+      - name: Security audit
+        run: pnpm audit --audit-level=high

@@ -1,22 +1,34 @@
-name: Deploy Web
+name: Deploy Web (manual)
 
-# 2026-05-27: Vercel CI pipeline restored after ~12 hours of failed runs.
-# Root cause was the VERCEL_TOKEN secret missing from repo Settings →
-# Secrets and variables → Actions (VERCEL_ORG_ID + VERCEL_PROJECT_ID were
-# present but the token wasn't — the action then threw
+# MANUAL ONLY as of 2026-08-13. This no longer runs on push, and that is
+# deliberate.
+#
+# Vercel's own Git integration is what actually deploys this app to production
+# on a push to main. This workflow has FAILED on every run since 2026-06-05 --
+# at the `pnpm audit --audit-level=high` step, before it ever reached the deploy
+# -- while production deploys landed anyway. So it was never the deploy path;
+# it was a permanently-red status that trained everyone to ignore a failing
+# workflow, which is worse than having no workflow.
+#
+# Leaving it on `push` carried a second, sharper risk: the moment somebody
+# "fixed" the audit gate, this would start deploying via the CLI *in addition to*
+# Vercel's Git integration -- two production deploys per push racing for the
+# same alias.
+#
+# Kept rather than deleted because the CLI recipe below is hard-won (see the
+# comments on the deploy step, plus lessons #22 and #23 in CLAUDE.md) and is the
+# emergency path if the Git integration is ever disconnected. Run it from the
+# Actions tab.
+#
+# Original note, kept for history -- 2026-05-27: pipeline restored after ~12
+# hours of failed runs. Root cause was the VERCEL_TOKEN secret missing from repo
+# Settings -> Secrets and variables -> Actions (VERCEL_ORG_ID +
+# VERCEL_PROJECT_ID were present but the token wasn't; the action threw
 # "Input required and not supplied: vercel-token" before any deploy work
-# started). Token re-minted at https://vercel.com/account/tokens and
-# re-saved; this trivial header edit re-triggers the workflow to
-# confirm the green path end-to-end.
+# started).
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'apps/web/**'
-      - 'packages/types/**'
-      - 'vercel.json'
-      - '.github/workflows/deploy-web.yml'
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -34,9 +46,8 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Security audit
-        run: pnpm audit --audit-level=high
-
+      # Audit intentionally NOT run here. It lives in its own ci.yml job now.
+      # An emergency manual deploy must not be blocked by a transitive advisory.
       - name: Type check
         run: pnpm typecheck
 
