@@ -305,18 +305,22 @@ async def create_asset(
     gcs_uri: str,
     content_hash: str,
     project_id: uuid.UUID | None = None,
+    # Provenance for handoff-ingested assets (source unit's stock number).
+    # Stays None on every normal upload path.
+    source_ref: str | None = None,
 ) -> AssetRecord:
     row = await conn.fetchrow(
         """
-        INSERT INTO assets (project_id, session_id, operation, gcs_uri, content_hash)
-        VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, project_id, session_id, operation, gcs_uri, content_hash, created_at
+        INSERT INTO assets (project_id, session_id, operation, gcs_uri, content_hash, source_ref)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        RETURNING id, project_id, session_id, operation, gcs_uri, content_hash, created_at, source_ref
         """,
         project_id,
         session_id,
         operation.value,
         gcs_uri,
         content_hash,
+        source_ref,
     )
     assert row is not None
     return AssetRecord(**dict(row))

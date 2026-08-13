@@ -4,6 +4,7 @@
 // FASTAPI_INTERNAL_KEY is server-only and never in this file.
 
 import { HANDOFF_EXCHANGE_TIMEOUT_MS, type HandoffExchangeResult } from "./handoff";
+import type { ServerSessionState } from "./import-hydrate";
 import type {
   EnhanceToggles,
   ForkliftMeta,
@@ -39,6 +40,23 @@ async function get<T>(path: string, signal?: AbortSignal): Promise<T> {
 
 export async function createSession(): Promise<{ sessionId: string }> {
   return post("/api/sessions", {});
+}
+
+/**
+ * Full session state — assets, jobs, scan results. The BFF forwards FastAPI's
+ * payload untransformed, so the shape is snake_case (see ServerSessionState).
+ *
+ * This is the hydration source for imported photos in the Enhance grid, and the
+ * validity probe for a resumed session id. Throws on 404 (unknown session) and
+ * on the ownership 404 — callers treat both as "clear the stored id and start
+ * fresh", which is the expected case for a purged session, not an error worth
+ * showing anyone.
+ */
+export async function getSessionState(
+  sessionId: string,
+  signal?: AbortSignal,
+): Promise<ServerSessionState> {
+  return get(`/api/sessions/${sessionId}`, signal);
 }
 
 // ─── Handoff (media-auditor import) ───────────────────────────────────────────

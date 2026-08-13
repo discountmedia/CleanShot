@@ -69,6 +69,66 @@ export function stripHandoffToken(): void {
   );
 }
 
+// ─── Session carrier ─────────────────────────────────────────────────────────
+// Nothing in this app remembered which session it had: every cold load minted a
+// fresh one. That is fine for browser uploads (their bytes are gone on reload
+// anyway) but it orphans an import — the assets sit permanently in a session
+// whose id nobody can name, and GET /sessions/{id} cannot help without an id.
+//
+// sessionStorage rather than a URL param: a session handle is long-lived
+// (the token was 60s), so putting it in a query string would undo most of the
+// benefit of keeping the token out of URLs and logs in the first place.
+//
+// KNOWN LIMITATION — deliberately not solved here. sessionStorage dies with the
+// tab, so closing the tab orphans the session and its imported assets with no
+// recovery path. Sessions carry `user_email`, so the durable answer is a
+// server-side "recent sessions for this user" lookup. Out of scope; don't
+// rediscover this as a bug.
+
+const SESSION_STORAGE_KEY = "cleanshot_session_id";
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * SSR-safe. Returns null on the server, when nothing is stored, and when the
+ * stored value isn't a well-formed UUID (in which case it is also cleared —
+ * a malformed handle can never become valid).
+ */
+export function readStoredSessionId(): string | null {
+  if (typeof window === "undefined") return null;
+  let raw: string | null = null;
+  try {
+    raw = window.sessionStorage.getItem(SESSION_STORAGE_KEY);
+  } catch {
+    return null; // storage disabled/partitioned — behave like a cold load
+  }
+  if (!raw) return null;
+  if (!UUID_RE.test(raw)) {
+    clearStoredSessionId();
+    return null;
+  }
+  return raw;
+}
+
+export function writeStoredSessionId(sessionId: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+  } catch {
+    /* Non-fatal: resume stops working, everything else is unaffected. */
+  }
+}
+
+export function clearStoredSessionId(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem(SESSION_STORAGE_KEY);
+  } catch {
+    /* Non-fatal. */
+  }
+}
+
 /**
  * Why an exchange did not produce a session.
  *

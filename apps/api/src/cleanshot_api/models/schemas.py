@@ -108,6 +108,11 @@ class AssetRecord(BaseModel):
     gcs_uri: str
     content_hash: str
     created_at: datetime
+    # Provenance for assets copied in by the media-auditor handoff — the source
+    # unit's stock number. NULL for everything the operator uploaded in the
+    # browser. Display only; nothing is keyed off it beyond showing it on the
+    # imported card and selecting which assets hydrate into the Enhance grid.
+    source_ref: str | None = None
 
 
 class JobRecord(BaseModel):

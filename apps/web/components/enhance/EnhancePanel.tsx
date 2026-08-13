@@ -40,11 +40,18 @@ import {
 import {
   enqueueEnhance,
   getAssetUrl,
+  getSessionState,
   getSignedUploadUrl,
   judgeVariants,
   uploadToGcs,
   type JudgeResult,
 } from "../../lib/api";
+import {
+  mapImportedAsset,
+  reconcileImports,
+  selectImportableAssets,
+  type ServerAsset,
+} from "../../lib/import-hydrate";
 import { buildRecommendedPrompt } from "../../lib/recommended-prompt";
 import { useJobPoller } from "../../lib/polling";
 import {
@@ -282,10 +289,23 @@ export interface CompletedEnhanceItem {
 
 export interface EnhancePanelProps {
   sessionId: string;
+  /**
+   * True when this session pre-existed the page load (adopted from a
+   * media-auditor handoff, or resumed from sessionStorage) and may hold
+   * imported assets to pull in. False for a freshly-minted session, where the
+   * read would always come back empty.
+   */
+  hydrateImports?: boolean;
   meta: Partial<ForkliftMeta>;
   onMetaChange: (meta: Partial<ForkliftMeta>) => void;
   onSendToScan: (items: CompletedEnhanceItem[]) => void;
   onClearPipeline: () => void;
+  /**
+   * Explicit "Clear all" only. Tells Workspace to forget the session handle so
+   * a reload doesn't resurrect the imports the operator just cleared. NOT
+   * called by the automatic post-batch reset, which keeps imports on purpose.
+   */
+  onDiscardSession?: () => void;
   /** Lets Workspace render the BatchContextStrip image count. */
   onFileCountChange: (count: number) => void;
   /** Signed-in user's email — threaded into the embedded ExportControls. */
@@ -302,10 +322,12 @@ export interface EnhancePanelProps {
 
 export function EnhancePanel({
   sessionId,
+  hydrateImports = false,
   meta,
   onMetaChange,
   onSendToScan,
   onClearPipeline,
+  onDiscardSession,
   onFileCountChange,
   userEmail,
   restriction = null,
@@ -319,6 +341,59 @@ export function EnhancePanel({
   const [files, setFiles] = useState<UploadFile[]>([]);
   const [toggles, setToggles] = useState<EnhanceToggles>(DEFAULT_TOGGLES);
   const setMeta = onMetaChange;
+
+  /**
+   * Hydrate imported photos from the server.
+   *
+   * The SESSION READ is the source of truth here, not the handoff poller —
+   * which is why this runs identically whether the operator just arrived from
+   * media-auditor or reloaded an hour later. The handoff record is TTL'd; the
+   * assets are permanent. There is no handoffId in this code path at all, and
+   * that's the point.
+   *
+   * Runs once per session. Step 4 adds the poller, whose only job is to say
+   * "re-read now" as items land and to go terminal — it will call back into
+   * this same mapper rather than becoming a second source of grid state.
+   */
+  useEffect(() => {
+    if (!hydrateImports || !sessionId) return;
+    let cancelled = false;
+
+    void (async () => {
+      let importable: ServerAsset[];
+      try {
+        importable = selectImportableAssets(await getSessionState(sessionId));
+      } catch {
+        // Includes the ownership 404. Nothing to show and nothing to say — the
+        // workspace is already usable and empty, which is a valid state.
+        return;
+      }
+      if (cancelled || importable.length === 0) return;
+
+      // One signed GET URL per asset: the session read returns gs:// URIs, not
+      // fetchable URLs. Settled (not all-or-nothing) so one bad mint doesn't
+      // cost the operator the whole import — a row with no preview still
+      // enhances, per the isEnhanceable() invariant.
+      const minted = await Promise.allSettled(
+        importable.map((a) => getAssetUrl(a.id)),
+      );
+      if (cancelled) return;
+
+      const hydrated = importable.map((a, i) => {
+        const m = minted[i];
+        return mapImportedAsset(
+          a,
+          m.status === "fulfilled" ? m.value.url : "",
+          uuidv4(),
+        );
+      });
+      setFiles((prev) => reconcileImports(prev, hydrated));
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [hydrateImports, sessionId]);
 
   // True when the operator has changed a toggle since the most recent batch
   // reached a terminal state. Drives the "re-enhance with new toggles"
@@ -1580,6 +1655,9 @@ export function EnhancePanel({
     judgeStartedRef.current = new Set();
     judgeEpochRef.current += 1;   // invalidate any in-flight judge from the prior batch
     onClearPipeline();
+    // Explicit clear: stop remembering the session so a reload doesn't bring
+    // the imports back. The automatic post-batch reset does NOT do this.
+    onDiscardSession?.();
     setGlobalError(null);
     setTogglesDirty(false);
     resetDoneForBatchRef.current = false;

@@ -88,6 +88,19 @@ CREATE TABLE IF NOT EXISTS assets (
 CREATE INDEX IF NOT EXISTS idx_assets_session  ON assets(session_id);
 CREATE INDEX IF NOT EXISTS idx_assets_project  ON assets(project_id);
 CREATE INDEX IF NOT EXISTS idx_assets_op       ON assets(operation);
+-- Idempotent post-create patch: provenance for assets copied in by the
+-- media-auditor handoff. Holds the source unit's stock number.
+--
+-- Why it lives on the asset and not on the handoff record: the handoff record
+-- is TTL'd and assets are not, so a join through it dies while the asset
+-- outlives it. One nullable column means an asset can still be traced back to
+-- a unit next month, with no migration risk to the normal upload path (which
+-- simply leaves it NULL).
+--
+-- NOTE: hard-won lesson #12 does NOT apply here — that lesson is about
+-- Postgres ENUM types needing ALTER TYPE ... ADD VALUE. This is plain
+-- nullable text.
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS source_ref TEXT;
 
 -- jobs
 CREATE TABLE IF NOT EXISTS jobs (

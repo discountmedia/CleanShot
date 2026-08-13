@@ -53,8 +53,15 @@ const TAB_PREFETCH: Partial<Record<TabId, () => Promise<unknown>>> = {
   history: loadHistoryList,
 };
 
-import { createSession, exchangeHandoffToken } from "@/lib/api";
-import { readHandoffToken, stripHandoffToken, type HandoffFailureReason } from "@/lib/handoff";
+import { createSession, exchangeHandoffToken, getSessionState } from "@/lib/api";
+import {
+  clearStoredSessionId,
+  readHandoffToken,
+  readStoredSessionId,
+  stripHandoffToken,
+  writeStoredSessionId,
+  type HandoffFailureReason,
+} from "@/lib/handoff";
 import { getRestriction } from "@/lib/access-control";
 import { AlertBanner } from "./AlertBanner";
 import type { ForkliftMeta } from "@/lib/types";
@@ -70,25 +77,46 @@ import type { ForkliftMeta } from "@/lib/types";
  *
  *   "exchanging" — a handoff token was in the URL fragment on arrival; we're
  *                  trading it for the session ingest already created.
- *   "creating"   — no token. Normal cold load: mint an empty session. This path
+ *   "resuming"   — no token, but this tab has a stored session id. Reload after
+ *                  an import: validate it, then hydrate from the server.
+ *   "creating"   — neither. Normal cold load: mint an empty session. This path
  *                  is byte-for-byte today's behaviour.
  *   "ready"      — sessionId is known. Written EXACTLY ONCE, by whichever
  *                  branch won. There is never an interim session that gets
  *                  swapped out from under a mounted panel.
  *
- * HYDRATION CONSTRAINT: readHandoffToken() returns null on the server (no
- * `location`), so the server initialises to "creating" while the client
- * initialises to "exchanging" on an import load. That is only safe because both
- * pre-ready phases render IDENTICAL markup — the phase changes what we *do*,
- * never what we *paint*, until "ready". Import-specific copy belongs after
- * ready, alongside the grid. If pre-ready import copy is ever wanted, the
- * escape hatch is a post-mount flag; don't assume it's impossible, but don't
- * build it now.
+ * PRECEDENCE: token beats stored id, unconditionally. An arriving import is an
+ * explicit intent; a stored handle is ambient. A successful exchange overwrites
+ * the stored id with the new session.
+ *
+ * HYDRATION CONSTRAINT: the initializer makes two client-only reads (the URL
+ * fragment, then sessionStorage), so the server initialises to "creating" while
+ * the client may initialise to "exchanging" or "resuming". That is only safe
+ * because ALL THREE pre-ready phases render IDENTICAL markup — the same
+ * existing "Starting a workspace session…" block. The phase changes what we
+ * *do*, never what we *paint*, until "ready".
+ *
+ * ⚠ This constraint now binds THREE phases, not two. The next phase added here
+ * is the one that will break it. If pre-ready import-specific copy is ever
+ * wanted, the escape hatch is a post-mount flag — don't assume it's impossible,
+ * but don't build it speculatively either.
  */
 type SessionInit =
   | { phase: "exchanging"; token: string }
+  | { phase: "resuming"; sessionId: string }
   | { phase: "creating" }
-  | { phase: "ready"; sessionId: string; handoffId?: string; expectedCount?: number };
+  | {
+      phase: "ready";
+      sessionId: string;
+      handoffId?: string;
+      expectedCount?: number;
+      /**
+       * True when this session pre-existed us (adopted via exchange, or resumed
+       * from storage) and may therefore hold assets to hydrate. False for a
+       * session we just minted — nothing to read, so no wasted round trip.
+       */
+      hydrate: boolean;
+    };
 
 // Cross-panel asset shape. Each panel emits these as its output.
 interface PipelineAsset {
@@ -191,7 +219,10 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // effect that could race the session-creating one.
   const [init, setInit] = useState<SessionInit>(() => {
     const token = readHandoffToken();
-    return token ? { phase: "exchanging", token } : { phase: "creating" };
+    if (token) return { phase: "exchanging", token };
+    const stored = readStoredSessionId();
+    if (stored) return { phase: "resuming", sessionId: stored };
+    return { phase: "creating" };
   });
   const [sessionError, setSessionError] = useState<string | null>(null);
   /**
@@ -209,6 +240,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // handoff poller (steps 3 and 4). Reading them from `init` at that point keeps
   // this diff free of unused locals.
   const sessionId = init.phase === "ready" ? init.sessionId : null;
+  const shouldHydrate = init.phase === "ready" && init.hydrate;
 
   // Cross-panel pipeline state. The flow is curated by the user:
   //   Enhance → "Send to Scan" → enhancedAssets  (what Scan tab analyzes)
@@ -240,7 +272,11 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     const mintEmptySession = () =>
       createSession()
         .then(({ sessionId }) => {
-          if (!cancelled) setInit({ phase: "ready", sessionId });
+          // Not stored: a freshly-minted empty session has nothing worth
+          // resuming, and storing it would change today's behaviour (reload
+          // currently gives you a clean workspace). Only sessions that hold
+          // imports get a carrier.
+          if (!cancelled) setInit({ phase: "ready", sessionId, hydrate: false });
         })
         .catch((err: Error) => {
           if (!cancelled) setSessionError(err.message);
@@ -248,6 +284,30 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
 
     if (init.phase === "creating") {
       void mintEmptySession();
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    if (init.phase === "resuming") {
+      const storedId = init.sessionId;
+      void (async () => {
+        try {
+          // The session read doubles as the validity probe — there is no cheaper
+          // existence endpoint. A stale id from a purged session, or one whose
+          // ownership check now refuses us, throws here.
+          await getSessionState(storedId);
+          if (cancelled) return;
+          setInit({ phase: "ready", sessionId: storedId, hydrate: true });
+        } catch {
+          if (cancelled) return;
+          // Expected case, NOT an exception worth surfacing: the stored handle
+          // is stale. Clear it and start fresh, silently — deliberately no
+          // importFailure notice, unlike a refused exchange.
+          clearStoredSessionId();
+          await mintEmptySession();
+        }
+      })();
       return () => {
         cancelled = true;
       };
@@ -264,11 +324,14 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       stripHandoffToken();
 
       if (result.ok) {
+        // Overwrite any ambient stored handle — the arriving import wins.
+        writeStoredSessionId(result.sessionId);
         setInit({
           phase: "ready",
           sessionId: result.sessionId,
           handoffId: result.handoffId,
           expectedCount: result.expectedCount,
+          hydrate: true,
         });
         return;
       }
@@ -279,6 +342,11 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
       // in this branch is either terminally refused or unreachable, so fall
       // back to a normal empty session and say so.
       setImportFailure(result.reason);
+      // Also drop any ambient stored handle. Without this the tab would show a
+      // fresh empty session while sessionStorage still pointed at an older
+      // imported one, so a reload would silently swap the workspace out from
+      // under the operator. What you are looking at is what you get back.
+      clearStoredSessionId();
       await mintEmptySession();
     })();
 
@@ -348,6 +416,19 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     setPipelineGeneration((g) => g + 1);
   };
 
+  /**
+   * Explicit "Clear all" only — NOT the automatic post-batch reset, which
+   * deliberately keeps imports.
+   *
+   * Drops the stored session handle so a reload doesn't resurrect the imports
+   * the operator just told us to get rid of. The session itself stays on the
+   * server (assets are permanent); we simply stop remembering it, which puts
+   * this tab back to normal cold-load behaviour.
+   */
+  const handleDiscardSession = () => {
+    clearStoredSessionId();
+  };
+
   return (
     <div className="min-h-screen bg-bg text-ink flex flex-col">
       <Header
@@ -396,10 +477,12 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
             {sessionId && (
               <EnhancePanel
                 sessionId={sessionId}
+                hydrateImports={shouldHydrate}
                 meta={meta}
                 onMetaChange={setMeta}
                 onSendToScan={handleSendToScan}
                 onClearPipeline={handleClearPipeline}
+                onDiscardSession={handleDiscardSession}
                 onFileCountChange={setEnhanceFileCount}
                 userEmail={userEmail}
                 restriction={restriction}
