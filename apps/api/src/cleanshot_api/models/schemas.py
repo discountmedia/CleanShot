@@ -188,15 +188,21 @@ class EnhanceRequest(BaseModel):
     session_id: uuid.UUID
     asset_id: uuid.UUID
     toggles: EnhanceToggles
-    # Image generation provider. Defaults to gemini (gemini-2.5-flash-image:
-    # fastest, cheapest, decent). "openai" routes through
-    # gpt-image-2-2026-04-21 (slower + costlier, sometimes more literal).
-    # "flux" routes through Black Forest Labs FLUX 2 [PRO] — the recommended
-    # default for image editing per BFL's own docs; async polling pattern;
-    # ~$0.03–0.08 per image. Model IDs pinned in
-    # apps/api/.../workers/enhance_worker.py.
-    # Narrowed 2026-06-05 — Kontext / Ideogram / Reve removed from picker.
-    # workers/_enhance_with_* helpers remain as dead-but-harmless code.
+    # Image generation provider. Model IDs are pinned in
+    # apps/api/.../workers/enhance_worker.py — the table in CLAUDE.md is the
+    # readable version.
+    #   gemini (default) — gemini-3.1-flash-image-preview via the AI Studio
+    #                      backend. Fastest (~20s).
+    #   openai           — gpt-5 with the image_generation tool forced via
+    #                      tool_choice. Slowest (~45-75s) and shares
+    #                      /v1/responses quota with the scan path.
+    #   grok             — DORMANT since 2026-07-21. Still accepted here, but
+    #                      dropped from ENHANCE_PROVIDERS so the picker can't
+    #                      select it. One-line restore.
+    # The LIVE picker is gemini + openai only. Kontext / Ideogram / Reve were
+    # removed 2026-06-05; their workers/_enhance_with_* helpers remain as
+    # dead-but-harmless code and are NOT valid values here. Flux is not a
+    # generator at all any more — it backs the per-variant Erase tool only.
     provider: Literal["gemini", "openai", "grok"] = "gemini"
     # What kind of equipment is in the photo — drives the per-type
     # anatomy guardrail block in _build_enhance_prompt + the equipment

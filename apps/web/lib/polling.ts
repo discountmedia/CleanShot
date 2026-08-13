@@ -8,7 +8,13 @@ import { pollJob } from "./api";
 import type { JobRecord } from "./types";
 
 const ACTIVE_MS  = 3_000;   // job is processing
-const QUEUED_MS  = 10_000;  // job is queued (matches Cloud Tasks 0.1 dps)
+// Queue-depth backoff. The old comment here justified 10s as "matches Cloud
+// Tasks 0.1 dps" — that rate was raised to 1.5 dps on 2026-05-27, so the
+// justification is gone even though the interval is unchanged. The binding
+// ceiling is now the per-provider rate limiters (OpenAI 5/60s), not the queue.
+// Left at 10s deliberately: it has never been re-measured against the faster
+// dispatch, and shortening it only adds poll traffic.
+const QUEUED_MS  = 10_000;  // job is queued
 const SLOW_MS    = 15_000;  // >2 min elapsed (large batch cleanup)
 const ERROR_MS   = 5_000;   // network error — retry delay
 
