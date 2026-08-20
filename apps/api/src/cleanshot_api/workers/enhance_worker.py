@@ -1203,11 +1203,25 @@ async def _tweak_with_gemini(
     raise ValueError(_describe_gemini_no_image(response, "tweak"))
 
 
-# Deterministic colour correction applied to Gemini output only. Slider units
-# match the Modify tab (-100..+100, 0 = no change), so these route through the
-# exact same pyvips maths the darkroom uses.
-GEMINI_SATURATION_LIFT = 12
-GEMINI_CONTRAST_LIFT = 8
+# Deterministic colour correction applied to Gemini output only.
+#
+# These are pyvips MULTIPLIER FACTORS, not Modify-tab slider units. That
+# distinction is the whole bug this replaced: apply_adjustments() takes factors
+# where 1.0 is neutral (the web app maps its -100..+100 sliders to factors
+# client-side, so the backend only ever sees factors). Passing slider units
+# meant brightness=0, and since the brightness/contrast step computes
+# `scale = contrast * brightness`, the scale went to zero with a -892 offset --
+# every Gemini output clamped to pure black.
+#
+# Equivalent slider positions, via the mapping documented on ModifyAdjustments:
+#   saturation 1.12 == +12 slider  (-100..+100 -> 0.0..2.0)
+#   contrast   1.04 == +8  slider  (-100..+100 -> 0.5..1.5)
+#
+# THESE VALUES ARE A STARTING POINT, NOT MEASURED. Chosen small so a wrong
+# guess reads as flat rather than garish. Grade a batch side by side against
+# OpenAI before nudging them.
+GEMINI_SATURATION_FACTOR = 1.12
+GEMINI_CONTRAST_FACTOR = 1.04
 
 _LANDSCAPE_DIRECTIVE = (
     "\n\nORIENTATION (non-negotiable): the output image MUST be LANDSCAPE, "
@@ -2150,20 +2164,20 @@ async def _run_enhance(
             # (see the warehouse-electric finding in CLAUDE.md), and a pyvips
             # pass costs nothing per image where another generation costs money.
             #
-            # THESE VALUES ARE A STARTING POINT, NOT MEASURED. Chosen small so a
-            # wrong guess reads as flat rather than garish. If they need tuning,
-            # grade a batch side by side against OpenAI first -- do not nudge
-            # them blind.
+            # Values, and the reason they are FACTORS rather than slider units,
+            # are documented on GEMINI_SATURATION_FACTOR above. Do not pass
+            # slider units here -- brightness=0 zeroes the linear scale and
+            # every output comes back pure black.
             if output_bytes:
                 output_bytes = await asyncio.to_thread(
                     apply_adjustments,
                     output_bytes,
-                    brightness=0,
-                    contrast=GEMINI_CONTRAST_LIFT,
-                    saturation=GEMINI_SATURATION_LIFT,
+                    brightness=1.0,
+                    contrast=GEMINI_CONTRAST_FACTOR,
+                    saturation=GEMINI_SATURATION_FACTOR,
                     rotation_deg=0.0,
                     crop_aspect="free",
-                    crop_zoom=100,
+                    crop_zoom=1.0,
                 )
 
         if not output_bytes:
