@@ -31,10 +31,13 @@ export function ConsensusPill({ consensus }: ConsensusPillProps) {
     >
       <span className="text-base font-bold">{cfg.icon}</span>
       <div className="flex flex-col items-start leading-tight">
-        <span className="text-[11px] font-bold uppercase tracking-[0.18em]">
+        {/* Stepped up the type scale (was text-[11px] / text-[10px]) to match
+            the inline scan strip on the Enhance tab — same verdict, same
+            legibility bar. Colour and weight unchanged. */}
+        <span className="text-sm font-bold uppercase tracking-[0.18em]">
           {cfg.label}
         </span>
-        <span className="text-[10px] opacity-75 tabular-nums">
+        <span className="text-xs opacity-75 tabular-nums">
           {passes}/{total} pass · {pct}% avg conf
         </span>
       </div>

@@ -9,6 +9,8 @@ AI-powered forklift image processing platform. Upload raw forklift photos, enhan
 > - **Scan is inline on Enhance.** Every generated image is scanned automatically and the verdict renders beside that image. Nothing navigates to the Scan tab.
 > - **Tabs: `Enhance → Scan → Your Photo Library`.** Scan is now a **standalone** tool with its own uploader. There is no Resize or Modify tab, and no bulk adjustment panel.
 > - **Export is the only save action.** It writes the finished files and their pre-enhance originals into the user's Photo Library. The Save Project button is gone.
+> - **Enhanced images are standardised at 2800x2000 (7:5)** at the end of enhancement. Export writes that file out unchanged.
+> - **Upload resolution is no longer capped.** File size is still compressed; the pixels are not downscaled.
 > - **Photo-library storage is indefinite**, not 30 or 60 days (GCS lifecycle rule removed 2026-05-26).
 > - Live bucket names are `cleanshot-originals-prod` / `cleanshot-derivatives-prod` (the `-493512` names below are illustrative).
 >
@@ -46,7 +48,7 @@ The whole job happens on the **Enhance** tab:
 2. **Generate.** Pick Gemini, OpenAI, or both; each runs as an independent variant per source image. A multi-provider batch is auto-judged by a Claude vision call and the winner pre-selected — manual override is one click.
 3. **Read the scan inline.** Every generated image is scanned automatically against its original, and the verdict plus anomaly list renders on that image's card. Results arrive per image; one slow or failed scan never blocks the others.
 4. **Fix per image.** Each result carries its own **Retry** (re-roll that one variant with the current prompt) and its own **contrast / saturation** adjustment, applied to that image only and persisted through export.
-5. **Export.** `7x5 EXPORT` crops to 7:5 at full resolution and writes the finished files — plus the pre-enhance originals — straight into your Photo Library. That is the save; there is no separate Save Project step. Only selected images are persisted.
+5. **Export.** `7x5 EXPORT` writes the finished 2800x2000 files — plus the pre-enhance originals — straight into your Photo Library. That is the save; there is no separate Save Project step. Only selected images are persisted.
 
 Two side tools:
 
@@ -556,10 +558,11 @@ Because a standalone upload has no pre-enhance original to compare against, it g
 
 ### Export
 
-1. Cropped to 7:5 at the source's full resolution, zoom-to-fill, no letterboxing.
-2. Exported images are **upscaled**, so they must go through the image optimizer in PRO after upload — the button says so.
-3. An optional **AI disclaimer watermark** checkbox, **on by default**. This was briefly mandatory and is back to a checkbox pending a final decision on how the watermark gets applied; the rendering code is unchanged either way.
-4. Clicking export saves the project, writes the finished files and their originals to your Photo Library, and gives you per-image downloads plus a ZIP.
+1. **2800x2000, exactly.** Every enhanced image is brought to that size once, at the end of enhancement; export writes it out without resizing, resampling, or re-cropping. Single image, batch, and ZIP all produce the same dimensions, and the copies saved to your project are those same files.
+2. **Crop to fill, never pad or stretch.** A source that isn't 7:5 is scaled to cover 2800x2000 and the overflow is cropped from the centre. Stretching would distort the machine and make the photo inaccurate, so it never happens; a portrait source loses roughly 30% of its height.
+3. Exported images are **upscaled**, so they must go through the image optimizer in PRO after upload — the button says so.
+4. An optional **AI disclaimer watermark** checkbox, **on by default**. This was briefly mandatory and is back to a checkbox pending a final decision on how the watermark gets applied; the rendering code is unchanged either way.
+5. Clicking export saves the project, writes the finished files and their originals to your Photo Library, and gives you per-image downloads plus a ZIP.
 
 ---
 

@@ -78,7 +78,72 @@ The fix is **fragment removal, not counter-instruction** — emphatic "do not dr
 - **Tried and REVERTED — don't redo blindly:** the Phase A enhance-prompt change (make/model/year identity anchor + "PRESERVE EXACT DIMENSIONS" guardrail) shipped as `48c653f` and was reverted in `1585f46` after it regressed output. Emphatic "don't change X" guardrails backfire on Gemini — the "don't think of an elephant" effect.
 - **Operator's holistic pass/fail bar** (a part-diff count does NOT predict it): FAIL for cab/mast/body recoloured to a DIFFERENT hue, desaturation, added wheels/parts, reshaping, an obviously-AI look, or a legible model-# significantly wrong. PASS/tolerate: same-colour body respray, red forks + yellow tips, BLACK backrest/carriage, cleaned background/floor, better lighting, subtle geometry, 1-2 char model-# drift.
 - **Paint is STANDING policy in the differential scan prompt**, not a per-batch whitelist entry — same-colour respray, red/orange forks + yellow tips, black backrest/carriage/load guard, repainted wheels/counterweight are always expected. This is what stopped the scan false-positiving on the exact edits the operator asked for. Geometry flags were removed from the differential vocabulary entirely ("no one understands what that means" — it was the label on most false positives); gross deformity still lands as `size_changed`/`part_added`/`part_removed`.
+- **The differential scan CAN and MUST report body colour changes.** It briefly
+  could not: the rubric said "A repaint is NEVER a defect. Do not report any
+  anomaly for paint" while defect #5 pointed back at that same rule, and the
+  `AnomalyItem.type` field description — which constrains structured output —
+  listed `wrong_colour` as valid and forbade "paint/colour changes" in the same
+  sentence. A full grey-to-orange body repaint scanned clean. The paint
+  allowance is now scoped to the SAME COLOUR FAMILY, and two cases are explicit
+  defects: a large body panel changing colour family, and non-marking (white /
+  cream / light grey) tyres turned black. **Non-marking tyres are a real priced
+  spec** — turning them black misrepresents the machine as surely as a body
+  recolour, and `shine_tires` is on by default, so this is not a hypothetical.
+  Nothing in the intended-edits whitelist, including the operator's verbatim
+  prompt, can authorise either case.
 - **`computeConsensus` returns `"mixed"` if any ONE of three providers fails**, so a single over-eager vote still costs a clean pass badge. Changing it is a verdict-semantics decision, not a bug fix.
+
+---
+
+## Image sizing — one standard, one place
+
+**Enhanced images are exactly 2800x2000 (true 7:5).** `upscale_to_standard()` in
+[image_processing.py](apps/api/src/cleanshot_api/services/image_processing.py) is
+called ONCE, at the end of enhancement, before the bytes are written to GCS. The
+stored asset is therefore already the finished size, and every later stage —
+per-image adjustments, the disclaimer composite, export, the copies written to
+the user's project — operates on it directly and never resamples.
+
+- **`export_pro` no longer resizes or crops.** It composites the disclaimer and
+  encodes. Sizing used to live there, which meant the stored enhanced asset was
+  whatever the vendor returned (~1024 Gemini, 1536x1024 OpenAI) and only became
+  7:5 on the way out. If you find yourself adding a resize to an export path,
+  that is the bug this change fixed.
+- **The erase and tweak workers standardise too.** They REPLACE the stored
+  variant, so without it one tweak drops the image back to vendor resolution.
+  Any future tool that rewrites a variant must call `upscale_to_standard`.
+- **`_cover_crop()` is the only crop-to-fill implementation.** Scale to cover,
+  then crop the overflow, centred. Never pads, never letterboxes, never
+  stretches — a non-uniform scale distorts the machine and makes the listing
+  photo inaccurate. `export_custom` was refactored onto it so the two can't
+  drift. Note it uses a plain centre crop; `smartcrop(interesting="attention")`
+  was the old behaviour and follows the salient region instead.
+
+**Input resolution is NOT capped.** Both caps are gone: `MAX_LONG_EDGE` in
+`lib/compress.ts` and the downsize inside `enhance_worker._load_image_bytes`
+(`INPUT_MAX_LONG_EDGE_PX` survives as an unapplied constant so the old behaviour
+is one line away). Sources reach the model at native resolution, which is what
+makes the 2800x2000 standard meaningful rather than an upscale of a 1024px
+frame. Watch for the thing that originally justified the cap: OpenAI
+`/v1/responses` timeouts on large uploads.
+
+- **Byte compression stays on the client, and the reason in the old comment was
+  wrong.** Uploads go straight to GCS via a signed PUT, so Vercel's 4.5 MB
+  serverless body limit never applied to image bytes. The quality loop is now
+  best-effort and no longer throws when it can't hit the target.
+- **The scan path has its OWN cap (`SCAN_MAX_LONG_EDGE_PX = 2576`) and that is
+  deliberate, not an oversight.** The binding constraint is Anthropic's
+  SERVER-SIDE VISION DOWNSCALE, not bytes: `claude-sonnet-4-6` is standard tier
+  and gets downscaled to a 1568px long edge; `claude-opus-4-7` (the hard-scan
+  route) is high-resolution tier at 2576px / 4784 visual tokens. 2576 serves the
+  hard path at full fidelity and wastes nothing on the standard path — anything
+  larger is bytes and latency for pixels the model never sees. Byte limits are
+  not close: 10 MB per image base64 on the direct Claude API (**the 5 MB figure
+  is Bedrock/Vertex and does not apply to us**), 32 MB per request; OpenAI is
+  looser still at 512 MB. Gemini is unaffected — it reads the GCS URI. Do not
+  "unify" this with the enhance path: resolution there is output quality, here
+  it is only enough pixels to see a repaint. Numbers verified against vendor
+  docs 2026-08-21; re-check if the scan models change tier.
 
 ---
 

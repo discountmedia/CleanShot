@@ -1007,11 +1007,19 @@ class AnomalyItem(BaseModel):
     # 2026-07-30 — the operator's read was "no one understands what that
     # means," and it was the label on most of the false positives. Gross
     # deformity is still caught as 'size_changed' / 'part_added' /
-    # 'part_removed' / 'hallucinated_object'. 'colour_changed' is likewise gone
-    # (repaints are requested, not defects); a genuinely wrong machine colour
-    # reports as 'wrong_colour'. Keep these in sync with
-    # SCAN_DIFFERENTIAL_PROMPT_BASE in scan_worker.py.
-    type: str = Field(description="Defect/change category. Isolated scan: 'duplicated_part', 'missing_part', 'deformed_part', 'garbled_text', 'wrong_colour', 'hallucinated_object'. Differential scan (vs original): 'size_changed', 'part_added', 'part_removed', 'damage_added', 'text_changed', 'wrong_colour', 'hallucinated_object'. Never invent a category about altered geometry, reshaping, or paint/colour changes.")
+    # 'part_removed' / 'hallucinated_object'. 'colour_changed' is likewise gone;
+    # a genuinely wrong machine colour reports as 'wrong_colour'.
+    #
+    # 2026-08-21: this description used to end "Never invent a category about
+    # altered geometry, reshaping, or paint/colour changes" while listing
+    # 'wrong_colour' as valid in the same sentence. That contradiction sat in
+    # the TOOL SCHEMA, so it constrained structured output directly: the model
+    # was told the category existed and told not to use it, and resolved that
+    # by reporting nothing. A full grey-to-orange body repaint scanned clean.
+    # The geometry ban stays; the colour ban is now scoped to "don't invent
+    # OTHER colour categories" instead of forbidding the one that exists.
+    # Keep in sync with SCAN_DIFFERENTIAL_PROMPT_BASE in scan_worker.py.
+    type: str = Field(description="Defect/change category. Isolated scan: 'duplicated_part', 'missing_part', 'deformed_part', 'garbled_text', 'wrong_colour', 'hallucinated_object'. Differential scan (vs original): 'size_changed', 'part_added', 'part_removed', 'damage_added', 'text_changed', 'wrong_colour', 'hallucinated_object'. Never invent a category about altered geometry or reshaping. Use 'wrong_colour' — and only 'wrong_colour' — for the colour cases the prompt calls defects: a body panel that changed colour family, or non-marking tyres turned black. Do not invent any other colour or paint category.")
     location: str = Field(description="Where on the unit, e.g. 'left_fork', 'mast_top', 'data_plate'")
     severity: str = Field(description="'medium' or 'high' only — do not report 'low'/nitpick issues at all")
     description: str = Field(description="What the defect or unintended change is. In differential mode, phrase it as a difference from the original. State the issue only; no advice or photography tips.")

@@ -130,31 +130,35 @@ SCAN_DIFFERENTIAL_PROMPT_BASE = """You are the FINAL quality-control gate for AI
 Image 2 is SUPPOSED to look different from Image 1 — it has been deliberately cleaned up and repainted for a sales listing. Your ONLY job is the narrow case where the AI misrepresented the MACHINE'S HARDWARE: it changed what the buyer is actually buying. If Image 2 shows the same machine with the same parts at the same size, it PASSES — no matter how much better it looks.
 
 CHANGES THAT ARE EXPECTED — never flag these, and never mention them at all:
-- PAINT AND COLOUR. Fresh paint, a glossy respray, richer colour, and cleaner panels are the POINT of this tool. Always expected:
-    • Body, cab, or mast resprayed in the machine's own colour family — a brighter, cleaner, or slightly different shade of the same colour.
-    • FORKS painted RED (or orange, or black), with or without YELLOW TIPS.
+- PAINT AND FINISH, WITHIN THE MACHINE'S OWN COLOURS. Fresh paint, a glossy respray, richer colour, and cleaner panels are the POINT of this tool. Always expected:
+    • Body, cab, hood, or mast resprayed in the SAME COLOUR FAMILY it already was — brighter, cleaner, glossier, or a slightly different shade of that same colour. An orange machine coming back a richer orange is expected and must not be flagged.
+    • FORKS painted RED (or orange, or black), with or without YELLOW TIPS. Fork colour is never a defect.
     • The backrest, fork carriage, or load guard rendered BLACK.
-    • Wheels, rims, counterweight, or trim repainted in normal equipment colours.
-  A repaint is NEVER a defect. Do not report any anomaly for paint.
+    • Rims, hubs, counterweight trim, and small fittings repainted in normal equipment colours.
+    • Tyres that were already dark being cleaned, darkened, or glossed.
+  Repainting the machine in its own colour is never a defect. This allowance does NOT cover a panel changing to a DIFFERENT colour, or light-coloured tyres turning black — both are defects; see #5.
 - Lighting, exposure, brightness, contrast, white balance, saturation, or overall colour grade.
 - Background, floor, or surroundings being cleaned, replaced, or simplified.
 - Reflections, shadows, glare, general cleanliness, removal of dirt, dust, rust, or scuffs.
 - Sharpness, resolution, crop, or framing/zoom differences.
 - Small shape or proportion differences that still read as the same part — slight taper, thickness, edge, or angle variation. Only an obvious size change matters (see #1).
 - Model, capacity, or badge text that is slightly softer or off by a character or two but still reads as essentially the same marking.
-- Any edit listed under "REQUESTED EDITS" below.
+- Any edit listed under "REQUESTED EDITS" below — EXCEPT a body panel changing colour family, or non-marking tyres turning black. Those two are defects even when the request appears to ask for them: "repaint it" never authorises changing what colour the machine is.
 
 CHANGES THAT ARE DEFECTS — flag these ONLY when they are obvious at a glance and would mislead a buyer:
 1. SIZE MISREPRESENTED — the forks, mast, boom, wheels, or platform are plainly a different size than the real ones (forks roughly half their real length, the mast gaining or losing a section, wheels obviously larger). A buyer relies on the photo matching the real spec, so an obvious size change is the single most important thing you catch. Clear, at-a-glance differences only — never subtle ones.
 2. PARTS ADDED OR REMOVED — a whole fork, wheel, mirror, light, guard, hose, seat, or attachment present in one image and absent in the other. An extra wheel or a missing fork is a defect; a small bracket you can barely make out is not.
 3. DAMAGE ADDED — new dents, cracks, holes, or heavy rust that were NOT on the real machine. The enhancer must never make the unit look MORE damaged than it is.
 4. MAJOR TEXT REPLACED — a clearly legible model number, capacity rating, or OEM badge that now reads as a genuinely DIFFERENT value (e.g. "8FGU25" became "8FGU45"; "5000 LB" became "9000 LB"). Only when the text is legible in BOTH images and the value truly differs. Never flag soft, partially-legible, or one-or-two-character differences.
-5. WRONG-MACHINE COLOUR — the body, cab, or mast is a plainly DIFFERENT colour than the real machine (an orange unit turned blue), or the whole machine is washed out and desaturated to look grey and lifeless. This is about misidentifying the machine, NOT about repainting it — see the paint rule above.
+5. MACHINE COLOUR MISREPRESENTED — a defect even though repainting is expected, because it changes what the buyer believes they are looking at. Flag when ANY of these is true:
+   (a) A BODY PANEL CHANGED COLOUR FAMILY. The counterweight, battery compartment, side panels, hood, cab, or mast is a plainly DIFFERENT colour in Image 2 than in Image 1 — a GREY battery compartment now ORANGE, a grey mast now orange, an orange unit now blue. Judge the HUE, not the brightness: the same colour brighter or glossier is expected, a different colour is always a defect. A LARGE panel that was UNPAINTED, BARE METAL, BLACK, or GREY in Image 1 and is now body-coloured has changed colour family. This is about big, obvious panels only — rims, hubs, small brackets, and trim pieces changing colour are covered by the paint allowance above and must NOT be flagged. Report type "wrong_colour" and put the specific panel in `location` (e.g. "battery_compartment", "counterweight", "mast", "side_panel").
+   (b) NON-MARKING TYRES TURNED BLACK. The tyres in Image 1 are WHITE, CREAM, or LIGHT GREY — these are non-marking tyres, a real and separately-priced spec on this equipment — and in Image 2 they are BLACK or dark grey. That misstates the tyre spec. Report type "wrong_colour", `location` "tires". Tyres that were ALREADY dark and are merely cleaner or glossier are expected; only light-to-dark is a defect.
+   (c) The whole machine is washed out and desaturated to look grey and lifeless.
 6. HALLUCINATED OR MANGLED CONTENT — phantom objects fused onto the machine, a duplicated cab or mast, or a visible person with extra limbs or a distorted face.
 
 Compare the two images part by part, then apply this test: "would a buyer who saw the real machine in person feel this photo misled them about the hardware?" If no, return "pass".
 
-DEFAULT TO "pass". Return "fail" only when at least one obvious defect above is present. Never report a change you had to look hard to notice. Never critique photography, composition, or how flattering the shot is, and never give advice or tips. If the only differences are cleanup, paint, or requested edits, return "pass" with empty anomalies.
+DEFAULT TO "pass". Return "fail" only when at least one obvious defect above is present. Never report a change you had to look hard to notice. Never critique photography, composition, or how flattering the shot is, and never give advice or tips. If the only differences are cleanup, SAME-COLOUR paint, or requested edits, return "pass" with empty anomalies. A body panel in a different colour, or light tyres turned black, is never "only paint".
 
 Return ONLY valid JSON matching the ScanResult schema. No preamble or explanation."""
 
@@ -189,7 +193,9 @@ def _build_differential_prompt(
         edits = "\n".join(f"- {e}" for e in intended_edits)
         sections.append(
             "REQUESTED EDITS (these were asked for — treat as EXPECTED, do NOT "
-            "flag them):\n" + edits
+            "flag them). Nothing in this list can authorise a body panel "
+            "changing colour family or non-marking tyres turning black; those "
+            "stay defects under #5:\n" + edits
         )
     else:
         # NOTE: this fallback must NOT be stricter than the base rubric. It
@@ -200,8 +206,10 @@ def _build_differential_prompt(
         # turned every requested repaint into a colour_changed false positive.
         sections.append(
             "REQUESTED EDITS: none itemised for this image. Standard listing "
-            "cleanup AND repainting are still assumed and expected — judge "
-            "only the hardware rules above."
+            "cleanup AND repainting in the machine's OWN colours are still "
+            "assumed and expected — judge only the hardware rules above. "
+            "This does not licence a body panel changing colour family or "
+            "non-marking tyres turning black (#5)."
         )
 
     return "\n\n".join(sections)
@@ -252,30 +260,75 @@ async def _scan_gemini(
     return result, latency_ms
 
 
+# Long-edge ceiling for images sent to the scan providers as BASE64.
+#
+# This is deliberately NOT the same decision as the (now removed) enhance input
+# cap. Enhance sends the source to a vendor to be RE-RENDERED, so resolution
+# there is output quality and capping it costs detail. Scan sends two images to
+# a vision model to be COMPARED, and every one of those models downscales on
+# arrival anyway — so anything above this ceiling is bytes uploaded and latency
+# paid for pixels the model never sees.
+#
+# 2576 is not a guess. Checked against the vendor docs 2026-08-21:
+#
+#   Anthropic (direct Claude API, which is what we use):
+#     - Server-side vision downscale is the binding limit, not bytes.
+#       `claude-sonnet-4-6` (SCAN_MODEL_ANTHROPIC_STD) is standard tier and is
+#       downscaled to a 1568px long edge. `claude-opus-4-7`
+#       (SCAN_MODEL_ANTHROPIC_HARD) is high-resolution tier: 2576px long edge,
+#       4784 visual tokens. 2576 therefore serves the hard-scan path at full
+#       fidelity and wastes nothing on the standard path.
+#     - Hard limits we stay well inside: 10 MB per image base64 (NOTE: 5 MB is
+#       the Bedrock / Vertex figure and does NOT apply to us), 8000x8000 px,
+#       32 MB total request.
+#     - The stricter >20-images-per-request rule is irrelevant here: a
+#       differential scan sends exactly two.
+#
+#   OpenAI (`gpt-5.4` via /v1/responses): 512 MB total request payload, up to
+#     1500 images, and at `original` detail up to 10,000 patches / 6000px max
+#     dimension. Far looser than Anthropic — Anthropic is the binding side.
+#
+#   Gemini is unaffected either way: it reads the GCS URI directly and never
+#     receives these bytes.
+SCAN_MAX_LONG_EDGE_PX = 2576
+
+
 async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
     """Download image bytes from GCS for providers that need base64.
-    Runs the sync GCS download in a thread to avoid blocking the event loop.
+
+    Downsized to SCAN_MAX_LONG_EDGE_PX so a full-resolution original can't blow
+    past a provider's per-image request limit. Runs the sync GCS download and
+    the pyvips resize in a thread to avoid blocking the event loop.
     """
     from google.cloud import storage as gcs
+    import pyvips
 
     settings = get_settings()
     without_scheme = gcs_uri[len("gs://"):]
     bucket_name, _, object_name = without_scheme.partition("/")
 
-    def _download() -> bytes:
+    def _download() -> tuple[bytes, str]:
         client = gcs.Client(project=settings.gcp_project)
         blob = client.bucket(bucket_name).blob(object_name)
-        return blob.download_as_bytes()
+        data = blob.download_as_bytes()
 
-    data = await asyncio.to_thread(_download)
+        # Detect content type from first bytes (before any re-encode).
+        ct = "image/jpeg"
+        if data[:8] == b"\x89PNG\r\n\x1a\n":
+            ct = "image/png"
+        elif data[:4] == b"RIFF":
+            ct = "image/webp"
 
-    # Detect content type from first bytes
-    ct = "image/jpeg"
-    if data[:8] == b"\x89PNG\r\n\x1a\n":
-        ct = "image/png"
-    elif data[:4] == b"RIFF":
-        ct = "image/webp"
-    return data, ct
+        img = pyvips.Image.new_from_buffer(data, "")
+        long_edge = max(img.width, img.height)
+        if long_edge <= SCAN_MAX_LONG_EDGE_PX:
+            # Already within budget — no resize, no re-encode tax.
+            return data, ct
+
+        img = img.resize(SCAN_MAX_LONG_EDGE_PX / long_edge)
+        return bytes(img.write_to_buffer(".jpg", Q=90)), "image/jpeg"
+
+    return await asyncio.to_thread(_download)
 
 
 async def _scan_openai(

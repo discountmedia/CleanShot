@@ -1,4 +1,4 @@
-# Session handoff — updated 2026-08-21
+# Session handoff — updated 2026-08-21 (second pass)
 
 Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. "Enhance tab — current shape"). This file is the "where we are right now / what's pending" snapshot.
 
@@ -7,8 +7,9 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 ## Repo state
 
 - **Branch:** `main`. Direct-to-main is the norm (no PR review).
-- **This push is a large one** — it carries the Enhance-tab restructure, saved prompts, scan-bar colours, and the experimental fork conditionals, all in one commit. If something is off in prod, that is the commit to look at.
-- **It ships a schema change.** `saved_prompts` is added to `db/migrate.py`, which runs on API startup, so the deploy applies it. No `ALTER TYPE` was needed — `OperationEnum.export` already existed for the export asset rows.
+- **The Enhance-tab restructure batch is already pushed** (`ad7f0a6`) and deployed. This second pass carries the layout tweaks, the differential-scan colour fix, and the 2800x2000 sizing standard.
+- **The first push was a large one** — it carries the Enhance-tab restructure, saved prompts, scan-bar colours, and the experimental fork conditionals, all in one commit. If something is off in prod, that is the commit to look at.
+- **The first push shipped a schema change.** `saved_prompts` was added to `db/migrate.py`, which runs on API startup, so the deploy applied it. This second push adds no schema change. No `ALTER TYPE` was needed — `OperationEnum.export` already existed for the export asset rows.
 - **Untracked:** `AGENTS.md` (a Codex-facing pointer to CLAUDE.md) is present but not committed, as found.
 
 ---
@@ -32,6 +33,12 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 
 **Reverted:** the mandatory disclaimer. It is an optional checkbox again, now defaulting ON.
 
+**Layout pass** — save-prompt button moved right and turned lime, the saved-prompt dropdown moved up beside "Insert recommended prompt", Download ZIP moved to the left of its row, and scan verdict text stepped up the type scale on both tabs. Version label is now `Beta V.2`.
+
+**Differential scan can report colour again.** It could not: a blanket "a repaint is NEVER a defect" in the rubric, and an `AnomalyItem.type` description that listed `wrong_colour` while forbidding "paint/colour changes" in the same sentence, meant a full grey-to-orange body repaint scanned clean. Now scoped to same-colour-family, with two explicit defects (body panel colour family, non-marking tyres turned black).
+
+**Sizing standardised at 2800x2000.** `upscale_to_standard()` runs once at the end of enhancement; `export_pro` no longer resizes or crops. Input resolution is uncapped on both the client and the enhance worker; the scan path keeps its own 2576px cap, set to Anthropic's high-resolution vision tier so nothing is uploaded that the model would only downscale.
+
 ---
 
 ## The thing still owed: a real end-to-end smoke test
@@ -40,11 +47,13 @@ Everything is verified by `tsc` / `next build` / lint / py-compile and by exerci
 
 Highest-value checks, in order:
 
-1. **Export → library.** Run a 2-provider batch, pick winners, export. Confirm the Photo Library shows the exported files AND the originals, exactly once each, and that a re-export updates that set instead of adding a duplicate.
-2. **Saved prompts.** Save a prompt, re-insert it, save a colliding title (expect overwrite/rename, not a silent duplicate), rename, delete. Confirm a second user cannot see the first's prompts once `AUTH_ENABLED=true`.
-3. **Inline scan.** Confirm verdicts appear per variant and that a single failed scan marks only its own image.
-4. **Fork conditionals.** Off by default. Turn on, tick both controls on one image, retry, and check the output stops inventing a shank / shortening the forks. Then turn the switch off and confirm the prompt goes back to exactly what it was.
-5. **Default-path prompt drift.** The fork block was split from one paragraph into sentences. The "both visible" case is meant to be semantically identical — worth a side-by-side on a few images before trusting it on a real batch, given this repo's history with prompt changes.
+1. **DIMENSIONS — the one I could not verify at all.** There is no Python environment on the dev machine (no `pyvips`, no `fastapi`) and no GCP credentials, so I could not run a batch or read output files. The crop maths is verified with PIL against six aspect ratios (1.40, 1.50, 4:3, portrait, square, already-standard) and lands exactly 2800x2000 in every case, but that is the ALGORITHM, not the pyvips implementation or the live pipeline. **Please run a batch including at least one non-7:5 source and check actual output dimensions at two points:** the enhanced asset in GCS, and the exported file. Both should read 2800x2000.
+2. **Scan colour fix.** Re-scan the grey-to-orange Toyota pair. Expect two `wrong_colour` anomalies: `battery_compartment` and `tires`. Then run several correctly-enhanced images and confirm it stays quiet — the risk with this change is firing on every image, which is worse than the miss it fixes.
+3. **Export → library.** Run a 2-provider batch, pick winners, export. Confirm the Photo Library shows the exported files AND the originals, exactly once each, and that a re-export updates that set instead of adding a duplicate.
+4. **Saved prompts.** Save a prompt, re-insert it, save a colliding title (expect overwrite/rename, not a silent duplicate), rename, delete. Confirm a second user cannot see the first's prompts once `AUTH_ENABLED=true`.
+5. **Inline scan.** Confirm verdicts appear per variant and that a single failed scan marks only its own image.
+6. **Fork conditionals.** Off by default. Turn on, tick both controls on one image, retry, and check the output stops inventing a shank / shortening the forks. Then turn the switch off and confirm the prompt goes back to exactly what it was.
+7. **Default-path prompt drift.** The fork block was split from one paragraph into sentences. The "both visible" case is meant to be semantically identical — worth a side-by-side on a few images before trusting it on a real batch, given this repo's history with prompt changes.
 
 ---
 
@@ -53,6 +62,9 @@ Highest-value checks, in order:
 - **How should the disclaimer watermark finally work?** It is a checkbox defaulting ON as a holding position. Until that is decided, expect this to move again. Note the server-side defaults are now `True` (they were `False` before), so an omitted flag watermarks rather than silently skipping.
 - **Do the fork conditionals actually help?** Unmeasured. If they do, the next step is automatic detection — which needs a pre-pass on the SOURCE photo, because the existing scan runs after enhance.
 - **Is `deformed_part` worth suppressing at the display layer?** Raised and deferred. `geometry_altered` is already gone from the differential vocabulary, but the isolated scan (standalone Scan-tab uploads) still reports `deformed_part`, which covers both warped geometry and genuinely melted structure.
+- **Does the uncapped input break OpenAI?** The 1024px cap existed because `/v1/responses` with full-res smartphone photos was reliably blowing past a 90s timeout. That was the stated reason in the code. Removing it may bring the timeouts back; watch enhance latency and failure rate on the first real batches. `INPUT_MAX_LONG_EDGE_PX` is still there, unapplied, so restoring the cap is one line.
+- **Export file size and ZIP memory.** 2800x2000 at Q92 is roughly 1.5-3 MB per image, up from ~150-300 KB. The ZIP builder buffers the whole archive in `io.BytesIO` before upload, so a 150-image batch goes from ~40 MB to ~300 MB resident on a Cloud Run instance. Not addressed — it is outside the sizing path — but it is now a real ceiling on batch size.
+- **Centre crop vs attention crop.** `_cover_crop` centres, as specified. On an extreme aspect ratio a centre crop can slice the ends off the machine where `smartcrop(interesting="attention")` would follow it. Worth revisiting if operators report cropped forks.
 - **Should `computeConsensus` still return `"mixed"` when one of three providers fails?** A single over-eager vote costs a clean pass badge. This is a verdict-semantics decision, not a bug.
 - **Brightness / crop / straighten** are unreachable from the UI now that the bulk panel is gone, though the backend still supports them. Wanted per-image, or genuinely retired?
 

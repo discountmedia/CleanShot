@@ -27,7 +27,10 @@ from google.genai import types
 
 from cleanshot_api.core.config import get_settings
 from cleanshot_api.db import queries
-from cleanshot_api.services.image_processing import apply_adjustments
+from cleanshot_api.services.image_processing import (
+    apply_adjustments,
+    upscale_to_standard,
+)
 from cleanshot_api.services.pricing import estimate_cost_usd
 from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
@@ -873,28 +876,37 @@ def _build_kontext_prompt(
 
 # Cap long-edge of the input image before sending to any vendor. Final
 # export is 1024×731, so anything bigger upstream is just paying tax on
-# upload bandwidth + vendor inference time for detail that gets thrown
-# away. 1024 matches export resolution exactly.
+# INPUT RESOLUTION IS NO LONGER CAPPED (2026-08-21).
+#
+# This used to downscale every source to 1024px on the long edge before the
+# vendor call. With enhanced output standardised at 2800x2000, that meant the
+# model was handed a 1024px source and its result was upscaled ~2.7x on the way
+# out — correctly sized, but soft, because the detail was discarded upstream.
+# Full-resolution sources give the model something real to work with.
+#
+# The constant is kept at its old value but is NO LONGER APPLIED, so the
+# previous behaviour is one line away if vendor latency or per-image byte
+# limits turn out to bite. Watch for: OpenAI /v1/responses timeouts on large
+# uploads (the original reason for the cap), and provider request-size limits.
 INPUT_MAX_LONG_EDGE_PX = 1024
 
 
 async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
-    """Download bytes from GCS and downsize to INPUT_MAX_LONG_EDGE_PX.
+    """Download bytes from GCS at NATIVE RESOLUTION.
     Returns (bytes, detected_content_type).
 
-    Sync SDK runs in a worker thread. pyvips handles the resize + re-encode
-    (already a dep — used by services/image_processing.py for export
-    pipeline). PNG inputs stay PNG (lossless); everything else round-trips
-    through JPEG Q=92 since vendors mostly want photographic bytes.
+    The downsize to INPUT_MAX_LONG_EDGE_PX was removed 2026-08-21 — see the
+    note on that constant. The source now reaches the model at whatever
+    resolution it was uploaded at, so the standardisation to 2800x2000 after
+    enhancement has real detail to work from instead of enlarging a 1024px
+    frame.
 
-    Skipping the resize when max(w, h) <= 1024 avoids upscaling tiny inputs
-    and avoids the re-encode tax when there's no work to do.
+    Sync SDK runs in a worker thread.
 
     Duplicated from scan_worker.py for now — TODO: move to services/gcs.py
     (TODO is now 3-callers-old, cleanup_worker imports this directly).
     """
     from google.cloud import storage as gcs
-    import pyvips
 
     settings = get_settings()
     without_scheme = gcs_uri[len("gs://"):]
@@ -905,29 +917,15 @@ async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
         blob = client.bucket(bucket_name).blob(object_name)
         data = blob.download_as_bytes()
 
-        # Magic-byte sniff for content type (before any re-encode).
+        # Magic-byte sniff for content type. No re-encode: the bytes go to the
+        # vendor exactly as uploaded.
         if data[:8] == b"\x89PNG\r\n\x1a\n":
             ct = "image/png"
         elif data[:4] == b"RIFF":
             ct = "image/webp"
         else:
             ct = "image/jpeg"
-
-        img = pyvips.Image.new_from_buffer(data, "")
-        long_edge = max(img.width, img.height)
-        if long_edge <= INPUT_MAX_LONG_EDGE_PX:
-            # Already small enough — no resize, no re-encode tax.
-            return data, ct
-
-        scale = INPUT_MAX_LONG_EDGE_PX / long_edge
-        img = img.resize(scale)
-
-        if ct == "image/png":
-            out = bytes(img.write_to_buffer(".png"))
-            return out, "image/png"
-        # JPEG / WebP / anything else → JPEG Q=92 (small, fast, vendor-friendly).
-        out = bytes(img.write_to_buffer(".jpg", Q=92))
-        return out, "image/jpeg"
+        return data, ct
 
     return await asyncio.to_thread(_download_and_downsize)
 
@@ -2341,6 +2339,13 @@ async def _run_enhance(
         except Exception:
             logger.exception("usage_event insert failed (enhance success path)")
 
+        # Standardise to 2800x2000 — ONCE, here, before the bytes are stored.
+        # Everything downstream (per-image adjustments, the disclaimer
+        # composite, export, the copies written to the user's project) then
+        # operates on an image that is already the final size and never
+        # resamples it again.
+        output_bytes = await asyncio.to_thread(upscale_to_standard, output_bytes)
+
         # Write output to GCS derivatives bucket
         output_gcs_uri = await _write_to_gcs(
             output_bytes,
@@ -2448,12 +2453,23 @@ def _describe_intended_edits(
     change the fork's shape or length — that exact silent-drift case is the
     reason this whole differential pass exists. Returns None when nothing
     non-cosmetic was requested (the prompt then uses its default whitelist).
+
+    This whitelist is NOT unbounded (2026-08-21). It previously ended with
+    "everything that instruction asks for ... do not flag it", which — combined
+    with a blanket "a repaint is never a defect" in the scan rubric — meant a
+    grey battery compartment coming back bright orange, and white non-marking
+    tyres coming back black, both scanned clean. A requested repaint cannot
+    authorise changing what colour the machine IS, so the two colour cases the
+    rubric calls defects are carved out of every line below that could be read
+    as permitting them.
     """
     edits: list[str] = []
     if toggles.new_paint_job:
         edits.append(
-            "The machine may have a fresh coat of paint — a cleaner or "
-            "slightly different paint finish is expected; do not flag it."
+            "The machine may have a fresh coat of paint — a cleaner, glossier "
+            "finish in the SAME colour it already was is expected; do not flag "
+            "it. A body panel that came back a DIFFERENT colour is still a "
+            "defect."
         )
     if toggles.paint_forks_red_yellow_tips and equipment_type != "scissor_lift":
         edits.append(
@@ -2473,7 +2489,12 @@ def _describe_intended_edits(
     if toggles.remove_background_signage:
         edits.append("Background signage may have been removed.")
     if toggles.shine_tires:
-        edits.append("Tire sidewalls may be glossed/darkened.")
+        edits.append(
+            "Tyre sidewalls may be glossed and darkened. This applies to tyres "
+            "that were ALREADY dark. If the original tyres are white, cream, or "
+            "light grey they are NON-MARKING tyres — a real spec — and turning "
+            "them black is still a defect, not this edit."
+        )
     if toggles.improve_lighting:
         edits.append("Lighting and exposure may be improved.")
     if toggles.remove_rental_branding:
@@ -2492,7 +2513,12 @@ def _describe_intended_edits(
             "The operator's own enhancement instruction for this image was: "
             f'"{custom_prompt.strip()[:1500]}". Everything that instruction '
             "asks for was deliberately requested — treat it as EXPECTED and "
-            "do not flag it."
+            "do not flag it. TWO EXCEPTIONS that this instruction cannot "
+            "authorise no matter how it is worded: a body panel coming back in "
+            "a DIFFERENT colour family than the original, and non-marking "
+            "(white / cream / light grey) tyres turned black. Those stay "
+            "defects — asking for a repaint is never asking to change what "
+            "colour the machine is."
         )
     return edits or None
 
@@ -2600,6 +2626,11 @@ async def _run_erase(
                 )
         except Exception:
             logger.exception("usage_event insert failed (erase success path)")
+
+        # Same standard as enhance. This path REPLACES the stored variant, so
+        # without it one erase would drop the image back to vendor resolution
+        # and break the "no code path produces another dimension" guarantee.
+        output_bytes = await asyncio.to_thread(upscale_to_standard, output_bytes)
 
         output_gcs_uri = await _write_to_gcs(
             output_bytes,
@@ -2735,6 +2766,9 @@ async def _run_tweak(
                 )
         except Exception:
             logger.exception("usage_event insert failed (tweak success path)")
+
+        # Same standard as enhance — see the note on the erase path.
+        output_bytes = await asyncio.to_thread(upscale_to_standard, output_bytes)
 
         output_gcs_uri = await _write_to_gcs(
             output_bytes,

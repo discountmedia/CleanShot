@@ -10,21 +10,26 @@
 //   • Lets us deterministically name the GCS object from the forklift
 //     details the user entered, instead of whatever-the-source-was.
 //
-// Vercel body size limit: 4.5 MB for serverless functions. The iterative
-// quality reduction below drops JPEG quality until the encoded file fits.
-
+// FILE SIZE is compressed; RESOLUTION is not capped (2026-08-21).
+//
+// The old `MAX_LONG_EDGE = 1024` downscale is gone. Enhanced output is now
+// standardised at 2800x2000, so handing the model a 1024px source meant
+// upscaling generated pixels ~2.7x on the way out — correctly-sized but soft.
+// Full-resolution sources give the model real detail to work with.
+//
+// Byte compression stays, for two reasons that are NOT the one originally
+// written here: uploads are faster, and the AI providers have their own
+// per-image byte limits. The original rationale — Vercel's 4.5 MB serverless
+// body limit — never actually applied to this path: uploads go straight to
+// GCS via a signed PUT (see uploadToGcs in lib/api.ts), so the image bytes
+// never traverse a Vercel function.
+//
+// The quality loop is now BEST-EFFORT rather than a hard gate. At full
+// resolution a large photo may not reach the target even at minimum quality,
+// and failing the upload over that is worse than uploading a bigger file to a
+// bucket that does not care.
 export const MAX_BYTES = 4.5 * 1024 * 1024; // 4.5 MB
 const TARGET_BYTES = 4.0 * 1024 * 1024;     // 4.0 MB target after compression
-// Long-edge cap for the image we hand to the model. 1024 was chosen as
-// the upload cap so every downstream AI provider (Gemini AI Studio image
-// preview, OpenAI gpt-image-2, BFL flux-2-max) sees a uniformly-sized
-// input and request latency stays predictable. OpenAI /v1/images/edits
-// with quality="high" on full-res smartphone photos (3-4 MP) was reliably
-// blowing past a 90s server-side timeout; capping at 1024 keeps the
-// model's preprocessing budget small. Bump back up if decals/text in
-// scan output start reading as illegible — but verify against all three
-// providers before changing.
-const MAX_LONG_EDGE = 1024;
 
 /**
  * Compress a File to under TARGET_BYTES using Canvas + iterative JPEG quality reduction.
@@ -36,14 +41,8 @@ export async function compressIfNeeded(file: File): Promise<File> {
 
   const bitmap = await createImageBitmap(file);
 
-  // Scale down if image is extremely large
-  let { width, height } = bitmap;
-  const longEdge = Math.max(width, height);
-  if (longEdge > MAX_LONG_EDGE) {
-    const scale = MAX_LONG_EDGE / longEdge;
-    width = Math.round(width * scale);
-    height = Math.round(height * scale);
-  }
+  // Native resolution — no downscale. Only the JPEG quality is reduced below.
+  const { width, height } = bitmap;
 
   const canvas = document.createElement("canvas");
   canvas.width = width;
@@ -88,21 +87,18 @@ export function formatBytes(bytes: number): string {
  *
  * Steps:
  *   • Decode to ImageBitmap (handles JPEG, PNG, WebP, GIF first-frame, etc.)
- *   • Scale down to MAX_LONG_EDGE if larger
+ *   • Keep the source's native resolution — NOT downscaled
  *   • Composite onto a white background (PNG/WebP transparency would otherwise
  *     render as black in JPEG)
- *   • Iterative quality reduction until under MAX_BYTES
+ *   • Iterative quality reduction toward TARGET_BYTES (best effort)
  */
 export async function convertToJpeg(file: File, targetFilename: string): Promise<File> {
   const bitmap = await createImageBitmap(file);
 
-  let { width, height } = bitmap;
-  const longEdge = Math.max(width, height);
-  if (longEdge > MAX_LONG_EDGE) {
-    const scale = MAX_LONG_EDGE / longEdge;
-    width  = Math.round(width  * scale);
-    height = Math.round(height * scale);
-  }
+  // Native resolution — the long-edge cap is gone. Enhancement standardises
+  // the OUTPUT at 2800x2000; the input should carry as much real detail into
+  // the model as the photo has.
+  const { width, height } = bitmap;
 
   const canvas = document.createElement("canvas");
   canvas.width  = width;
@@ -127,8 +123,11 @@ export async function convertToJpeg(file: File, targetFilename: string): Promise
     if (quality < 0.15) break;
   }
 
-  if (!blob || blob.size > MAX_BYTES) {
-    throw new Error("Could not compress image under 4.5 MB even at minimum quality");
+  // Best effort, not a gate. A big enough photo may not reach TARGET_BYTES
+  // even at minimum quality; that is fine — it PUTs straight to GCS. Only a
+  // genuine encode failure is an error.
+  if (!blob) {
+    throw new Error("Compression failed: canvas.toBlob returned null");
   }
 
   return new File([blob], targetFilename, {

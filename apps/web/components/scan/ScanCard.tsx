@@ -347,13 +347,15 @@ function ProviderDetail({ providerResults, expanded, onToggle }: ProviderDetailP
                   {/* Same identity colour the progress bar used, so the
                       per-provider verdict rows stay tied to the vendor that
                       produced them. */}
+                  {/* Stepped up one notch with the rest of the scan verdict
+                      text. Colour, weight and the pass/fail glyphs unchanged. */}
                   <span
-                    className="text-[10px] font-bold uppercase tracking-[0.16em]"
+                    className="text-xs font-bold uppercase tracking-[0.16em]"
                     style={{ color: SCAN_PROVIDER_COLOR[p] }}
                   >
                     {SCAN_PROVIDER_LABELS[p]}
                   </span>
-                  <span className={`text-[10px] font-semibold ${isPass ? "text-accent" : "text-attn"}`}>
+                  <span className={`text-xs font-semibold ${isPass ? "text-accent" : "text-attn"}`}>
                     {isPass ? "✓ pass" : "✗ fail"}
                   </span>
                 </div>

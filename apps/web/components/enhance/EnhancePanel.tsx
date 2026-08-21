@@ -79,7 +79,11 @@ import type { UserRestriction } from "../../lib/access-control";
 
 import { MetaCard } from "./MetaCard";
 import { ProviderRow } from "./ProviderRow";
-import { SavedPromptsBar } from "./SavedPromptsBar";
+import {
+  SavedPromptSelect,
+  SavedPromptsBar,
+  useSavedPrompts,
+} from "./SavedPromptsBar";
 import { ForkFramingControls } from "./ForkFramingControls";
 import {
   NEUTRAL_ADJUSTMENT,
@@ -822,6 +826,12 @@ export function EnhancePanel({
    * operator back to the prompt the app built before it existed.
    */
   const [forkConditionalsOn, setForkConditionalsOn] = useState(false);
+
+  // Saved-prompt state lives here because its two halves render in different
+  // rows: the insert dropdown sits beside "Insert recommended prompt", the
+  // save/manage controls sit below the textarea. One call, one list, so saving
+  // refreshes the dropdown.
+  const savedPrompts = useSavedPrompts();
 
   /**
    * THE gate. Every read of fork visibility goes through here, so switching
@@ -2318,7 +2328,18 @@ export function EnhancePanel({
                 <h3 className="text-lg font-semibold text-ink">
                   Your prompt <span className="text-attn">*</span>
                 </h3>
-                <div className="flex items-center gap-4">
+                {/* The two ways of filling the prompt box, side by side and on
+                    one baseline: pick a saved prompt, or drop in the
+                    recommended starter. `items-center` + matching vertical
+                    padding keeps them aligned; `flex-wrap` lets the dropdown
+                    fall under the button on a narrow screen instead of
+                    squeezing it. */}
+                <div className="flex flex-wrap items-center gap-4">
+                  <SavedPromptSelect
+                    state={savedPrompts}
+                    currentPrompt={customPrompt}
+                    onInsert={(body) => setCustomPrompt(body)}
+                  />
                   {/* Primary action. Behaviour is unchanged — only the weight:
                       filled lime, larger type, real padding, an icon. It was a
                       plain text link sitting at the same weight as the "Clear"
@@ -2384,12 +2405,14 @@ export function EnhancePanel({
                 className="w-full bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition leading-relaxed"
               />
 
-              {/* Save the current prompt to the operator's profile, or drop a
-                  previously saved one back into the box. Inserted text is a
-                  COPY — editing it here never writes back to the saved row. */}
+              {/* Save the current prompt to the operator's profile + manage
+                  what's already saved. The INSERT dropdown for these lives up
+                  beside "Insert recommended prompt"; both read the same state.
+                  Inserted text is a COPY — editing it here never writes back
+                  to the saved row. */}
               <SavedPromptsBar
+                state={savedPrompts}
                 currentPrompt={customPrompt}
-                onInsert={(body) => setCustomPrompt(body)}
               />
               <p className="text-sm text-ink-soft leading-relaxed">
                 Your prompt is the base. The built-in safety guardrails (keep the

@@ -802,7 +802,7 @@ function VariantScanStrip({
   if (scan.status === "failed") {
     return (
       <div className="px-2 py-1.5 border-t border-line bg-well">
-        <p className="text-[10px] uppercase tracking-[0.14em] font-bold text-attn">
+        <p className="text-sm uppercase tracking-[0.14em] font-bold text-attn">
           Scan failed
         </p>
         {scan.error && (
@@ -838,11 +838,14 @@ function VariantScanStrip({
   return (
     <details className="border-t border-line bg-well">
       <summary className="px-2 py-1.5 flex items-center justify-between gap-2 cursor-pointer list-none">
-        <span className={`text-[10px] uppercase tracking-[0.14em] font-bold ${tone}`}>
+        {/* Stepped up the type scale (was text-[10px] / text-[9px]) so the
+            verdict is readable from the grid without zooming. Colour, weight
+            and the pass/fail tone are unchanged. */}
+        <span className={`text-sm uppercase tracking-[0.14em] font-bold ${tone}`}>
           Scan: {consensus.verdict}
           {scan.status === "waiting" && " (partial)"}
         </span>
-        <span className="text-[9px] font-mono text-muted tabular-nums">
+        <span className="text-xs font-mono text-muted tabular-nums">
           {consensus.passes}/{consensus.total} · {Math.round(consensus.avgConfidence * 100)}%
         </span>
       </summary>
@@ -853,7 +856,7 @@ function VariantScanStrip({
           {scan.providerResults.map((r) => (
             <li
               key={r.provider}
-              className="text-[10px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded border bg-panel"
+              className="text-xs font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded border bg-panel"
               style={{ color: SCAN_PROVIDER_COLOR[r.provider], borderColor: SCAN_PROVIDER_COLOR[r.provider] }}
             >
               {r.provider} {r.verdict}

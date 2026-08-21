@@ -137,15 +137,22 @@ def _apply_disclaimer_watermark(img: "pyvips.Image") -> "pyvips.Image":
     return img
 
 
-# True 7:5. 1024×731 (the old fixed target) is 1.4007 — inside the 1.38–1.42
-# band the crop audit accepts, but there's no reason to bake in the rounding
-# error now that the output dimensions are derived rather than hardcoded.
+# True 7:5. 2800x2000 is exactly 1.4.
 _PRO_ASPECT = 7 / 5
 
-# Never emit something smaller than the old fixed target, so this change cannot
-# regress an export. Sources at or above 7:5 width already clear this easily; the
-# floor only bites on an unusually small input, which gets upscaled as before.
-_PRO_MIN_WIDTH = 1024
+# THE standard size for an enhanced image, applied ONCE at the end of
+# enhancement (2026-08-21). Everything downstream — per-image adjustments,
+# the disclaimer composite, export, the copies written to the user's project —
+# operates on an image that is already exactly this size and never resamples
+# it again.
+#
+# Sizing used to live in export_pro, which meant the stored enhanced asset was
+# whatever the vendor happened to return (~1024 from Gemini, 1536x1024 from
+# OpenAI) and only became 7:5 on the way out. Moving it upstream makes the
+# stored asset the finished article and makes export a pure passthrough, so
+# there is exactly one place that can produce a dimension.
+ENHANCED_WIDTH  = 2800
+ENHANCED_HEIGHT = 2000
 
 # Fixed high quality, no size target. PRO does its own resizing and compression
 # now, so shrinking to fit a byte budget here would just throw away detail that
@@ -154,24 +161,73 @@ _PRO_MIN_WIDTH = 1024
 _PRO_JPEG_QUALITY = 92
 
 
+def _cover_crop(img: "pyvips.Image", width: int, height: int) -> "pyvips.Image":
+    """
+    Scale to COVER the target box, then crop the overflow. Never pads, never
+    letterboxes, never stretches — a non-uniform scale would distort the
+    machine and make the listing photo inaccurate, which is the whole reason
+    this is crop-to-fill.
+
+    The crop is CENTRED. `smartcrop(interesting="attention")` was the previous
+    behaviour in export_custom and follows the salient region instead, which is
+    arguably kinder on an extreme aspect ratio — but centre is deterministic
+    and predictable, which is what an operator judging "what did the crop take?"
+    needs. Swap the final call to smartcrop to change that.
+
+    Extracted from export_custom rather than written a second time; both call
+    sites share it so the two can't drift.
+    """
+    scale = max(width / img.width, height / img.height)
+    img = img.resize(scale, kernel="lanczos3")
+
+    # Guard the rounding: resize can land a pixel short of the target on one
+    # axis, and crop rejects a box larger than its input.
+    left = max(0, (img.width  - width)  // 2)
+    top  = max(0, (img.height - height) // 2)
+    w = min(width,  img.width  - left)
+    h = min(height, img.height - top)
+    return img.crop(left, top, w, h)
+
+
+def upscale_to_standard(input_bytes: bytes) -> bytes:
+    """
+    Bring an enhanced image to exactly ENHANCED_WIDTH x ENHANCED_HEIGHT.
+
+    Called ONCE, at the end of enhancement, before the bytes are written to
+    GCS — so the stored asset is already the final size and every downstream
+    stage (adjustments, disclaimer, export) works on it directly.
+
+    Idempotent: an image already at the standard size is returned untouched
+    rather than re-encoded, so a re-run or a second pass costs nothing and
+    cannot accumulate JPEG generations.
+
+    Emits PNG to stay lossless through the adjustment/erase/tweak stages that
+    may follow; the single lossy encode happens at export.
+    """
+    img = pyvips.Image.new_from_buffer(input_bytes, "")
+    if img.width == ENHANCED_WIDTH and img.height == ENHANCED_HEIGHT:
+        return input_bytes
+    img = _cover_crop(img, ENHANCED_WIDTH, ENHANCED_HEIGHT)
+    return img.write_to_buffer(".png")
+
+
 def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = True) -> ExportResult:
     """
-    PRO preset: the LARGEST 7:5 crop the source supports, JPEG at fixed high
-    quality. Crop-not-letterbox: always fills the frame.
+    PRO preset: encode the enhanced image as-is, at ENHANCED_WIDTH x
+    ENHANCED_HEIGHT, JPEG at fixed high quality.
 
-    Resolution policy changed 2026-08-13. This used to force 1024×731 and then
-    iterate JPEG quality down until the file fit under 100 kb. PRO now handles
-    resizing and compression itself, so both of those steps were destroying
-    detail for no reason — a 2048px enhance output was being halved on the way
-    out and then re-compressed downstream. We now crop at native resolution and
-    hand PRO the biggest clean 7:5 frame we have.
+    THIS FUNCTION NO LONGER RESIZES OR CROPS (2026-08-21). Sizing moved
+    upstream: enhancement standardises every output to 2800x2000 via
+    upscale_to_standard() before it is stored, so by the time bytes reach here
+    they are already exactly the export size. Resampling again would only cost
+    detail and risk a second, slightly-different rounding.
 
-    NOTE on how high "higher resolution" actually goes: uploads are capped at
-    1024px on the long edge client-side (MAX_LONG_EDGE in lib/compress.ts), so
-    for a browser-uploaded source this yields ~1024×731 as before — the win only
-    materialises when the source is bigger than that. Raising or removing that
-    cap is a separate decision with real latency/cost consequences for the
-    model calls; see open item #6 in CLAUDE.md.
+    Every export path goes through this function or serves the stored asset
+    directly, so no path can emit another dimension.
+
+    A defensive cover-crop remains for the one case that can still arrive
+    off-size: an asset created before this change. It is a migration guard, not
+    the sizing policy.
 
     When `ai_disclaimer=True`, the AI_DISCLAIMER_WATERMARK is burned into the
     bottom-right corner BEFORE encoding, so it lands in the final JPEG bytes.
@@ -187,35 +243,14 @@ def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = True) -> ExportResul
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
-    # Step 1: the largest 7:5 rectangle that fits inside the source. Whichever
-    # axis is proportionally longer is the one we trim.
-    if img.width / img.height >= _PRO_ASPECT:
-        target_h = img.height
-        target_w = round(target_h * _PRO_ASPECT)
-    else:
-        target_w = img.width
-        target_h = round(target_w / _PRO_ASPECT)
+    # Migration guard only. Anything produced by enhancement since 2026-08-21
+    # is already exactly the standard size and falls straight through.
+    if img.width != ENHANCED_WIDTH or img.height != ENHANCED_HEIGHT:
+        img = _cover_crop(img, ENHANCED_WIDTH, ENHANCED_HEIGHT)
 
-    # Step 2: only ever scale UP, and only to the floor. A source big enough to
-    # clear _PRO_MIN_WIDTH is never downscaled — that is the whole point of the
-    # change.
-    if target_w < _PRO_MIN_WIDTH:
-        scale = _PRO_MIN_WIDTH / target_w
-        img = img.resize(scale, kernel="lanczos3")
-        target_w = _PRO_MIN_WIDTH
-        target_h = round(target_w / _PRO_ASPECT)
-        # Guard the rounding: after an upscale the derived height can land one
-        # pixel outside the image, and smartcrop rejects a box bigger than its
-        # input.
-        target_h = min(target_h, img.height)
-        target_w = min(target_w, img.width)
-
-    # Step 3: attention-weighted crop to the computed box.
-    img = img.smartcrop(target_w, target_h, interesting="attention")
-
-    # Step 3b: Optional disclaimer watermark — applied AFTER the crop so it
-    # lands at a fixed pixel offset from the final corner regardless of source
-    # aspect, and BEFORE the encode so it is part of the bytes, not an overlay.
+    # Optional disclaimer watermark — composited onto the FINAL-SIZE image so
+    # it lands at a fixed pixel offset from the corner, and before the encode
+    # so it is part of the bytes rather than an overlay.
     if ai_disclaimer:
         img = _apply_disclaimer_watermark(img)
 
@@ -412,12 +447,9 @@ def export_custom(
 
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
-    # Scale to cover target (never letterbox)
-    scale = max(width / img.width, height / img.height)
-    img = img.resize(scale, kernel="lanczos3")
-
-    # Crop-not-letterbox: centre crop to exact target
-    img = img.smartcrop(width, height, interesting="attention")
+    # Crop-not-letterbox, via the shared helper this logic was extracted into
+    # so export_custom and the enhancement standard can't drift apart.
+    img = _cover_crop(img, width, height)
 
     fmt_map = {
         "jpeg": (".jpg", {"Q": quality, "optimize_coding": True}),

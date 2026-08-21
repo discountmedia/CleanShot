@@ -3,6 +3,14 @@
 //
 // Save / insert / manage the operator's reusable enhance prompts.
 //
+// SPLIT ACROSS TWO ROWS (2026-08-21 layout pass). The insert dropdown sits up
+// beside "Insert recommended prompt" so the two read as a pair, and the save +
+// manage controls sit below the textarea, right-aligned. Because those are two
+// different rows in EnhancePanel's tree, the shared state moved OUT into
+// `useSavedPrompts()` — EnhancePanel calls it once and hands the same state to
+// both pieces. Two independent components would each fetch their own list, and
+// saving would not refresh the dropdown.
+//
 // Enhance is prompt-first, so a good prompt is real work — and before this it
 // was retyped from scratch every session. This bar sits directly under the
 // prompt box: SAVE PROMPT TO PROFILE on one side, a titled dropdown on the
@@ -30,32 +38,15 @@ import {
   type SavedPrompt,
 } from "../../lib/api";
 
-interface SavedPromptsBarProps {
-  /** Current contents of the prompt box. What Save writes. */
-  currentPrompt: string;
-  /** Insert a saved prompt's text into the box, replacing what's there. */
-  onInsert: (body: string) => void;
-}
-
-export function SavedPromptsBar({ currentPrompt, onInsert }: SavedPromptsBarProps) {
-  const titleFieldId = useId();
-  const selectId     = useId();
-
+/**
+ * The saved-prompt state, owned in ONE place and shared by both halves of the
+ * split UI. EnhancePanel calls this once.
+ */
+export function useSavedPrompts() {
   const [prompts, setPrompts] = useState<SavedPrompt[]>([]);
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
-
-  // Save flow: idle → naming (inline title field) → conflict (overwrite/rename)
-  const [saveState, setSaveState] = useState<"idle" | "naming" | "conflict">("idle");
-  const [titleDraft, setTitleDraft] = useState("");
-  const [isSaving,   setIsSaving]   = useState(false);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
-
-  const [manageOpen, setManageOpen] = useState(false);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
-
-  const hasPrompt = currentPrompt.trim().length > 0;
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -80,6 +71,110 @@ export function SavedPromptsBar({ currentPrompt, onInsert }: SavedPromptsBarProp
     return () => ac.abort();
   }, [refresh]);
 
+  return {
+    prompts, loading, error, setError,
+    savedNotice, setSavedNotice, refresh,
+  };
+}
+
+export type SavedPromptsState = ReturnType<typeof useSavedPrompts>;
+
+interface SavedPromptSelectProps {
+  state: SavedPromptsState;
+  /** Current contents of the prompt field — drives the overwrite confirm. */
+  currentPrompt: string;
+  /** Insert a saved prompt's text into the field, replacing what's there. */
+  onInsert: (body: string) => void;
+}
+
+/**
+ * The insert dropdown. Rendered beside "Insert recommended prompt" so the two
+ * ways of filling the prompt box sit together.
+ */
+export function SavedPromptSelect({
+  state, currentPrompt, onInsert,
+}: SavedPromptSelectProps) {
+  const selectId = useId();
+  const { prompts, loading, setSavedNotice } = state;
+  const hasPrompt = currentPrompt.trim().length > 0;
+
+  const handleInsert = (id: string) => {
+    const chosen = prompts.find((p) => p.id === id);
+    if (!chosen) return;
+    // Inserting replaces the box. If there's text in there that isn't already
+    // this prompt, the operator is about to lose it, so ask first.
+    if (hasPrompt && currentPrompt.trim() !== chosen.body.trim()) {
+      const ok = window.confirm(
+        `Replace the prompt currently in the box with "${chosen.title}"?\n\n` +
+        `Anything you've typed and not saved will be lost.`,
+      );
+      if (!ok) return;
+    }
+    // A copy of the text, not a live link — editing the box never writes back
+    // to the saved row.
+    onInsert(chosen.body);
+    setSavedNotice(`Inserted "${chosen.title}" — edits here won't change the saved copy`);
+  };
+
+  return (
+    <select
+      id={selectId}
+      aria-label="Insert a saved prompt"
+      value=""
+      disabled={loading || prompts.length === 0}
+      onChange={(e) => {
+        if (e.target.value) handleInsert(e.target.value);
+        // Reset to the placeholder so picking the same prompt twice in a row
+        // still fires onChange.
+        e.target.value = "";
+      }}
+      /* py-3 matches the recommended-prompt button's height so the pair sits on
+         one baseline. */
+      /* max-w-full + min-w-0: a select won't shrink below its widest option by
+         default, so a long saved-prompt title would push this row wider than
+         the phone viewport. */
+      className="max-w-full min-w-0 bg-panel border border-line rounded-lg px-3 py-3 text-base text-ink focus:outline-none focus:ring-2 focus:ring-cta disabled:opacity-60"
+    >
+      <option value="">
+        {loading
+          ? "Loading…"
+          : prompts.length === 0
+            ? "No saved prompts yet"
+            : "Insert a saved prompt…"}
+      </option>
+      {prompts.map((p) => (
+        <option key={p.id} value={p.id}>
+          {p.title}
+        </option>
+      ))}
+    </select>
+  );
+}
+
+interface SavedPromptsBarProps {
+  state: SavedPromptsState;
+  /** Current contents of the prompt field. What Save writes. */
+  currentPrompt: string;
+}
+
+export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) {
+  const titleFieldId = useId();
+
+  const {
+    prompts, error, setError, savedNotice, setSavedNotice, refresh,
+  } = state;
+
+  // Save flow: idle → naming (inline title field) → conflict (overwrite/rename)
+  const [saveState, setSaveState] = useState<"idle" | "naming" | "conflict">("idle");
+  const [titleDraft, setTitleDraft] = useState("");
+  const [isSaving,   setIsSaving]   = useState(false);
+
+  const [manageOpen, setManageOpen] = useState(false);
+  const [renamingId, setRenamingId] = useState<string | null>(null);
+  const [renameDraft, setRenameDraft] = useState("");
+
+  const hasPrompt = currentPrompt.trim().length > 0;
+
   // ─── Save ────────────────────────────────────────────────────────────────
 
   const commitSave = async (overwrite: boolean) => {
@@ -103,26 +198,6 @@ export function SavedPromptsBar({ currentPrompt, onInsert }: SavedPromptsBarProp
     } finally {
       setIsSaving(false);
     }
-  };
-
-  // ─── Insert ──────────────────────────────────────────────────────────────
-
-  const handleInsert = (id: string) => {
-    const chosen = prompts.find((p) => p.id === id);
-    if (!chosen) return;
-    // Inserting replaces the box. If there's text in there that isn't already
-    // this prompt, the operator is about to lose it, so ask first.
-    if (hasPrompt && currentPrompt.trim() !== chosen.body.trim()) {
-      const ok = window.confirm(
-        `Replace the prompt currently in the box with "${chosen.title}"?\n\n` +
-        `Anything you've typed and not saved will be lost.`,
-      );
-      if (!ok) return;
-    }
-    // A copy of the text, not a live link — editing the box never writes back
-    // to the saved row.
-    onInsert(chosen.body);
-    setSavedNotice(`Inserted "${chosen.title}" — edits here won't change the saved copy`);
   };
 
   // ─── Manage ──────────────────────────────────────────────────────────────
@@ -161,8 +236,26 @@ export function SavedPromptsBar({ currentPrompt, onInsert }: SavedPromptsBarProp
 
   return (
     <div className="mt-3 space-y-3">
-      <div className="flex flex-wrap items-center gap-3">
-        {/* ── Save ── */}
+      {/* Manage on the left, Save on the right. `justify-end` + `mr-auto` on
+          Manage keeps Save hard against the right edge without leaving a hole
+          where the insert dropdown used to sit — that moved up beside "Insert
+          recommended prompt". On a narrow screen `flex-wrap` drops Save onto
+          its own line rather than squeezing the pair. */}
+      <div className="flex flex-wrap items-center justify-end gap-3">
+        {prompts.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setManageOpen((v) => !v)}
+            className="mr-auto text-sm font-bold text-ink-soft hover:text-ink transition-colors"
+          >
+            {manageOpen ? "Done managing" : "Manage"}
+          </button>
+        )}
+
+        {/* ── Save ──
+            Lime (`accent`) is the app's existing green — the same token the
+            Download ZIP button uses. `text-header-bg` is mandatory on a lime
+            fill; white is ~1.5:1 (see the palette notes in globals.css). */}
         <button
           type="button"
           onClick={() => {
@@ -177,57 +270,12 @@ export function SavedPromptsBar({ currentPrompt, onInsert }: SavedPromptsBarProp
           }
           className={`text-sm uppercase tracking-[0.14em] font-bold px-4 py-2.5 rounded-lg border-2 transition-colors ${
             hasPrompt && saveState === "idle"
-              ? "border-cta bg-cta hover:bg-cta-dark text-white"
+              ? "border-accent bg-accent hover:bg-accent/85 text-header-bg"
               : "border-line bg-panel text-ink-faint cursor-not-allowed"
           }`}
         >
           Save prompt to profile
         </button>
-
-        {/* ── Insert ── */}
-        <div className="flex items-center gap-2">
-          <label
-            htmlFor={selectId}
-            className="text-sm uppercase tracking-[0.12em] font-bold text-ink-soft"
-          >
-            Saved
-          </label>
-          <select
-            id={selectId}
-            value=""
-            disabled={loading || prompts.length === 0}
-            onChange={(e) => {
-              if (e.target.value) handleInsert(e.target.value);
-              // Reset to the placeholder so picking the same prompt twice in a
-              // row still fires onChange.
-              e.target.value = "";
-            }}
-            className="bg-panel border border-line rounded-md px-3 py-2 text-base text-ink focus:outline-none focus:ring-2 focus:ring-cta disabled:opacity-60"
-          >
-            <option value="">
-              {loading
-                ? "Loading…"
-                : prompts.length === 0
-                  ? "No saved prompts yet"
-                  : "Insert a saved prompt…"}
-            </option>
-            {prompts.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.title}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        {prompts.length > 0 && (
-          <button
-            type="button"
-            onClick={() => setManageOpen((v) => !v)}
-            className="text-sm font-bold text-ink-soft hover:text-ink transition-colors"
-          >
-            {manageOpen ? "Done managing" : "Manage"}
-          </button>
-        )}
       </div>
 
       {/* ── Inline title field ── */}

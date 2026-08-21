@@ -582,15 +582,12 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       {/* ── PRO preview grid ── */}
       {previewItems.length > 0 && (
         <section className="space-y-3">
+          {/* Download ZIP moved to the LEFT of this row and the heading to the
+              right — a straight swap of the two children, so `justify-between`
+              still fills the row and nothing is left with a hole in it. On a
+              narrow screen `flex-wrap` stacks them, ZIP first, which is the
+              order that matters. Colour and styling are unchanged. */}
           <header className="flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <h3 className="text-sm font-semibold text-ink">
-                Resized previews ({previewItems.length})
-              </h3>
-              <p className="text-[11px] text-ink-faint mt-0.5">
-                Every tile renders at its exact pixel dimensions — if a tile&apos;s aspect doesn&apos;t match the 7:5 frame, the export is wrong.
-              </p>
-            </div>
             {zipUrl && (
               <a
                 href={zipUrl}
@@ -605,6 +602,17 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                 <span className="text-[10px] font-mono opacity-80">{formatBytes(zipSizeBytes)}</span>
               </a>
             )}
+            {/* `ml-auto` pins the heading right even before the ZIP link
+                exists (it only renders once the export returns), so the header
+                doesn't jump sideways when the download appears. */}
+            <div className="ml-auto text-right">
+              <h3 className="text-sm font-semibold text-ink">
+                Resized previews ({previewItems.length})
+              </h3>
+              <p className="text-[11px] text-ink-faint mt-0.5">
+                Every tile renders at its exact pixel dimensions — if a tile&apos;s aspect doesn&apos;t match the 7:5 frame, the export is wrong.
+              </p>
+            </div>
           </header>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
