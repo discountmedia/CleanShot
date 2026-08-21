@@ -61,7 +61,7 @@ WHAT THE NEW PAINT COVERS:
 - All surface paint chips, scuffs, scratches, and faded areas
 - Light surface rust and oxidation
 - Dirt, grime, dust, and surface stains (cleaned before painting)
-- Dull, weathered original paint — now restored to saturated original factory colors
+- Dull, weathered original paint — now restored to saturated versions of the colors it already is
 
 WHAT THE NEW PAINT DOES NOT COVER (these must remain clearly visible):
 - Dents, panel deformations, and bent hardware
@@ -71,7 +71,7 @@ WHAT THE NEW PAINT DOES NOT COVER (these must remain clearly visible):
 - Mismatched or replaced aftermarket panels (keep them visually distinct)
 
 PAINT JOB QUALITY:
-Apply a realistic shop spray gun respray in the exact original factory color scheme. Even coverage on most surfaces with slight orange-peel texture visible on close inspection, minor overspray in tight corners, and subtle edge buildup. It should look like a competent but budget-conscious shop job, not premium bodywork.
+Apply a realistic shop spray gun respray in the exact colors the unit already wears. Even coverage on most surfaces with slight orange-peel texture visible on close inspection, minor overspray in tight corners, and subtle edge buildup. It should look like a competent but budget-conscious shop job, not premium bodywork.
 
 Preserve and mask off all OEM make, model, capacity, and safety decals in their exact original positions with realistic existing wear.
 
@@ -134,7 +134,7 @@ You are an expert commercial photo retoucher specializing in industrial heavy eq
 
 Color & Paint Application (The Cosmetic Refresh):
 
-Transform all faded, dull painted surfaces into highly saturated, freshly sprayed versions of their original factory colors.
+Transform all faded, dull painted surfaces into highly saturated, freshly sprayed versions of the colors they already are.
 
 Cover all superficial wear: completely mask surface scratches, light oxidation, paint chips, and general scuffs with the fresh paint layer.
 
@@ -176,7 +176,7 @@ Edit the source image of a used {equipment_type}. Make ONE change only: apply a 
 
 REPAINT — the fresh coat covers these:
 - Repaint every painted body panel in the EXACT color it already is. Keep the existing panel-to-color mapping. Do not recolor, unify, or swap any colors.
-- The fresh paint hides surface chips, scuffs, scratches, faded/dull patches, light surface rust and oxidation, plus dirt, grime, and stains (cleaned before painting). Faded paint returns to its saturated original factory shade.
+- The fresh paint hides surface chips, scuffs, scratches, faded/dull patches, light surface rust and oxidation, plus dirt, grime, and stains (cleaned before painting). Faded paint returns to a saturated version of its own shade.
 - It must read as a real shop spray-gun job, not premium bodywork: even coverage with faint orange-peel texture up close and minor overspray in tight corners.
 
 KEEP CLEARLY VISIBLE UNDER THE NEW PAINT — do NOT repair these:
@@ -206,7 +206,7 @@ WHAT THE PAINT COVERS:
 - Surface chips, scuffs, scratches, faded paint
 - Light surface rust and oxidation
 - Dirt, grime, and stains
-- Dull colors restored to saturated original factory colors
+- Dull colors restored to saturated versions of the colors already there
 
 WHAT THE PAINT DOES NOT COVER (must remain visible):
 - Dents, panel deformations, bent hardware
@@ -215,7 +215,7 @@ WHAT THE PAINT DOES NOT COVER (must remain visible):
 - Severe rust-through holes and large pitting
 - Mismatched aftermarket panels (keep them distinct)
 
-PAINT STYLE: Realistic shop spray gun application in exact original factory color scheme. Even coverage with slight orange-peel texture, minor overspray in corners. Looks competent but budget-level.
+PAINT STYLE: Realistic shop spray gun application in the exact colors the unit already wears. Even coverage with slight orange-peel texture, minor overspray in corners. Looks competent but budget-level.
 
 Preserve all OEM decals in exact original positions with realistic wear.
 
@@ -253,7 +253,7 @@ KONTEXT_GEMINI = """\
 Photorealistic 4K image-to-image edit of a heavily used {equipment_type} receiving a cheap, commercial shop-grade respray. The goal is a clean, listing-ready industrial aesthetic, not a factory restoration.
 
 PAINT & SURFACES:
-Apply highly saturated, fresh spray paint matching the exact original factory colors. The fresh paint completely covers all superficial surface scratches, scuffs, light surface rust, chips, and dirt. The paint job looks inexpensive: render a slight orange-peel texture and minor overspray in tight corners. The lighting is professional, sharp, and modern. Mask off all OEM decals, preserving their exact placement, spelling, and pre-existing wear.
+Apply highly saturated, fresh spray paint matching the exact colors the unit already wears. The fresh paint completely covers all superficial surface scratches, scuffs, light surface rust, chips, and dirt. The paint job looks inexpensive: render a slight orange-peel texture and minor overspray in tight corners. The lighting is professional, sharp, and modern. Mask off all OEM decals, preserving their exact placement, spelling, and pre-existing wear.
 
 STRUCTURAL DAMAGE (MUST PRESERVE):
 Visually retain all physical damage. Do not heal or smooth the metal. Deep metal gouges, bent hardware, panel deformations, cracked components, and severe rust-through holes must remain completely visible under the new paint. Preserve mismatched aftermarket panels exactly as they are.
@@ -271,7 +271,7 @@ Lock the exact camera angle, perspective, and background environment from the so
 KONTEXT_CLAUDE = """\
 Give the used {equipment_type} a cheap-but-clean shop-grade respray, keeping everything else identical.
 
-Repaint each painted body panel in the same color it already is, preserving the exact panel-to-color layout. The fresh coat covers surface chips, scuffs, scratches, faded patches, light surface rust, oxidation, dirt, and grime, and brings faded paint back to its saturated original factory color. Render it as a budget spray-gun job: even coverage with faint orange-peel texture and slight overspray in tight corners, not premium bodywork.
+Repaint each painted body panel in the same color it already is, preserving the exact panel-to-color layout. The fresh coat covers surface chips, scuffs, scratches, faded patches, light surface rust, oxidation, dirt, and grime, and brings faded paint back to a saturated version of that same color. Render it as a budget spray-gun job: even coverage with faint orange-peel texture and slight overspray in tight corners, not premium bodywork.
 
 Paint over physical damage without repairing it — keep dents, bent hardware, panel deformation, deep metal gouges, cracked or broken parts, missing parts, severe rust-through holes, and large rust pitting fully visible under the new paint. Keep mismatched, replaced, or aftermarket panels distinct.
 
@@ -292,11 +292,11 @@ The result is a clearly used machine that has just been freshly but cheaply resp
 IDEOGRAM_GROK = """\
 Photorealistic depiction of a heavily used {equipment_type} that has just received a quick, inexpensive shop-grade respray. This is a real commercial shop repaint — fast, cheap, and done to make the unit listing-ready. Cheap but clean appearance. Not a full restoration, not factory fresh.
 
-The fresh paint covers all surface chips, scuffs, scratches, faded areas, light surface rust, dirt, grime, and dull weathered paint, restoring it to saturated original factory colors.
+The fresh paint covers all surface chips, scuffs, scratches, faded areas, light surface rust, dirt, grime, and dull weathered paint, restoring it to saturated versions of the colors it already is.
 
 The fresh paint does NOT cover or hide: dents, panel deformations, bent hardware, deep metal gouges, missing or broken parts, cracked components, severe rust-through holes, large rust pitting, or mismatched aftermarket panels — these must remain clearly visible and unchanged.
 
-Paint application: realistic shop spray gun respray using the exact original factory color scheme on all body panels. Even coverage with slight orange-peel texture, minor overspray in tight corners. Competent but budget-level finish.
+Paint application: realistic shop spray gun respray using the exact colors the unit already wears on all body panels. Even coverage with slight orange-peel texture, minor overspray in tight corners. Competent but budget-level finish.
 
 All OEM make, model, capacity, and safety decals are masked off and preserved exactly as in the source, with realistic wear.
 
@@ -331,7 +331,7 @@ Prompt Style:
 A sharp, 4K high-resolution photorealistic commercial product listing photograph.
 
 Core Subject & Paint State:
-An authentic, heavily used {equipment_type} that has just received a quick, inexpensive commercial shop-grade spray paint respray. The paint is highly saturated, in the {equipment_type}'s precise original factory color scheme. The overall appearance is "cheap but clean," looking listing-ready. The new paint covers all superficial scratches, scuffs, paint chips, and general surface oxidation. Upon close inspection, the paint surface exhibits a realistic, subtle orange-peel texture and minor, accidental overspray mist in tight crevices and corners.
+An authentic, heavily used {equipment_type} that has just received a quick, inexpensive commercial shop-grade spray paint respray. The paint is highly saturated, in the {equipment_type}'s precise colors the unit already wears. The overall appearance is "cheap but clean," looking listing-ready. The new paint covers all superficial scratches, scuffs, paint chips, and general surface oxidation. Upon close inspection, the paint surface exhibits a realistic, subtle orange-peel texture and minor, accidental overspray mist in tight crevices and corners.
 
 Preserved Use & Damage Details (Crucial):
 The fresh paint layer visibly covers and follows the exact contours of pre-existing, non-restored physical damage. The painted metal panels clearly display all severe visual imperfections exactly as they are in the source image, including: specific dents, panel deformations, bent metal hardware, cracked components, and deep gouges that bite through the metal. Large, eaten-away rust-through holes and deep rust pitting craters remain physically distinct and visible, simply covered by the new paint layer.
@@ -352,7 +352,7 @@ Modern, sharp, brilliant commercial studio lighting that highlights both the fre
 """
 
 IDEOGRAM_CLAUDE = """\
-Photorealistic product-listing photo of a used {equipment_type} that has just received a cheap-but-clean shop-grade respray. Each painted body panel wears a fresh coat in its own original factory color, keeping the same panel-to-color layout, colors saturated and revived. It is a budget spray-gun job: even coverage with a faint orange-peel texture up close and slight overspray in tight corners. The fresh paint has hidden the old surface chips, scuffs, scratches, faded patches, light surface rust, dirt, and grime.
+Photorealistic product-listing photo of a used {equipment_type} that has just received a cheap-but-clean shop-grade respray. Each painted body panel wears a fresh coat in its own existing color, keeping the same panel-to-color layout, colors saturated and revived. It is a budget spray-gun job: even coverage with a faint orange-peel texture up close and slight overspray in tight corners. The fresh paint has hidden the old surface chips, scuffs, scratches, faded patches, light surface rust, dirt, and grime.
 
 Beneath the paint, real wear still shows through: dents and bent hardware painted over but still deformed, deep gouges through the metal, cracked or missing parts, severe rust-through holes, and large rust pitting craters. Mismatched aftermarket or replaced panels stay visibly distinct. All OEM make, model, and capacity decals stay crisp in their exact original positions with light existing wear. {anatomy}
 
@@ -369,11 +369,11 @@ Same camera angle, perspective, framing, lighting, background, and mechanical la
 REVE_GROK = """\
 Photorealistic image of a heavily used {equipment_type} after a quick, inexpensive shop-grade respray. Cheap-but-clean commercial repaint made to look listing-ready. Not a restoration, not factory fresh.
 
-Fresh paint covers: all surface chips, scuffs, scratches, faded areas, light surface rust, dirt, grime, and dull weathered paint. Restores colors to saturated original factory shades.
+Fresh paint covers: all surface chips, scuffs, scratches, faded areas, light surface rust, dirt, grime, and dull weathered paint. Restores colors to saturated versions of the shades already there.
 
 Fresh paint does NOT cover or hide: dents, panel deformations, bent hardware, deep metal gouges, missing or broken parts, cracked components, severe rust-through holes, large rust pitting, or mismatched aftermarket panels. These must remain clearly visible and unchanged.
 
-Paint style: Realistic shop spray gun respray in exact original factory color scheme. Even coverage with slight orange-peel texture, minor overspray in tight corners. Competent but budget-level finish.
+Paint style: Realistic shop spray gun respray in the exact colors the unit already wears. Even coverage with slight orange-peel texture, minor overspray in tight corners. Competent but budget-level finish.
 
 All OEM make, model, capacity, and safety decals are masked off and preserved in their exact original positions with realistic wear.
 
@@ -411,7 +411,7 @@ Main Subject & Scenario:
 A heavily used, functional industrial {equipment_type} after a quick, inexpensive commercial shop-grade spray paint respray. The objective is "cheap but clean" for a resale listing, not a factory restoration.
 
 Paint Application & Texture (The Update):
-The {equipment_type}'s main body panels are covered in a newly applied, highly saturated coat of paint matching the original factory color scheme. The paint is visually thick and effective at hiding all pre-existing superficial scratches, paint chips, scuffs, and surface oxidation. The overall texture is typical of a quick shop job: render a realistic subtle orange-peel texture upon close inspection, with minor, natural overspray mist and slight edge buildup in tight corners and crevices.
+The {equipment_type}'s main body panels are covered in a newly applied, highly saturated coat of paint matching the colors they already are. The paint is visually thick and effective at hiding all pre-existing superficial scratches, paint chips, scuffs, and surface oxidation. The overall texture is typical of a quick shop job: render a realistic subtle orange-peel texture upon close inspection, with minor, natural overspray mist and slight edge buildup in tight corners and crevices.
 
 Preserved Wear & Mechanical Constraints (The Integrity):
 Crucially, the fresh paint layer covers and follows the exact contours of all physical damage without healing it. The following must remain clearly visible and unrepaired under the new paint: deep gouges that bite through the metal, significant dents, panel deformations, bent metal hardware, and severe rust-through holes or deep pitting craters. Keep any mismatched aftermarket panels visually distinct. Perfectly preserve all original OEM decals (Model, Make, Capacity) in their exact placement and spelling, showing only realistic wear and minor fading, contrasting sharply with the new paint.
@@ -426,7 +426,7 @@ Maintain the exact camera angle, perspective, framing, and environmental backgro
 """
 
 REVE_CLAUDE = """\
-Repaint each painted body panel in the exact color it already is, keeping the same panel-to-color layout, with no recoloring. The fresh coat covers surface chips, scuffs, scratches, faded patches, light surface rust, oxidation, dirt, and grime, and brings faded paint back to its saturated original factory color. Make it a budget spray-gun job: even coverage with a faint orange-peel texture up close and minor overspray in tight corners, not premium bodywork.
+Repaint each painted body panel in the exact color it already is, keeping the same panel-to-color layout, with no recoloring. The fresh coat covers surface chips, scuffs, scratches, faded patches, light surface rust, oxidation, dirt, and grime, and brings faded paint back to a saturated version of that same color. Make it a budget spray-gun job: even coverage with a faint orange-peel texture up close and minor overspray in tight corners, not premium bodywork.
 
 Paint over the damage without fixing it. Keep these fully visible under the new paint: dents, bent hardware, panel deformation, deep metal gouges, cracked or broken parts, missing parts, severe rust-through holes, and large rust pitting. Keep mismatched, replaced, or aftermarket panels distinct.
 
@@ -453,7 +453,7 @@ WHAT THE NEW PAINT COVERS:
 - All surface chips, scuffs, scratches, and faded areas
 - Light surface rust and oxidation
 - Dirt, grime, dust, and surface stains
-- Dull, weathered paint — restore to saturated original factory colors
+- Dull, weathered paint — restore to saturated versions of the colors it already is
 
 WHAT THE NEW PAINT MUST NOT COVER (keep these clearly visible):
 - Dents, panel deformations, and bent hardware
@@ -463,7 +463,7 @@ WHAT THE NEW PAINT MUST NOT COVER (keep these clearly visible):
 - Mismatched or aftermarket panels (keep them visually distinct)
 
 PAINT APPLICATION:
-Apply a realistic shop spray gun respray in the exact original factory color scheme. Use even coverage with slight orange-peel texture on close inspection, minor overspray in tight corners, and subtle edge buildup. It should look like competent budget-level body shop work.
+Apply a realistic shop spray gun respray in the exact colors the unit already wears. Use even coverage with slight orange-peel texture on close inspection, minor overspray in tight corners, and subtle edge buildup. It should look like competent budget-level body shop work.
 
 Mask off and preserve all OEM make, model, capacity, and safety decals in their exact original positions with realistic wear.
 
@@ -527,7 +527,7 @@ Execute a high-fidelity, photorealistic image-to-image style transfer on the pro
 
 [COLOR & PAINT APPLICATION]
 
-Saturate all dull and faded painted surfaces to match their original factory colors.
+Saturate all dull and faded painted surfaces to match the colors they already are.
 
 Completely mask superficial wear (surface scratches, light oxidation, paint chips) under the new paint layer.
 

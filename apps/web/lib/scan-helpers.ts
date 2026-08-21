@@ -275,7 +275,7 @@ function buildSpine(
   );
 
   sections.push(
-    "WHAT THE FRESH PAINT COVERS (these are gone in the output):\n• Surface paint chips, scuffs, scratches, and faded patches — covered by the new paint.\n• Light surface rust and oxidation — covered.\n• Dirt, grime, dust, and surface staining — cleaned off before the paint pass.\n• Dull, worn-out colour — restored to the saturated original factory colour.",
+    "WHAT THE FRESH PAINT COVERS (these are gone in the output):\n• Surface paint chips, scuffs, scratches, and faded patches — covered by the new paint.\n• Light surface rust and oxidation — covered.\n• Dirt, grime, dust, and surface staining — cleaned off before the paint pass.\n• Dull, worn-out colour — restored to a saturated version of that same colour.",
   );
 
   sections.push(
@@ -283,7 +283,7 @@ function buildSpine(
   );
 
   sections.push(
-    `PAINT JOB CHARACTER: a quick coat from a shop spray gun in the precise original factory colour scheme. It looks CHEAP-but-CLEAN — even coverage in most places, slight orange-peel texture on close inspection, maybe minor overspray edges in tight corners. Apply this respray to the ${parts}. Match the original panel-to-colour mapping exactly; do not change which panel is which colour.`,
+    `PAINT JOB CHARACTER: a quick coat from a shop spray gun in the SAME colours the unit already wears. It looks CHEAP-but-CLEAN — even coverage in most places, slight orange-peel texture on close inspection, maybe minor overspray edges in tight corners. Apply this respray to the ${parts}. Match the original panel-to-colour mapping exactly; do not change which panel is which colour.`,
   );
 
   sections.push(

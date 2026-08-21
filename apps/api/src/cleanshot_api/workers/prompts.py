@@ -85,9 +85,9 @@ original positions.
 
 STANDARD CLEANUP TREATMENT
 Apply a cheap shop-quality respray of the chassis, mast, and \
-counterweight in the unit's apparent original factory color (Toyota \
-gray, Hyster yellow, CAT yellow, Crown beige, Komatsu yellow-orange, \
-etc.). The finish is matte-to-satin, even coverage, no obvious \
+counterweight in the SAME colour each panel already is, read from \
+the source photo. Do not infer a brand's factory colour and do not \
+recolour any panel to match it. The finish is matte-to-satin, even coverage, no obvious \
 overspray. Surface dust, light scuffing, and minor scratches go away; \
 significant dents, gouges, bent panels, and missing chunks STAY. The \
 forks themselves are painted bright safety red on the heel and shank \

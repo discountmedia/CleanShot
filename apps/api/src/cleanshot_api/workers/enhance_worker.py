@@ -506,8 +506,8 @@ def _build_enhance_prompt(
             "- All surface paint chips, scuffs, scratches, and faded areas\n"
             "- Light surface rust and oxidation\n"
             "- Dirt, grime, dust, and surface stains (cleaned before painting)\n"
-            "- Dull, weathered original paint — now restored to saturated "
-            "original factory colors"
+            "- Dull, weathered original paint — now restored to a saturated "
+            "version of the colour it already is"
         )
 
         sections.append(
@@ -794,15 +794,15 @@ def _build_kontext_prompt(
         "- Surface chips, scuffs, scratches, faded paint\n"
         "- Light surface rust and oxidation\n"
         "- Dirt, grime, and stains\n"
-        "- Dull colors restored to saturated original factory colors",
+        "- Dull colors restored to a saturated version of the colour they already are",
         "WHAT THE PAINT DOES NOT COVER (must remain visible):\n"
         "- Dents, panel deformations, bent hardware\n"
         "- Deep metal gouges\n"
         "- Missing/broken parts, cracked components\n"
         "- Severe rust-through holes and large pitting\n"
         "- Mismatched aftermarket panels (keep them distinct)",
-        "PAINT STYLE: Realistic shop spray gun application in exact "
-        "original factory color scheme. Even coverage with slight "
+        "PAINT STYLE: Realistic shop spray gun application in the SAME "
+        "colours the unit already wears. Even coverage with slight "
         "orange-peel texture, minor overspray in corners. Looks competent "
         "but budget-level.",
         "Preserve all OEM decals in exact original positions with realistic "
