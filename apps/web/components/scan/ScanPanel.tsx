@@ -97,10 +97,22 @@ interface PipelineAsset {
 
 export interface ScanPanelProps {
   sessionId:      string;
-  enhancedAssets: PipelineAsset[];
   /**
-   * Called by "Reset scan" — wipes the workspace's enhancedAssets pipeline
-   * so the next "Scan all" doesn't include images the user already dismissed.
+   * Images handed over from another tab. EMPTY since 2026-08-21: the Scan tab
+   * is standalone and takes its own uploads, and the Enhance tab renders its
+   * scan results inline instead of forwarding anything here. The prop stays so
+   * the handoff path is a one-line restore rather than a rewrite of the
+   * differential-scan plumbing below.
+   *
+   * Consequence worth knowing: without a handoff there is no `originalAssetId`,
+   * so a standalone scan is the ISOLATED scan, not the differential
+   * (before/after) one. The differential scan still runs — on the Enhance tab,
+   * where the pre-enhance original is known.
+   */
+  enhancedAssets?: PipelineAsset[];
+  /**
+   * Called by "Reset scan" — remounts this panel with empty local state so the
+   * next "Scan all" doesn't include images the user already dismissed.
    */
   onClearPipeline: () => void;
   /**
@@ -124,7 +136,7 @@ export interface ScanPanelProps {
 
 export function ScanPanel({
   sessionId,
-  enhancedAssets,
+  enhancedAssets = [],
   onClearPipeline,
   equipmentType,
   meta,

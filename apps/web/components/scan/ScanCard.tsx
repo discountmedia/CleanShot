@@ -10,6 +10,7 @@
 import { useMemo } from "react";
 
 import {
+  SCAN_PROVIDER_COLOR,
   computeConsensus,
   unifyAnomalies,
   type ConsensusSummary,
@@ -40,12 +41,6 @@ const SCAN_PROVIDER_LABELS: Record<ScanProvider, string> = {
   gemini:    "Gemini",
   openai:    "OpenAI",
   anthropic: "Anthropic",
-};
-
-const SCAN_PROVIDER_TEXT: Record<ScanProvider, string> = {
-  gemini:    "text-ink-soft",
-  openai:    "text-accent",
-  anthropic: "text-grey",
 };
 
 export interface ScanCardProps {
@@ -349,7 +344,13 @@ function ProviderDetail({ providerResults, expanded, onToggle }: ProviderDetailP
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className={`text-[10px] font-bold uppercase tracking-[0.16em] ${SCAN_PROVIDER_TEXT[p]}`}>
+                  {/* Same identity colour the progress bar used, so the
+                      per-provider verdict rows stay tied to the vendor that
+                      produced them. */}
+                  <span
+                    className="text-[10px] font-bold uppercase tracking-[0.16em]"
+                    style={{ color: SCAN_PROVIDER_COLOR[p] }}
+                  >
                     {SCAN_PROVIDER_LABELS[p]}
                   </span>
                   <span className={`text-[10px] font-semibold ${isPass ? "text-accent" : "text-attn"}`}>

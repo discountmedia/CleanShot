@@ -29,6 +29,41 @@ export const EXPECTED_SCAN_DURATIONS_S: Record<ScanProvider, number> = {
 
 // ─── Consensus ───────────────────────────────────────────────────────────────
 
+/**
+ * Per-provider identity colours for scan progress bars and verdict rows.
+ *
+ * DELIBERATE PALETTE EXCEPTION — do not "fix" these into tokens.
+ *
+ * The house palette is three accents (lime = good, purple = action/attention,
+ * red = destructive only) and it cannot encode provider identity: a previous
+ * restyle collapsed all three scan bars onto `bg-panel-hi` while running and
+ * `bg-accent` when done, so the strip carried NO per-provider colour at all
+ * and you could not tell which vendor was still working. The operator asked
+ * for these back as saturated, distinct hues (2026-08-21).
+ *
+ * These are literal hexes for the same reason the Tweak button's `#0A84FF` is
+ * — the palette has no slot for them, and routing them through `@theme` would
+ * imply they carry house semantics. They do not. They mean "Gemini",
+ * "OpenAI", "Anthropic" and nothing else.
+ *
+ * Two of the three are blue-dominant, which the palette notes otherwise
+ * restrict. That is accepted here: these are identity colours, not UI state.
+ *
+ * Measured contrast (all pass AA as text, so they are safe on labels too):
+ *   #4A9EFF  bg 5.64  panel 5.07  well 6.32
+ *   #22D3EE  bg 8.59  panel 7.73  well 9.63
+ *   #FF8A3D  bg 6.62  panel 5.96  well 7.42
+ *
+ * If a component library default would flatten these to a single neutral,
+ * override it — an inline `style` beats a utility class, which is exactly why
+ * these are consumed as style values rather than Tailwind classes.
+ */
+export const SCAN_PROVIDER_COLOR: Record<ScanProvider, string> = {
+  gemini:    "#4A9EFF",  // blue
+  openai:    "#22D3EE",  // cyan
+  anthropic: "#FF8A3D",  // orange
+};
+
 export interface ConsensusSummary {
   verdict:       "pass" | "fail" | "mixed";
   /** 0–1 average across whichever providers have returned a verdict. */

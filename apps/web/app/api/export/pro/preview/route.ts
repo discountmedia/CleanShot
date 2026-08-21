@@ -12,7 +12,9 @@
 // (lib/api.exportProPreviewStream) reads the NDJSON line-by-line and
 // translates snake_case → camelCase for each event.
 //
-// FastAPI 403s this route until the session's project has been saved.
+// FastAPI 403s this route until the session's project has been saved — the
+// caller (ExportControls) saves the project as the first step of the same
+// click, so the operator never sees a separate Save action.
 //
 // maxDuration is bumped to 300 (Pro tier max). A 50-image batch with
 // captioning + resize can take 90-180s; the prior 60s ceiling was the
@@ -20,7 +22,7 @@
 
 import { type NextRequest, NextResponse } from "next/server";
 
-import { forwardError, getFastApiEnv, jsonHeaders } from "@/lib/bff";
+import { authedHeaders, forwardError, getFastApiEnv } from "@/lib/bff";
 
 export const maxDuration = 300;
 export const dynamic = "force-dynamic";
@@ -30,6 +32,8 @@ interface ClientRequest {
   assetIds: string[];
   /** Optional parallel list — entry [i] is the AI provider for assetIds[i]. */
   providers?: (string | null)[];
+  /** Pre-enhance originals to save alongside the exported files. */
+  originalAssetIds?: string[];
   /** Burn the AI-disclaimer watermark into the bottom-right of every JPEG. */
   aiDisclaimer?: boolean;
 }
@@ -42,12 +46,21 @@ export async function POST(request: NextRequest) {
 
   const res = await fetch(`${env.base}/api/v1/export/pro/preview`, {
     method: "POST",
-    headers: jsonHeaders(env.key),
+    // X-User-Email is now load-bearing, not just an auth probe: the export
+    // files its output under this identity in the Photo Library. Same header
+    // the approvals route uses — no new identity mechanism.
+    headers: {
+      ...(await authedHeaders(env.key)),
+      "Content-Type": "application/json",
+    },
     body: JSON.stringify({
-      session_id:    body.sessionId,
-      asset_ids:     body.assetIds,
-      providers:     body.providers,
-      ai_disclaimer: body.aiDisclaimer ?? false,
+      session_id:         body.sessionId,
+      asset_ids:          body.assetIds,
+      providers:          body.providers,
+      original_asset_ids: body.originalAssetIds ?? [],
+      // `?? true` matches the checkbox default. An omitted flag must not mean
+      // "no watermark" — the operator opts out explicitly or not at all.
+      ai_disclaimer:      body.aiDisclaimer ?? true,
     }),
     signal: request.signal,
     cache: "no-store",

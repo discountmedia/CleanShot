@@ -182,6 +182,18 @@ export async function enqueueEnhance(params: {
   equipmentType?: "forklift" | "rough_terrain" | "scissor_lift" | "telehandler" | "reach_truck" | "turret_truck" | "articulated_forklift" | "order_picker" | "pallet_jack" | "walkie_stacker";
   /** When provided + non-empty, the worker uses this prompt verbatim and ignores toggles. */
   customPrompt?: string;
+  /**
+   * Which parts of the fork are in frame in THIS source photo. Per-image, not
+   * per-batch — whether the tips got cropped is a property of one camera
+   * angle. Omit for fully-visible, which is the pre-existing behaviour.
+   */
+  forkVisibility?: { verticalVisible: boolean; tipsVisible: boolean };
+  /**
+   * True when `customPrompt` was rebuilt from fragments and already carries the
+   * fork framing. Stops the worker appending its own note on top of wording
+   * that's already there.
+   */
+  forkFramingInPrompt?: boolean;
   idempotencyKey: string;
 }): Promise<{ jobId: string }> {
   return post("/api/enhance", params);
@@ -248,6 +260,84 @@ export async function enqueueScanBatch(params: {
   intendedEdits?: string[];
 }): Promise<{ batchId: string; jobIds: string[] }> {
   return post("/api/scan/batch", params);
+}
+
+// ─── Saved prompts ────────────────────────────────────────────────────────────
+
+export interface SavedPrompt {
+  id:        string;
+  title:     string;
+  body:      string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Thrown when a save would collide with a title the user already has. Carries
+ * a distinct type rather than a message match so the caller can branch on it
+ * and offer overwrite-or-rename, which is the whole point of the 409.
+ */
+export class PromptTitleConflictError extends Error {
+  constructor(public readonly title: string) {
+    super(`A prompt titled "${title}" already exists.`);
+    this.name = "PromptTitleConflictError";
+  }
+}
+
+export async function listSavedPrompts(signal?: AbortSignal): Promise<SavedPrompt[]> {
+  return get("/api/prompts", signal);
+}
+
+/**
+ * Save a prompt. Throws PromptTitleConflictError on 409 unless `overwrite` is
+ * set — the UI asks the user first and re-calls with overwrite: true.
+ */
+export async function saveSavedPrompt(params: {
+  title: string;
+  body: string;
+  overwrite?: boolean;
+}): Promise<SavedPrompt> {
+  const res = await fetch("/api/prompts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(params),
+    cache: "no-store",
+  });
+  if (res.status === 409) throw new PromptTitleConflictError(params.title);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`POST /api/prompts → ${res.status}: ${text}`);
+  }
+  return (await res.json()) as SavedPrompt;
+}
+
+export async function renameSavedPrompt(
+  id: string,
+  title: string,
+): Promise<SavedPrompt> {
+  const res = await fetch(`/api/prompts/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title }),
+    cache: "no-store",
+  });
+  if (res.status === 409) throw new PromptTitleConflictError(title);
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`PATCH /api/prompts/${id} → ${res.status}: ${text}`);
+  }
+  return (await res.json()) as SavedPrompt;
+}
+
+export async function deleteSavedPrompt(id: string): Promise<void> {
+  const res = await fetch(`/api/prompts/${id}`, {
+    method: "DELETE",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(`DELETE /api/prompts/${id} → ${res.status}: ${text}`);
+  }
 }
 
 // ─── Asset signed GET URL ─────────────────────────────────────────────────────
@@ -492,8 +582,17 @@ export async function exportProPreviewStream(
      */
     providers?: (string | null)[];
     /**
-     * When true, backend burns the AI-disclaimer watermark string into
-     * the bottom-right corner of every exported JPEG. Off by default.
+     * Asset ids of the pre-enhance ORIGINALS behind this export. Saved into
+     * the project alongside the exported files so the library keeps the
+     * before as well as the after. Duplicates are fine — the backend
+     * de-duplicates, since several exported variants can share one source.
+     *
+     */
+    originalAssetIds?: string[];
+    /**
+     * Burn the AI-disclaimer watermark into every exported JPEG. Defaults to
+     * true server-side, matching the UI checkbox, so omitting it does not
+     * quietly drop the disclaimer.
      */
     aiDisclaimer?: boolean;
   },

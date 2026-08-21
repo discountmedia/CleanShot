@@ -34,6 +34,14 @@ interface ClientRequest {
   equipmentType?: "forklift" | "rough_terrain" | "scissor_lift" | "telehandler" | "reach_truck" | "order_picker" | "pallet_jack" | "walkie_stacker";
   customPrompt?: string;                  // when set, FastAPI bypasses toggles
   /**
+   * Per-image fork framing. Both flags default true server-side, so omitting
+   * this produces exactly the prompt this endpoint built before the controls
+   * existed.
+   */
+  forkVisibility?: { verticalVisible: boolean; tipsVisible: boolean };
+  /** Caller already composed the fork framing into customPrompt. */
+  forkFramingInPrompt?: boolean;
+  /**
    * Per-card master-prompt selection from the Enhance tab's "Prompt:" dropdown.
    * One opaque key: "auto" | "generic:<author>" | "tailored:<author>". When
    * "auto" or omitted, FastAPI falls through to its procedural builder (today's
@@ -62,6 +70,13 @@ export async function POST(request: NextRequest) {
       toggles:         body.toggles,            // already camelCase; Pydantic aliases handle it
       provider:        body.provider ?? "gemini",
       ...(body.equipmentType ? { equipment_type: body.equipmentType } : {}),
+      // Only forward when something is actually out of frame — the all-visible
+      // case stays off the wire so FastAPI keeps its defaults.
+      ...(body.forkVisibility &&
+      (!body.forkVisibility.verticalVisible || !body.forkVisibility.tipsVisible)
+        ? { fork_visibility: body.forkVisibility }
+        : {}),
+      ...(body.forkFramingInPrompt ? { fork_framing_in_prompt: true } : {}),
       // Only forward custom_prompt when non-empty; omitting lets FastAPI
       // use its `None` default and the worker falls through to toggles.
       ...(body.customPrompt?.trim() ? { custom_prompt: body.customPrompt } : {}),

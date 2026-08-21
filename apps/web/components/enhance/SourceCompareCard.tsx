@@ -18,6 +18,40 @@ import {
 import { ENHANCE_PROVIDER_DURATION_S } from "../../lib/pricing";
 import type { JudgeResult } from "../../lib/api";
 import type { JobRecord, UploadFile } from "../../lib/types";
+import type { InlineScanState } from "../../lib/inline-scan";
+import {
+  SCAN_PROVIDER_COLOR,
+  computeConsensus,
+  unifyAnomalies,
+} from "../../lib/scan-helpers";
+import { ScanProgressStrip } from "../scan/ScanProgressStrip";
+import { ForkFramingControls } from "./ForkFramingControls";
+import type { ForkVisibility } from "../../lib/recommended-prompt";
+import { UnifiedAnomalies } from "../scan/UnifiedAnomalies";
+
+/**
+ * Per-variant contrast / saturation. Deliberately NOT the full darkroom —
+ * the bulk Modify panel that carried brightness / crop / straighten was
+ * removed from the Enhance tab (2026-08-21) in favour of these two controls
+ * living on the image they affect.
+ *
+ * Values are the same multiplicative factors the backend pyvips helper takes
+ * (1.0 = neutral), so the CSS-filter preview below is faithful to the bytes
+ * the Apply produces.
+ */
+export interface VariantAdjustment {
+  contrast:   number;
+  saturation: number;
+}
+
+export const NEUTRAL_ADJUSTMENT: VariantAdjustment = {
+  contrast:   1.0,
+  saturation: 1.0,
+};
+
+export function isNeutralAdjustment(a: VariantAdjustment): boolean {
+  return a.contrast === 1.0 && a.saturation === 1.0;
+}
 
 /** One provider's slice of state for a single source image. */
 export interface SourceVariant {
@@ -44,10 +78,37 @@ interface SourceCompareCardProps {
   judgeResult: JudgeResult | null;
   /** True while the judge call for this source is in flight. */
   judging: boolean;
+  /**
+   * Inline scan state per variant, keyed by provider. Read from the scan the
+   * BACKEND already enqueues for every enhance output — see lib/inline-scan.ts.
+   * A provider missing from this record simply has no scan to show yet.
+   */
+  scans: Partial<Record<EnhanceProvider, InlineScanState>>;
+  /**
+   * Per-image fork framing. Surfaced here as well as on the pre-enhance grid
+   * because this is where the failure is actually visible — the operator sees
+   * the invented shank or the shortened forks in the output, ticks the box,
+   * and hits Retry on that one variant.
+   */
+  forkVisibility: ForkVisibility;
+  onForkVisibilityChange: (next: ForkVisibility) => void;
+  /** Operator has rewritten the prompt — drives the degradation note. */
+  promptIsCustom: boolean;
+  /** False for scissor lifts, which have a platform and no forks. */
+  showForkControls: boolean;
+  /** Uncommitted contrast / saturation per variant. Missing = neutral. */
+  adjustments: Partial<Record<EnhanceProvider, VariantAdjustment>>;
+  /** Providers whose adjustment Apply is currently in flight. */
+  adjusting: Partial<Record<EnhanceProvider, boolean>>;
 
   onChoose: (provider: EnhanceProvider | null) => void;
   onToggleHold: () => void;
   onRetry: (provider: EnhanceProvider) => void;
+  /** Slider moved — preview only, nothing committed yet. */
+  onAdjustChange: (provider: EnhanceProvider, adj: VariantAdjustment) => void;
+  /** Commit this variant's adjustment: renders new bytes and replaces the
+   *  variant in place, so the export picks it up with no extra step. */
+  onAdjustApply: (provider: EnhanceProvider) => void;
   /** Opens the per-variant Flux erase dialog. */
   onErase: (provider: EnhanceProvider) => void;
   /** Opens the per-variant Gemini tweak dialog. */
@@ -67,9 +128,18 @@ export function SourceCompareCard({
   nowMs,
   judgeResult,
   judging,
+  scans,
+  forkVisibility,
+  onForkVisibilityChange,
+  promptIsCustom,
+  showForkControls,
+  adjustments,
+  adjusting,
   onChoose,
   onToggleHold,
   onRetry,
+  onAdjustChange,
+  onAdjustApply,
   onErase,
   onTweak,
   onIdeogramEdit,
@@ -249,6 +319,19 @@ export function SourceCompareCard({
               <span className="text-sm font-mono font-bold text-ink">source</span>
             </div>
           </div>
+
+          {/* Fork framing for THIS photo. Sits under the source image because
+              that is what the operator is looking at to decide. Changing it
+              affects the next Retry / Re-enhance of this image only. */}
+          {showForkControls && (
+            <div className="w-full max-w-3xl mx-auto">
+              <ForkFramingControls
+                value={forkVisibility}
+                onChange={onForkVisibilityChange}
+                promptIsCustom={promptIsCustom}
+              />
+            </div>
+          )}
         </figure>
 
         {/* Variants — 5-column landscape row */}
@@ -285,6 +368,11 @@ export function SourceCompareCard({
                   variant={variant}
                   chosen={chosen === p}
                   nowMs={nowMs}
+                  scan={scans[p]}
+                  adjustment={adjustments[p] ?? NEUTRAL_ADJUSTMENT}
+                  adjusting={adjusting[p] ?? false}
+                  onAdjustChange={(adj) => onAdjustChange(p, adj)}
+                  onAdjustApply={() => onAdjustApply(p)}
                   onChoose={() => onChoose(p)}
                   onRegen={() => onRetry(p)}
                   onErase={() => onErase(p)}
@@ -361,6 +449,14 @@ interface VariantThumbProps {
    * variant without unchecking its provider in the ProviderRow.
    */
   onRegen: () => void;
+  /** This variant's inline scan, if the backend's auto-scan has produced one. */
+  scan: InlineScanState | undefined;
+  /** Uncommitted contrast / saturation for this variant. */
+  adjustment: VariantAdjustment;
+  /** True while this variant's Apply is in flight. */
+  adjusting: boolean;
+  onAdjustChange: (adj: VariantAdjustment) => void;
+  onAdjustApply: () => void;
   /**
    * Opens the per-variant Flux erase dialog. EnhancePanel keeps a
    * single dialog instance and uses (fileId, provider) to look up the
@@ -381,14 +477,21 @@ interface VariantThumbProps {
 
 function VariantThumb({
   provider, variant, chosen, nowMs,
-  onChoose, onTweak,
+  scan, adjustment, adjusting,
+  onAdjustChange, onAdjustApply,
+  onChoose, onRegen, onTweak,
 }: VariantThumbProps) {
-  // onRegen / onErase / onIdeogramEdit / onIdeogramInpaint are still ACCEPTED
-  // (the parent forwards them and EnhancePanel still owns the dialogs) but are
-  // no longer rendered: the operator asked for a single Tweak action on the
-  // variant thumb. Left on the interface as dead-but-harmless plumbing, the
-  // same pattern this repo uses for dormant providers -- restoring a tool is
+  // onErase / onIdeogramEdit / onIdeogramInpaint are still ACCEPTED (the parent
+  // forwards them and EnhancePanel still owns the dialogs) but are not
+  // rendered: the operator asked for a pared-back action set on the variant
+  // thumb. Left on the interface as dead-but-harmless plumbing, the same
+  // pattern this repo uses for dormant providers -- restoring a tool is
   // re-adding its button, not re-wiring a backend.
+  //
+  // onRegen came off the thumb in that same pass and is BACK as of 2026-08-21
+  // (operator: "the button that is supposed to be present on each image for
+  // retry is not visible"). Re-rolling one variant otherwise meant unchecking
+  // its provider and re-running the whole batch.
   const status = variant?.job?.status ?? (variant ? "queued" : "idle");
   const isComplete = status === "complete";
   const isProcessing = status === "queued" || status === "processing";
@@ -444,6 +547,18 @@ function VariantThumb({
             src={variant.outputUrl}
             alt={`${ENHANCE_PROVIDER_LABELS[provider]} variant`}
             className="absolute inset-0 w-full h-full object-contain"
+            /* Live preview of the pending adjustment. The CSS filter uses the
+               same factors the backend pyvips helper takes, so what the
+               operator sees here is what Apply bakes in. */
+            style={
+              isNeutralAdjustment(adjustment)
+                ? undefined
+                : {
+                    filter:
+                      `contrast(${adjustment.contrast.toFixed(3)}) ` +
+                      `saturate(${adjustment.saturation.toFixed(3)})`,
+                  }
+            }
           />
         )}
 
@@ -471,9 +586,50 @@ function VariantThumb({
             the top-left in a clear "↻ ✎ ⌫" order. Each one wraps a `group`
             so a styled hover-tooltip can fade in below the button. */}
 
+        {/* Per-variant Retry — restored 2026-08-21 by operator request (see
+            the note at the top of this component). Re-enqueues the same
+            provider through the same handler the failed-variant strip uses,
+            with the CURRENT prompt and toggle state; EnhancePanel evicts the
+            old jobId so this thumb falls back to its spinner and the new
+            result replaces it in place. stopPropagation so the click doesn't
+            also fire the outer "pick winner" select. Styled to match the
+            Tweak pill it sits beside. */}
+        {isComplete && (
+          <div className="group/regen absolute top-2 left-2 z-10">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onRegen();
+              }}
+              title="Retry — regenerate this image with the current prompt and toggles"
+              aria-label={`Retry the ${ENHANCE_PROVIDER_LABELS[provider]} variant`}
+              className="inline-flex items-center gap-1.5 h-9 pl-2.5 pr-3 rounded-full bg-cta hover:bg-cta-dark text-white border-2 border-cta hover:border-cta-dark transition-colors shadow-lg"
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+                />
+              </svg>
+              <span className="text-sm font-bold leading-none">Retry</span>
+            </button>
+            <span className="pointer-events-none absolute left-0 top-full mt-2 whitespace-nowrap bg-header-bg/95 border border-line rounded-md px-3 py-1.5 text-sm font-bold text-ink-soft shadow-2xl opacity-0 group-hover/regen:opacity-100 transition-opacity duration-150 z-20">
+              Regenerate this image — same prompt, same toggles
+            </span>
+          </div>
+        )}
+
         {/* Per-variant tweak — opens the Gemini text-edit dialog. */}
         {isComplete && (
-          <div className="group/tweak absolute top-2 left-13 z-10">
+          <div className="group/tweak absolute top-2 left-28 z-10">
             <button
               type="button"
               onClick={(e) => {
@@ -603,6 +759,210 @@ function VariantThumb({
               : "—"}
         </span>
       </div>
+
+      {/* Inline scan verdict — sits with the image it judged instead of on a
+          separate tab. Rendered only for completed variants; a variant with no
+          scan row yet shows nothing rather than a misleading "waiting". */}
+      {isComplete && scan && <VariantScanStrip scan={scan} nowMs={nowMs} />}
+
+      {/* Per-image adjustments. Replaces the bulk darkroom that used to sit at
+          the bottom of the page and applied one setting to every winner. */}
+      {isComplete && (
+        <VariantAdjustments
+          adjustment={adjustment}
+          adjusting={adjusting}
+          onChange={onAdjustChange}
+          onApply={onAdjustApply}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── Inline scan strip ────────────────────────────────────────
+
+function VariantScanStrip({
+  scan,
+  nowMs,
+}: {
+  scan: InlineScanState;
+  nowMs: number;
+}) {
+  const consensus = useMemo(
+    () => computeConsensus(scan.providerResults),
+    [scan.providerResults],
+  );
+  const unified = useMemo(
+    () => unifyAnomalies(scan.providerResults),
+    [scan.providerResults],
+  );
+
+  // A failed scan JOB is this variant's problem alone — the other variants in
+  // the batch each carry their own job and their own strip.
+  if (scan.status === "failed") {
+    return (
+      <div className="px-2 py-1.5 border-t border-line bg-well">
+        <p className="text-[10px] uppercase tracking-[0.14em] font-bold text-attn">
+          Scan failed
+        </p>
+        {scan.error && (
+          <p className="text-[10px] text-ink-soft mt-0.5 leading-snug">{scan.error}</p>
+        )}
+      </div>
+    );
+  }
+
+  if (scan.status === "waiting" && scan.providerResults.length === 0) {
+    // Same coloured per-provider bars the Scan tab renders, not a generic
+    // spinner — the operator can see which vendor is still out from here.
+    return (
+      <div className="px-2 py-2 border-t border-line bg-well">
+        <ScanProgressStrip
+          startedMs={scan.startedMs}
+          nowMs={nowMs}
+          allComplete={false}
+        />
+      </div>
+    );
+  }
+
+  if (!consensus) return null;
+
+  const tone =
+    consensus.verdict === "pass"
+      ? "text-accent"
+      : consensus.verdict === "fail"
+        ? "text-attn"
+        : "text-ink";
+
+  return (
+    <details className="border-t border-line bg-well">
+      <summary className="px-2 py-1.5 flex items-center justify-between gap-2 cursor-pointer list-none">
+        <span className={`text-[10px] uppercase tracking-[0.14em] font-bold ${tone}`}>
+          Scan: {consensus.verdict}
+          {scan.status === "waiting" && " (partial)"}
+        </span>
+        <span className="text-[9px] font-mono text-muted tabular-nums">
+          {consensus.passes}/{consensus.total} · {Math.round(consensus.avgConfidence * 100)}%
+        </span>
+      </summary>
+      <div className="px-2 pb-2 space-y-2">
+        {/* Per-provider verdicts, each in its own identity colour so the row
+            ties back to the bar that was running a moment ago. */}
+        <ul className="flex flex-wrap gap-1.5" aria-label="Per-provider verdicts">
+          {scan.providerResults.map((r) => (
+            <li
+              key={r.provider}
+              className="text-[10px] font-bold uppercase tracking-[0.12em] px-2 py-0.5 rounded border bg-panel"
+              style={{ color: SCAN_PROVIDER_COLOR[r.provider], borderColor: SCAN_PROVIDER_COLOR[r.provider] }}
+            >
+              {r.provider} {r.verdict}
+            </li>
+          ))}
+        </ul>
+        <UnifiedAnomalies unified={unified} totalProviders={consensus.total} />
+      </div>
+    </details>
+  );
+}
+
+// ─── Per-image adjustments ──────────────────────────────────
+
+/**
+ * Slider integers map to the same factor ranges the darkroom used, so the
+ * backend maths is unchanged: contrast -100..+100 → 0.5..1.5, saturation
+ * -100..+100 → 0.0..2.0.
+ */
+const toContrast   = (v: number) => 1.0 + v / 200;
+const toSaturation = (v: number) => 1.0 + v / 100;
+const fromContrast   = (f: number) => Math.round((f - 1.0) * 200);
+const fromSaturation = (f: number) => Math.round((f - 1.0) * 100);
+
+function VariantAdjustments({
+  adjustment,
+  adjusting,
+  onChange,
+  onApply,
+}: {
+  adjustment: VariantAdjustment;
+  adjusting: boolean;
+  onChange: (adj: VariantAdjustment) => void;
+  onApply: () => void;
+}) {
+  const neutral = isNeutralAdjustment(adjustment);
+  return (
+    <div
+      className="px-2 py-2 border-t border-line bg-well space-y-1.5"
+      /* The thumb's outer element is a role="button" that picks the winner on
+         click — without this, dragging a slider would also change the pick. */
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
+    >
+      <AdjustSlider
+        label="Contrast"
+        value={fromContrast(adjustment.contrast)}
+        disabled={adjusting}
+        onChange={(v) => onChange({ ...adjustment, contrast: toContrast(v) })}
+      />
+      <AdjustSlider
+        label="Saturation"
+        value={fromSaturation(adjustment.saturation)}
+        disabled={adjusting}
+        onChange={(v) => onChange({ ...adjustment, saturation: toSaturation(v) })}
+      />
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={onApply}
+          disabled={neutral || adjusting}
+          className={`text-[10px] uppercase tracking-[0.14em] font-bold px-2.5 py-1 rounded border-2 transition-colors ${
+            neutral || adjusting
+              ? "border-line bg-panel text-ink-faint cursor-not-allowed"
+              : "border-cta bg-cta hover:bg-cta-dark text-white"
+          }`}
+        >
+          {adjusting ? "Applying…" : "Apply"}
+        </button>
+        {!neutral && !adjusting && (
+          <button
+            type="button"
+            onClick={() => onChange(NEUTRAL_ADJUSTMENT)}
+            className="text-[10px] uppercase tracking-[0.14em] font-bold text-ink-soft hover:text-ink"
+          >
+            Reset
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function AdjustSlider({
+  label, value, disabled, onChange,
+}: {
+  label: string;
+  value: number;
+  disabled: boolean;
+  onChange: (v: number) => void;
+}) {
+  return (
+    <label className="flex items-center gap-2">
+      <span className="text-[10px] uppercase tracking-[0.12em] font-bold text-ink-soft w-16 shrink-0">
+        {label}
+      </span>
+      <input
+        type="range"
+        min={-100}
+        max={100}
+        step={1}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="flex-1 accent-accent disabled:opacity-50"
+      />
+      <span className="text-[9px] font-mono text-muted tabular-nums w-8 text-right shrink-0">
+        {value > 0 ? `+${value}` : value}
+      </span>
+    </label>
   );
 }

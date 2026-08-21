@@ -33,6 +33,7 @@ from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
     EnhanceToggles,
     EraseTaskPayload,
+    ForkVisibility,
     JobStatusEnum,
     OperationEnum,
     ScanTaskPayload,
@@ -303,10 +304,116 @@ EQUIPMENT_BODY_PARTS: dict[str, str] = {
 }
 
 
+def _build_fork_fragments(fork: ForkVisibility) -> list[str]:
+    """
+    The LIFTING FORKS instruction, as named fragments.
+
+    This used to be one paragraph. Two clauses inside it were driving reported
+    failures whenever the source photo didn't show the whole fork:
+
+      • "The red covers the heel of each fork (the vertical shank)" — on angles
+        where the upright section is out of frame, the model painted part of
+        the overhead guard or carriage to manufacture one to cover.
+      • "the outermost ~15-20 cm of the tip is safety YELLOW" — when the tips
+        are cropped out, the model SHORTENED the forks to drag tips into view
+        so it had something to paint yellow.
+
+    So the fix is removal, not more instruction. Each fragment below is a whole
+    sentence, which is what makes dropping one safe: no fragment refers to
+    another ("those", "the above"), so any subset still reads as coherent,
+    non-contradictory prose.
+
+    Ordering is fixed and independent of which fragments survive.
+    """
+    fragments: list[str] = []
+
+    # Always present: what to paint, and what NOT to paint around it.
+    fragments.append(
+        "LIFTING FORKS — paint ONLY the two horizontal fork tines "
+        "themselves (the L-shaped blades that go into pallets) with "
+        "Discount Forklift signature red."
+    )
+
+    if fork.vertical_visible:
+        fragments.append(
+            "The red covers the heel of each fork (the vertical shank) and "
+            "roughly the first 80% of the horizontal blade."
+        )
+    else:
+        # Not a bare deletion — the model is told the section is absent, so it
+        # has no gap to fill in from its training prior.
+        fragments.append(
+            "The upright vertical section (shank / heel) of the fork is NOT "
+            "visible in this photo. Paint only the horizontal blade that is "
+            "actually in frame. Do not render or invent a vertical fork "
+            "section, and do not treat any part of the carriage, mast, mast "
+            "rails, or overhead guard as if it were one."
+        )
+
+    if fork.tips_visible:
+        fragments.append(
+            "The outermost ~15-20 cm (~6-8 inches) of the tip is safety YELLOW."
+        )
+    else:
+        # SUBSTITUTION. Deleting the tip clause outright leaves the tips
+        # unmentioned, and the model's prior for a red Discount Forklift fork
+        # is yellow tips — so silence reproduces the bug.
+        fragments.append(
+            "The fork tips are CROPPED OUT of frame in this photo. Paint the "
+            "visible blade red end to end with NO yellow anywhere, and do NOT "
+            "shorten, resize, or reposition the forks to bring their tips "
+            "into view."
+        )
+
+    fragments.append(
+        "Do NOT paint the surrounding carriage, mast, mast rails, side "
+        "shifters, attachment brackets, or any hardware around the forks — "
+        "ONLY the two fork tines themselves. The LOAD BACK REST (LBR), the "
+        "vertical cage / grid frame at the back of the fork carriage, remains "
+        "BLACK; OSHA convention reserves black for the LBR so the high-vis "
+        "forks read clearly against it."
+    )
+
+    return fragments
+
+
+def _build_fork_visibility_note(fork: ForkVisibility) -> str | None:
+    """
+    The append-mode counterpart for a CUSTOM operator prompt.
+
+    When the operator has written their own prompt there is no fragment of
+    ours to remove — their words are the spine. Doing nothing would be a
+    silent failure: they ticked a control and it had no effect. So the
+    constraint is stated explicitly instead, and the UI tells them that is
+    what will happen (see the note beside the controls in EnhancePanel).
+
+    Returns None when both parts are visible, so the common case adds nothing.
+    """
+    lines: list[str] = []
+    if not fork.vertical_visible:
+        lines.append(
+            "• The upright vertical section (shank / heel) of the fork is NOT "
+            "visible in this photo. Do not render, paint, or invent one, and "
+            "do not treat any part of the carriage, mast, or overhead guard "
+            "as if it were the vertical fork shank."
+        )
+    if not fork.tips_visible:
+        lines.append(
+            "• The fork tips are CROPPED OUT of frame in this photo. Paint no "
+            "yellow tips anywhere, and do NOT shorten, resize, or reposition "
+            "the forks to bring their tips into view."
+        )
+    if not lines:
+        return None
+    return "FORK FRAMING — what is actually in frame:\n" + "\n".join(lines)
+
+
 def _build_enhance_prompt(
     toggles: EnhanceToggles,
     equipment_type: str = "forklift",
     spine_override: str | None = None,
+    fork_visibility: ForkVisibility | None = None,
+    framing_already_in_prompt: bool = False,
 ) -> str:
     """
     Build the enhance prompt.
@@ -330,10 +437,17 @@ def _build_enhance_prompt(
     function behaves exactly as before (zero regression on the legacy /
     "auto" path).
 
+    `fork_visibility` — which parts of the fork are in frame for THIS photo.
+    Defaults to fully-visible, which reproduces the previous prompt exactly.
+    On the built-in path it REMOVES the offending fork fragments; on the
+    custom-prompt path there is nothing of ours to remove, so an explicit
+    FORK FRAMING note is appended instead (see _build_fork_visibility_note).
+
     DRIFT-WARNING:
       The Scan-tab "Regenerate" auto-prompt is built client-side in
       apps/web/lib/scan-helpers.ts. Keep it in sync.
     """
+    fork = fork_visibility or ForkVisibility()
     eq_display = EQUIPMENT_DISPLAY.get(equipment_type, "forklift")
     eq_anatomy = EQUIPMENT_ANATOMY.get(
         equipment_type, EQUIPMENT_ANATOMY["forklift"]
@@ -421,21 +535,24 @@ def _build_enhance_prompt(
         )
 
     if paint_forks_on:
-        sections.append(
-            "LIFTING FORKS — paint ONLY the two horizontal fork tines "
-            "themselves (the L-shaped blades that go into pallets) with "
-            "Discount Forklift signature red and safety yellow tips. The "
-            "red covers the heel of each fork (the vertical shank) and "
-            "roughly the first 80% of the horizontal blade; the "
-            "outermost ~15-20 cm (~6-8 inches) of the tip is safety "
-            "YELLOW. Do NOT paint the surrounding carriage, mast, mast "
-            "rails, side shifters, attachment brackets, or any hardware "
-            "around the forks — ONLY the two fork tines themselves. The "
-            "LOAD BACK REST (LBR), the vertical cage / grid frame at the "
-            "back of the fork carriage, remains BLACK; OSHA convention "
-            "reserves black for the LBR so the high-vis forks read "
-            "clearly against it."
-        )
+        sections.append(" ".join(_build_fork_fragments(fork)))
+
+    # Custom-prompt path: the operator's words are the spine, so there is no
+    # fragment of ours to drop. State the framing constraint outright rather
+    # than letting the control do nothing.
+    #
+    # Skipped when the caller already composed the framing into the prompt
+    # itself (`fork_framing_in_prompt`) — the Enhance tab rebuilds the
+    # recommended prompt from fragments per image, which is a real removal, and
+    # appending our note on top would restate it a second time.
+    if (
+        spine_override is not None
+        and equipment_type != "scissor_lift"
+        and not framing_already_in_prompt
+    ):
+        fork_note = _build_fork_visibility_note(fork)
+        if fork_note is not None:
+            sections.append(fork_note)
 
     if spine_override is None:
         # Tires / scene / closing line are part of the built-in spine — a
@@ -591,6 +708,19 @@ def _build_enhance_prompt(
         )
 
     # ── Hard guardrails (scene + anatomy preservation) ─────────────────
+    #
+    # `eq_anatomy` asks for "same fork count, fork length". That is exactly the
+    # clause the model is fighting when the tips are out of frame: it cannot
+    # both preserve fork length and show tips it can't see, and it resolves the
+    # conflict by shortening the forks. Restate the length rule so the
+    # out-of-frame case is unambiguous rather than contradictory.
+    if not fork.tips_visible and equipment_type != "scissor_lift":
+        eq_anatomy = (
+            f"{eq_anatomy} The forks run out of frame in this photo — keep "
+            f"them running out of frame at their existing length and angle; "
+            f"do not foreshorten them to fit the tips into the image."
+        )
+
     sections.append(
         f"GUARDRAILS — hard constraints:\n"
         f"• Make, model, year, trim level. {eq_anatomy}\n"
@@ -2048,6 +2178,8 @@ async def _run_enhance(
                     payload.toggles,
                     equipment_type=payload.equipment_type,
                     spine_override=effective_spine,
+                    fork_visibility=payload.fork_visibility,
+                    framing_already_in_prompt=payload.fork_framing_in_prompt,
                 )
 
         # Attribution suffix for the usage-event `model` label — lets the

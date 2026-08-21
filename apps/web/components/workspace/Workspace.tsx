@@ -121,43 +121,6 @@ type SessionInit =
       initialAssets?: ServerAsset[] | null;
     };
 
-// Cross-panel asset shape. Each panel emits these as its output.
-interface PipelineAsset {
-  assetId: string;
-  filename: string;
-  thumbnailUrl: string;
-  outputUrl?: string;
-  /**
-   * Which AI provider produced this enhance output. Carried through
-   * the Scan and Resize pipelines so duplicate variants of the same
-   * source image (one per provider) can be distinguished by name +
-   * baked into the export filename.
-   */
-  provider?: string;
-  /**
-   * Asset id of the ORIGINAL pre-enhance photo. Present for variants that
-   * came from the Enhance tab; lets the Scan tab run a differential
-   * (before/after) scan. Undefined for standalone uploads (nothing to
-   * compare against — those get the isolated scan).
-   */
-  originalAssetId?: string;
-}
-
-// `filename` lives in the UI as "Toyota_8FGU25_2019_01.jpg" today. When
-// the same source image is enhanced through 2+ providers and sent to
-// Scan, every variant ends up with the same filename — confusing. This
-// helper suffixes the basename with the provider so the operator can
-// tell them apart in the Scan / Resize lists:
-//
-//   "Toyota_8FGU25_2019_01.jpg" + "gemini" → "Toyota_8FGU25_2019_01_Gemini.jpg"
-function providerSuffixedFilename(name: string, provider?: string): string {
-  if (!provider) return name;
-  const cap = provider.charAt(0).toUpperCase() + provider.slice(1);
-  const idx = name.lastIndexOf(".");
-  if (idx < 0) return `${name}_${cap}`;
-  return `${name.slice(0, idx)}_${cap}${name.slice(idx)}`;
-}
-
 interface WorkspaceProps {
   /** Email of the authenticated user. Falls back to "dev@local" in bypass mode. */
   userEmail: string;
@@ -256,12 +219,12 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
    */
   const initialAssets = init.phase === "ready" ? (init.initialAssets ?? null) : null;
 
-  // Cross-panel pipeline state. The flow is curated by the user:
-  //   Enhance → "Send to Scan" → enhancedAssets  (what Scan tab analyzes)
-  // Save + export are no longer a separate tab — they live inside Enhance
-  // and Scan (the ExportControls component), so there's no downstream
-  // resize/export pipeline state to thread through Workspace anymore.
-  const [enhancedAssets, setEnhancedAssets] = useState<PipelineAsset[]>([]);
+  // There is no cross-panel pipeline any more (2026-08-21). Scan is a
+  // standalone tab with its own image intake, and the Enhance tab shows its
+  // scan results inline on each variant card — so nothing flows from Enhance
+  // into Scan, and nothing on Enhance navigates here. `pipelineGeneration`
+  // survives only as the remount key ScanPanel uses to wipe its own local
+  // state on "Reset scan".
 
   // Forklift metadata is owned by Workspace so it survives panel
   // switches and so Resize can pre-fill its Save Project form from
@@ -387,7 +350,7 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
 
   const allTabs = [
     { id: "enhance" as const, label: "Enhance" },
-    { id: "scan"    as const, label: "Scan",    count: enhancedAssets.length || undefined },
+    { id: "scan"    as const, label: "Scan" },
     { id: "history" as const, label: "Your Photo Library" },
   ];
   // Restricted users see only the Enhance tab.
@@ -403,37 +366,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     }
   }, [restriction?.enhanceOnly, activeTab]);
 
-  // Explicit user action: "Send to Scan" (per-row) or "Send all to Scan tab"
-  // (batch). Auto-handoff was removed at the user's request — enhance completion
-  // alone does NOT push to Scan; the user clicks the button when ready.
-  const handleSendToScan = (items: Array<{
-    jobId: string;
-    outputAssetId: string;
-    filename: string;
-    outputUrl: string;
-    provider?: string;
-    sourceAssetId?: string;
-  }>) => {
-    setEnhancedAssets((prev) => {
-      // Duplicates are now allowed by design — the same source image
-      // can land in Scan multiple times if the operator wants to scan
-      // each provider's variant separately, or re-run a scan on the
-      // same item. Filenames carry a provider suffix so the operator
-      // can tell variants apart in the Scan tab list.
-      const additions = items.map((it): PipelineAsset => ({
-        assetId:         it.outputAssetId,
-        filename:        providerSuffixedFilename(it.filename, it.provider),
-        thumbnailUrl:    it.outputUrl,
-        outputUrl:       it.outputUrl,
-        provider:        it.provider,
-        originalAssetId: it.sourceAssetId,
-      }));
-      return additions.length > 0 ? [...prev, ...additions] : prev;
-    });
-    // Switch to the Scan tab so the user sees the result of their action.
-    setActiveTab("scan");
-  };
-
   // Called by EnhancePanel or ScanPanel when the user clicks their own
   // "Clear all" — wipes the downstream pipeline state at the workspace
   // level so old assets don't keep getting rescanned or re-listed.
@@ -442,7 +374,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
   // scanStates / preview lists would still show ghost rows from the
   // cleared batch.
   const handleClearPipeline = () => {
-    setEnhancedAssets([]);
     setPipelineGeneration((g) => g + 1);
   };
 
@@ -512,7 +443,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 expectedImportCount={expectedCount}
                 meta={meta}
                 onMetaChange={setMeta}
-                onSendToScan={handleSendToScan}
                 onClearPipeline={handleClearPipeline}
                 onDiscardSession={handleDiscardSession}
                 onFileCountChange={setEnhanceFileCount}
@@ -530,7 +460,6 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
                 // workspace queue clear.
                 key={pipelineGeneration}
                 sessionId={sessionId}
-                enhancedAssets={enhancedAssets}
                 onClearPipeline={handleClearPipeline}
                 equipmentType={meta.equipmentType ?? "forklift"}
                 meta={meta}

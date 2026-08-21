@@ -83,6 +83,8 @@ async def enqueue_enhance_job(
         toggles=body.toggles,
         provider=body.provider,
         equipment_type=body.equipment_type,
+        fork_visibility=body.fork_visibility,
+        fork_framing_in_prompt=body.fork_framing_in_prompt,
         custom_prompt=body.custom_prompt,
         prompt_choice=body.prompt_choice,
     )

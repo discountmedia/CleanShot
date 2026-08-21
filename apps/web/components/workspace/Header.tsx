@@ -37,7 +37,7 @@ export function Header({
       <div className="bg-panel border-b border-attn">
         <div className="px-6 py-3.5 flex items-center justify-center gap-3 text-center flex-wrap">
           <span className="text-sm uppercase tracking-[0.18em] font-bold text-attn border border-attn rounded px-3 py-1 shrink-0">
-            Beta V.1
+            Beta V.2
           </span>
           <p className="text-base sm:text-lg font-semibold uppercase tracking-[0.12em] text-attn leading-snug">
             Site is currently in testing — bugs will be present.{" "}

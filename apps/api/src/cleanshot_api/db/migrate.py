@@ -190,6 +190,34 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- saved_prompts: named, reusable enhance prompts belonging to one user.
+-- Enhance went prompt-first in July 2026, so operators write their own
+-- prompts; the good ones were being retyped from scratch every session.
+--
+-- Keyed on lowercased email, same as user_profiles and for the same reason
+-- (that is the form the BFF forwards in X-User-Email). No FK to
+-- user_profiles: a user can save a prompt before ever visiting their
+-- profile page, and that row is created lazily.
+--
+-- The unique index is on lower(title), not title, so "Yard Units" and
+-- "yard units" collide. Titles are user-facing labels chosen for a
+-- dropdown — two entries differing only in case read as duplicates to the
+-- person picking one. Making it a DB constraint rather than a pre-check
+-- also closes the two-tabs race that a SELECT-then-INSERT would leave open.
+CREATE TABLE IF NOT EXISTS saved_prompts (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_email  TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    body        TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_prompts_user_title
+    ON saved_prompts(user_email, lower(title));
+-- Listing order for the dropdown: most recently touched first.
+CREATE INDEX IF NOT EXISTS idx_saved_prompts_user
+    ON saved_prompts(user_email, updated_at DESC);
+
 -- support_tickets: feature requests + bug reports submitted from
 -- /profile. Surfaced in /admin's Support tab so the owner sees them
 -- without leaving the tool.

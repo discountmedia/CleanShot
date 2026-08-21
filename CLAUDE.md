@@ -11,7 +11,7 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 - **`apps/worker-image` / `apps/worker-video`** — empty scaffolding; real workers live inside `apps/api/src/cleanshot_api/workers/`.
 
 ### Data stores
-- **Postgres 17** on Cloud SQL — `cleanshot-database-url:latest`; asyncpg pool.
+- **Postgres 17** on Cloud SQL — `cleanshot-database-url:latest`; asyncpg pool. Schema is applied by the idempotent `CREATE TABLE IF NOT EXISTS` blocks in `db/migrate.py` + `db/migrate_auth.py`, which run on startup — **adding a table means editing those files, and the deploy applies it.** Adding a value to an existing Postgres ENUM still needs an explicit `ALTER TYPE` (lesson #12).
 - **Valkey 9** on Memorystore — `valkey://10.122.45.83:6379` (in-VPC).
 - **GCS buckets** — `cleanshot-originals-prod` (uploads), `cleanshot-derivatives-prod` (enhance + cleanup outputs, plus `approved/{email}/{dir}/` curated sets).
 - **Cloud Tasks** — `cleanshot-image-gen` (enhance + cleanup) + `cleanshot-image-scan` (scan). OIDC-authed via SA `forklift-api@cleanshot-493512.iam.gserviceaccount.com`.
@@ -21,7 +21,7 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 - **Web** → `.github/workflows/deploy-web.yml` on push to `apps/web/**` or `packages/types/**`. Uses `amondnet/vercel-action@v25`.
 
 ### Routers (FastAPI)
-`admin`, `approvals`, `export`, `jobs`, `operations`, `profiles`, `projects`, `scan_results`, `sessions`, `support`, `upload`, `worker`
+`admin`, `approvals`, `export`, `jobs`, `modify`, `operations`, `profiles`, `projects`, `saved_prompts`, `scan_results`, `sessions`, `support`, `upload`, `worker`
 
 ### Services (FastAPI)
 `gcs`, `image_processing`, `pricing`, `rate_limit`, `tasks`
@@ -34,54 +34,51 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 |---|---|
 | **1. Foundation** (infra, DB, GCS, Cloud Tasks, secrets) | ✅ Complete |
 | **2. AI pipelines** (Enhance, multi-model Scan with consensus) | ✅ Complete & in production |
-| **3. UX + auth** (Resize, Save/Approve flow, Microsoft SSO, profile, admin, support) | ✅ Complete — SSO is live |
-| **4. Rollout & operations** (analytics, rate limiters, scan resilience, Erase tool, Kontext, Ideogram, Reve, Modify tab) | 🟡 Ongoing |
+| **3. UX + auth** (export flow, Microsoft SSO, profile, admin, support) | ✅ Complete — SSO is live |
+| **4. Rollout & operations** (analytics, rate limiters, scan resilience, per-variant tools, saved prompts) | 🟡 Ongoing |
 
-**Tab order (current):** `Enhance → Scan → Your Photo Library`. Modify and Resize are no longer standalone tabs — Modify is embedded inside EnhancePanel (below the variants) and Resize was replaced by `ExportControls` embedded in Enhance + Scan (landed 2026-06-01 / 06-17). "Your Photo Library" is the History tab — internal identifiers (TabId `"history"`, `HistoryList.tsx`, `/api/history`) stay as-is.
+**Tab order (current):** `Enhance → Scan → Your Photo Library`. There are no Modify or Resize tabs. "Your Photo Library" is the History tab — internal identifiers (TabId `"history"`, `HistoryList.tsx`, `/api/history`) stay as-is.
 
----
-
-## Latest session (2026-07-30) — differential-scan recalibration + house-palette migration
-
-**1. Differential scan stopped false-positiving on paint** (`5805777`). The operator was getting a flood of failed scans for the exact edits they'd asked for (new paint, forks painted red with yellow tips). Root cause was a **regression from prompt-first Enhance**, not just an over-eager prompt: `_describe_intended_edits` builds the "already requested, don't flag" whitelist from the enhance **toggles**, but prompt-first made toggles optional — the operator types the intent instead, so the whitelist came back nearly empty and the requested repaint got flagged as an unintended `colour_changed`. The manual Scan-tab batch never sent `intended_edits` at all (ScanPanel omits the field), so a re-scan hit the *strictest* fallback text. Fixes: **paint is now STANDING policy in `SCAN_DIFFERENTIAL_PROMPT_BASE`** rather than a per-batch whitelist entry (same-colour respray, red/orange forks + yellow tips, black backrest/carriage/load guard, repainted wheels/counterweight are always expected) — which also fixes the manual re-scan and the toggles-off path without lifting toggle state into ScanPanel; **geometry flags removed entirely** (operator: "no one understands what that means" — it was the label on most false positives; gross deformity still lands as `size_changed`/`part_added`/`part_removed`); text fires only when a number is legible in BOTH images and genuinely differs (never 1-2 char drift); and the operator's typed prompt is threaded through verbatim (1500-char cap). Closes the parked 2026-07-13 recalibration item. **Still open:** `computeConsensus` returns `"mixed"` if any ONE of three providers fails, so a single over-eager vote still costs a clean pass badge — changing it is a verdict-semantics decision, not a bug.
-
-**2. Discount Forklift house-palette migration** (35 files). A *partial* migration to this same palette already existed and had drifted wrong: it remapped Tailwind's families (`--color-zinc-900: #2D2D2D`) — the second-source-of-truth problem — and shipped `#454549`/`#5A5A60` (blue-tinted greys), three blue-dominant purples that were neither CTA purple, and `#131313` as the *page* background so header and page were the same plate. Now 17 semantic tokens in `@theme` are the only source of colour, ~1,400 legacy palette-class usages are gone, and the offending Tailwind families are deleted so they can't come back silently. See the "Frontend UI system" section for the rules. Verified by channel-auditing the **compiled** stylesheet (source greps miss what Tailwind emits): every grey `r == g == b`, only `#914EA6`/`#743E85` blue-dominant, all reds `g == b`, zero amber, no `oklch()` leak. Build + `tsc` clean; the 8 remaining ESLint errors are pre-existing `react-hooks/set-state-in-effect`. **Two open items:** the Microsoft SSO logo keeps its four official brand squares ([LoginButton.tsx](apps/web/components/auth/LoginButton.tsx)) as a deliberate third-party-trademark exception — swap to Microsoft's approved monochrome mark if strict compliance is wanted; and **no footer component exists**, so the spec's footer plate + 26px footer wordmark are unimplemented (adding one is new UI, not a restyle).
-
-**3. Red replaced by purple, same session** (operator follow-up after seeing it live). Attention/error is now purple, and **red is reserved for genuinely destructive controls only** — currently exactly three: the two ✕ remove buttons and Clear All. This surfaced a pre-existing conflation worth knowing: red used to be the *brand accent*, so the palette sweep had mapped `Approve →`, `Download ZIP`, `Retry`, `Regenerate now` and `Send to admin` onto `danger` even though none of them destroy anything. They are purple now (they're actions). **New token `--color-attn: #B786C6`** carries attention text/borders/rules/status dots, because neither CTA purple can be used as text on dark — `#914EA6` is 2.84:1 and `#743E85` is 2.05:1, both failing AA; `#B786C6` is the same hue (285.7°) and saturation lightened to 5.35:1 on the page and 4.81:1 on cards. It is **also blue-dominant** (r183 g134 b198), as every hue-285° colour is, so the "only two blue-dominant colours" constraint deliberately widened to three. `AlertBanner`'s `danger` and `warn` severities became byte-identical once both were purple, so they now differ by weight (2px rule + raised surface vs hairline on flat panel) rather than hue.
+**The Enhance tab is now the whole workflow.** Prompt → generate → inline scan → per-image retry/adjust → export. Nothing navigates between tabs during normal work: Scan is a standalone side tool, and export is the save. If you are about to add a "send to X tab" affordance, that is a reversal of a deliberate decision — check first.
 
 ---
 
-## Previous session (2026-07-21) — best-of-N auto-pick, Grok dormant, prompt-first Enhance
+## Enhance tab — current shape
 
-Three shipped Enhance-tab changes (all live in prod):
+**Prompt-first.** The operator's typed prompt is REQUIRED and is the spine; `_build_enhance_prompt` appends toggle add-ons and the hard guardrails on top of it (`spine_override`). The old one-size built-in prompt survives only as a dormant fallback. Two prompt paths, and confusing them causes real bugs:
 
-**1. Best-of-N auto-pick** (`9d268ab` + fixes `98c6027`). When a multi-provider (≥2) enhance batch goes terminal, a single Claude vision call ranks the variants and auto-selects the winner into `chosenByFile` — the operator sees ONE vetted image instead of grading N. Sync endpoint `POST /api/v1/enhance/judge` ([operations.py](apps/api/src/cleanshot_api/routers/operations.py)) → `judge_variants()` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py); rubric ported VERBATIM from `scripts/holistic_judge.py`, model pinned to `claude-sonnet-4-6` (**do not swap — it invalidates the ~70% operator-agreement calibration**). Candidates labeled neutrally ("CANDIDATE 1/2/3") so brand can't bias the pick; tool-forced JSON (lesson #6). Green "★ Best of N · {score}" badge (amber "review" if none pass); manual override stays one click; soft-fails to manual pick on 503/error. A post-ship adversarial review found + fixed a HIGH race — a re-enhance/clear during an in-flight judge wrote the OLD batch's winner onto the reused file id (new batch never judged; could silently drop an image from Export) — via a `judgeEpochRef` + `judgeStartedRef.has(fileId)` guard on the async continuations, plus `retryProvider` clearing the file's judge state, backend `_as_int()` guarding model-supplied numerics, and candidate-number dedup. **Deferred:** judge spend not logged to `usage_events` (needs `OperationEnum.judge` + `ALTER TYPE`, lesson #12); no rate limiter on the judge's Anthropic calls (shares scan's `claude-sonnet-4-6` tier).
+- **Enhance-tab prompt = SPINE** — the builder augments it.
+- **Scan-regen prompt = VERBATIM** — `buildRegenPrompt` already composes a complete prompt including its own guardrails, so `prompt_is_complete=True` keeps it off the builder. Without that flag the reroute double-appends guardrails and attaches a forklift-default guardrail to non-forklift regens.
 
-**2. Grok made DORMANT** (`fb4e24a`). Operator cut Grok from the mix. Dropped `"grok"` from `ENHANCE_PROVIDERS` ([lib/types-enhance.ts](apps/web/lib/types-enhance.ts)) so it's gone from the picker / select-all / default — but left in the `EnhanceProvider` union + every Record + the backend `gemini|openai|grok` Literal + `_enhance_with_grok` as dead-but-harmless code (one-line restore). **The LIVE picker is now Gemini + OpenAI only** (same dormant pattern as kontext/ideogram/reve).
+**Saved prompts.** Operators save the current prompt to their profile under a title and re-insert it in one click (`SavedPromptsBar.tsx`, `routers/saved_prompts.py`, `saved_prompts` table). Titles are unique per user via a `UNIQUE INDEX ON (user_email, lower(title))` — the DB is the authority, not a pre-check, so two tabs racing on one title can't both win. A collision returns **409**, which the UI turns into an overwrite-or-rename question; never resolve it silently. Inserted text is a copy; editing it never writes back.
 
-**3. Prompt-first Enhance** (`e7afc09`). The one-size built-in prompt was shoehorning operator intent (the "N=4→3→2 providers" prose); operators get better results writing their own prompts. The prompt box is now the **PRIMARY, REQUIRED** input under the provider row (Enhance disabled until non-empty). **"Insert recommended prompt"** drops an equipment-aware, editable starter ([lib/recommended-prompt.ts](apps/web/lib/recommended-prompt.ts) — forklift fork-line vs scissor-lift platform-line, optional make/model/year anchor). **Toggles now AUGMENT the prompt** instead of overriding it: `_run_enhance` routes `custom_prompt` as the `spine_override` into `_build_enhance_prompt`, so the user's prompt is the SPINE and the paint-forks block + ON-toggle add-ons + always-on guardrails append on top. Toggles are always enabled now (dropped the "disabled while custom prompt active" logic + the verbatim-warning). **Behavior change:** custom prompts now get the safety guardrails appended (make/model/decals/anatomy preservation, no bolt-ons, no reframe) — previously verbatim. The one-size built-in survives only as a dormant backend fallback (`spine_override=None`). Iterative follow-up prompts ("change it more" without starting over) stay **Phase 2** — the per-variant Tweak tool already covers the core. **Post-ship review fix:** the reroute would have double-appended guardrails (and a forklift-default guardrail) to the **Scan-tab Regenerate** path — `buildRegenPrompt` sends a COMPLETE prompt, not a spine. Fixed with a `prompt_is_complete` flag on `EnhanceTaskPayload` (set by `enqueue_regen`) that keeps regen on the verbatim path while the Enhance-tab stays spine-first. So: **Enhance-tab prompt = spine (builder augments); Scan-regen prompt = verbatim.**
+**Four visible toggles.** `VISIBLE_TOGGLES` in `apps/web/lib/types.ts` is the single list controlling which toggles render: rental-fleet branding removal, floor cleanup (`showroomFloor`), remove people, shine tires. **The others are hidden, not deleted** — their state, handlers, labels and backend prompt-injection all still work, and a hidden toggle sits at its `DEFAULT_TOGGLES` value (all `false`). Restoring one is adding a key to that array. Do not "clean up" the unused ones.
 
-**Supersedes the 2026-07-13 note below:** the "single built-in prompt / prompt_choice removed" statement is now itself superseded — the built-in prompt is a dormant fallback; the operator's typed prompt is the primary path.
+**Inline scan.** Every enhance output is scanned automatically — `_run_enhance` has always enqueued a differential scan job per completed variant. The Enhance tab READS those results (`lib/inline-scan.ts` folds the session payload's `jobs` + `scan_results` into per-asset state) and renders them beside each variant. **Do not enqueue scans from the browser** — it doubles the AI spend on every batch for results the backend already produces.
 
----
+**Per-image, not per-batch.** Retry, contrast/saturation, and fork conditionals are all per source image. `EnhanceTaskPayload` was already per-job, so per-image features need a new field, not new plumbing. Retry re-runs one (file, provider) pair with the CURRENT prompt and toggles and swaps it in place.
 
-## Earlier session (2026-07-13) — differential scan, equipment types, enhance-quality investigation
+**Re-enhance has no dirty-input guard.** An identical batch can be re-run at will — generation is non-deterministic and a second roll is often the point.
 
-**Shipped & live:**
-- **Differential (before/after) scan** (`3a90e77`) — see the Scan section below. Compares the enhanced output against the ORIGINAL pre-enhance photo and flags UNINTENDED machine changes (shrunk forks, added parts, altered text, added damage), with an `intended_edits` whitelist so deliberate edits aren't flagged. Auto-fires on every enhance; manual scan-batch threads originals too; standalone uploads fall back to the isolated scan.
-- **Two new equipment types** (`6cb6981`): `turret_truck` (VNA) + `articulated_forklift` (Bendi/Flexi/Aisle-Master) — 10 types total.
-- **Per-provider master-prompt "Prompt:" dropdown REMOVED from the Enhance UI** (`b75a1f9`). Every enhance now flows through the single built-in prompt. Backend `prompt_choice` + `master_prompts.py` plumbing left inert (nothing sends it → procedural builder); `types-enhance.ts` PromptChoice vocab is dead-but-harmless.
-- **MetaCard equipment selector restyled** to a symmetric grid (`520f935`).
+**Best-of-N auto-pick.** A multi-provider (≥2) batch is auto-judged by a single Claude vision call and the winner auto-selected. Model pinned to `claude-sonnet-4-6` — **do not swap it; that invalidates the ~70% operator-agreement calibration.** Candidates are labelled neutrally ("CANDIDATE 1/2/3") so brand can't bias the pick. There is a `judgeEpochRef` + `judgeStartedRef` guard because a re-enhance during an in-flight judge could otherwise write the OLD batch's winner onto a reused file id and silently drop an image from export.
 
-**Tried and REVERTED — don't redo blindly:** Phase A enhance-prompt change (make/model/year identity anchor + "PRESERVE EXACT DIMENSIONS" guardrail) shipped as `48c653f` then **reverted (`1585f46`)** after the operator reported it regressed output. Emphatic "don't change X" guardrails backfire on Gemini (it re-renders X — the "don't think of an elephant" effect). Prod prompt is back to pre-Phase-A known-good.
+### Fork conditionals (experimental, OFF by default)
 
-**Key finding** (full detail in memory `enhance-warehouse-electric-model-limit`): **prompt wording is NOT the lever for hard equipment types.** Gemini enhances big/common machines fine (telehandler, articulated, counterbalance forklift) but botches **warehouse-electric gear** (reach trucks, order pickers, walkie stackers, pallet jacks) — recolors cab/mast, adds wheels, desaturates, reshapes — inconsistently run-to-run **regardless of prompt**. Measured via eval harness + operator grading: full rewrite = wash; isolated per-type "THIS MACHINE" block = mixed/negative. It's a **model capability/variance limit** — do not re-run prompt A/Bs on these types.
+Conditional fork rules inside the prompt don't hold when the fork isn't fully in frame: with the upright section out of shot the model paints the carriage or overhead guard into a shank; with the tips cropped it SHORTENS the forks to bring tips into view so it has something to paint yellow.
 
-**Operator's holistic pass/fail bar** (a part-diff count does NOT predict it): FAIL for cab/mast/body recoloured to a DIFFERENT hue, desaturation, added wheels/parts, reshaping, obviously-AI look, or a legible model-# significantly wrong. PASS/tolerate: same-colour body respray, red forks + yellow tips, BLACK backrest/carriage, cleaned bg/floor, better lighting, subtle geometry, 1-2 char model-# drift.
+The fix is **fragment removal, not counter-instruction** — emphatic "do not draw X" backfires on Gemini (see the reverted Phase A experiment below). Both the frontend starter (`lib/recommended-prompt.ts`) and the backend fork block (`_build_fork_fragments`) are ordered lists of whole, self-contained sentences, so any subset still reads as coherent prose. The yellow-tip clause is **substituted**, not merely deleted — silence lets the model fall back on its yellow-tip prior.
 
-**Parked next bets (not started):** (1) **prod differential-scan recalibration** — the LIVE scan over-fires vs the operator bar (flags intended repaint/backrest, minor text, subtle geometry); clean deployable win with the rules above. (2) **best-of-N** generation (already fan out to 3 providers) + pick, or **route warehouse-electric types to a different model** — the real levers for hard types. (3) **exclude collage + data-tag shots** from enhance (out-of-scope inputs).
+- **Master switch is off by default, session-only, never persisted, never enabled as a side effect of anything else.** `forkVisFor()` in `EnhancePanel` is the ONE gate every read goes through; with the feature off it returns fully-visible regardless of stored per-file state, and `promptForFile` returns the operator's text verbatim with no rebuild. That is what makes "turn it off" a true restore with no residual effect.
+- **Custom prompts degrade visibly.** If the operator reworded the prompt there is no fragment of ours to remove, so the backend appends an explicit FORK FRAMING note instead and the UI says so. `fork_framing_in_prompt` stops both paths firing and saying it twice.
+- Automatic detection would need no rework here (the flags are per-image booleans resolved at enqueue), but note the ordering problem: the scan runs AFTER enhance, so auto-detection needs a pre-pass on the SOURCE photo.
 
-**Eval tooling** in `scripts/`: `eval_harness.py` (paired A/B via `custom_prompt`, no deploy), `candidate_prompt.py` (modular prompt builder), `holistic_judge.py` (Claude "would you list this?" judge, ~70% agreement w/ operator), `make_embedded_report.py` (self-contained base64 before/after report). Drive gcloud via `cmd /c` full path — SDK is installed locally but off the session PATH (memory `gcloud-local-access`).
+### Durable findings — do not relearn
+
+- **Prompt wording is NOT the lever for hard equipment types.** Gemini handles big/common machines fine (telehandler, articulated, counterbalance) but botches **warehouse-electric gear** (reach trucks, order pickers, walkie stackers, pallet jacks) — recolours cab/mast, adds wheels, desaturates, reshapes — inconsistently run-to-run **regardless of prompt**. Measured via eval harness + operator grading: full rewrite = wash; per-type "THIS MACHINE" block = mixed/negative. It is a model capability/variance limit. Do not re-run prompt A/Bs on these types.
+- **Tried and REVERTED — don't redo blindly:** the Phase A enhance-prompt change (make/model/year identity anchor + "PRESERVE EXACT DIMENSIONS" guardrail) shipped as `48c653f` and was reverted in `1585f46` after it regressed output. Emphatic "don't change X" guardrails backfire on Gemini — the "don't think of an elephant" effect.
+- **Operator's holistic pass/fail bar** (a part-diff count does NOT predict it): FAIL for cab/mast/body recoloured to a DIFFERENT hue, desaturation, added wheels/parts, reshaping, an obviously-AI look, or a legible model-# significantly wrong. PASS/tolerate: same-colour body respray, red forks + yellow tips, BLACK backrest/carriage, cleaned background/floor, better lighting, subtle geometry, 1-2 char model-# drift.
+- **Paint is STANDING policy in the differential scan prompt**, not a per-batch whitelist entry — same-colour respray, red/orange forks + yellow tips, black backrest/carriage/load guard, repainted wheels/counterweight are always expected. This is what stopped the scan false-positiving on the exact edits the operator asked for. Geometry flags were removed from the differential vocabulary entirely ("no one understands what that means" — it was the label on most false positives); gross deformity still lands as `size_changed`/`part_added`/`part_removed`.
+- **`computeConsensus` returns `"mixed"` if any ONE of three providers fails**, so a single over-eager vote still costs a clean pass badge. Changing it is a verdict-semantics decision, not a bug fix.
 
 ---
 
@@ -189,40 +186,14 @@ Five small icons on every completed enhance variant (top-left, left to right): *
 
 ---
 
-## Modify tab — darkroom + standalone tool
+## Per-image adjustments (the darkroom, what's left of it)
 
-Optional tab between Scan and Resize. Deterministic (non-AI) pixel-level operations via pyvips. Operator can EITHER use it as a darkroom pass on whatever's queued for Resize OR upload raw photos directly to use it as a standalone tool — both modes converge into the same `allAssets` pool inside the panel.
+There is no Modify tab and no bulk adjustment panel. Each generated variant carries its own compact **contrast + saturation** controls; Apply renders that one image and swaps it into `completed`, which is what `pickedWinners` and therefore `ExportControls` read — so an applied adjustment persists through export with no extra plumbing.
 
-**Three modes** in the controls card (tab strip at the top):
-
-| Mode | Controls | Live preview |
-|---|---|---|
-| Adjustments | Brightness / Contrast / Saturation sliders (−100..+100) | CSS `filter` |
-| Crop        | Aspect picker (Free / 1:1 / 4:3 / 7:5 / 16:9) + Zoom slider (50..100%) | Yellow dashed overlay over the keep-region |
-| Straighten  | Rotation slider (−15.0° to +15.0°, 0.1° step) | CSS `transform: rotate()` |
-
-All three modes **combine** on Apply — operator can dial in any subset. Backend runs them in this order so the math composes cleanly: `rotate → wedge-crop → smart-crop (aspect) → brightness/contrast → saturation`.
-
-**Backend pipeline:**
-
-- **Endpoint:** `POST /api/v1/modify/batch` ([routers/modify.py](apps/api/src/cleanshot_api/routers/modify.py)). Parallel GCS fetch + thread-dispatched pyvips work + new asset rows tagged `operation=modify`.
-- **Schema:** `ModifyBatchRequest` wraps `ModifyAdjustments` (`brightness`, `contrast`, `saturation`, `rotation_deg`, `crop_aspect` Literal, `crop_zoom`) in [schemas.py](apps/api/src/cleanshot_api/models/schemas.py).
-- **Service:** `apply_adjustments()` in [image_processing.py](apps/api/src/cleanshot_api/services/image_processing.py). Combined brightness+contrast in one `linear()` op; LCH colourspace round-trip for saturation; rotation via `pyvips.Image.rotate(angle, background=[0,0,0])` followed by centre-crop to the maximum inscribed rectangle (closed-form formula in `_inscribed_rect_after_rotation()`); smart-crop for aspect mode.
-- **DB:** `OperationEnum.modify` value + `ALTER TYPE operation_enum ADD VALUE IF NOT EXISTS 'modify'` in [migrate.py](apps/api/src/cleanshot_api/db/migrate.py) — per hard-won lesson #12 (Pydantic StrEnum additions don't migrate the Postgres type automatically).
-
-**Frontend:**
-
-- [ModifyPanel.tsx](apps/web/components/modify/ModifyPanel.tsx) — combined darkroom + standalone uploader.
-- Slider math (`sliderToBC`, `sliderToSat`) is duplicated as comments in `apply_adjustments` so the CSS-filter preview matches the pyvips render to the third decimal place. Don't drift these.
-- Crop overlay is a dashed yellow rectangle positioned in % units relative to the preview thumb's `aspect-4/3` figure. The math (`cropOverlay` useMemo) handles both "free" mode (symmetric zoom inset) and aspect-locked mode (smaller axis-locked rectangle).
-- Apply replaces `resizeAssets` wholesale via Workspace's `handleModifyApplied` callback (same length + order; modified PNGs land in `derivatives/session/{id}/modify/*.png`).
-- Standalone-upload pattern mirrors ResizePanel — `StandaloneUpload` state, `runUpload` pipeline (convertToJpeg → getSignedUploadUrl → uploadToGcs), uploaded files merge into `allAssets`.
-
-**Phase 2 still pending:**
-
-- Per-image variation (each queued asset gets its own slider state) — currently Phase 1 is batch-only (same adjustments to every queued image).
-- Drag-handle freeform crop (the current aspect+zoom UI is centre-only).
-- Pre-applied client-side preview of the crop+rotate combination (currently the overlay shows the keep-region but doesn't show the rotated-then-cropped result inline).
+- **The backend is unchanged and still shared.** `POST /api/v1/modify/batch` ([routers/modify.py](apps/api/src/cleanshot_api/routers/modify.py)) + `apply_adjustments()` in [image_processing.py](apps/api/src/cleanshot_api/services/image_processing.py). The per-image path calls it with a single asset id. `ModifyAdjustments` still carries `brightness`, `rotation_deg`, `crop_aspect`, `crop_zoom`; the per-image UI sends neutral values for those (`1.0` / `0` / `"free"` / `1.0`, all no-ops).
+- **Slider math (`sliderToBC`, `sliderToSat`) is duplicated as comments in `apply_adjustments`** so the CSS-filter preview matches the pyvips render to the third decimal. Don't drift these.
+- **`OperationEnum.modify`** needed `ALTER TYPE operation_enum ADD VALUE` in [migrate.py](apps/api/src/cleanshot_api/db/migrate.py) — see hard-won lesson #12.
+- **Brightness, crop, and straighten are no longer reachable from the UI.** `ModifyPanel.tsx` is orphaned but retained (same dormant-code convention as the retired providers); the backend for all three still works. Restoring one is UI work, not backend work.
 
 ---
 
@@ -240,18 +211,62 @@ Vercel env vars needed for auth (set via the Vercel dashboard, not in any workfl
 
 ---
 
+## CleanShot as an ingest target (media-auditor → df-auto-edit → here)
+
+As of 13 Aug 2026 two sibling apps are being wired to send work in:
+**media-auditor** (audits published listing photos, owns a separate Neon DB) and
+**df-auto-edit** (crops them). An auditor selects flagged units, they get cropped,
+and the crops arrive here for a paint pass.
+
+**Nothing new is needed on this side.** The handoff uses the API-key surface that
+already exists, and callers were pointed at it precisely so no new ingest endpoint
+gets invented:
+
+```text
+POST /api/v1/upload/signed-url   -> signed GCS PUT   (X-Api-Key, require_api_key)
+PUT  <signed url>                -> df-auto-edit sends the bytes directly
+POST /api/v1/enhance             -> 202 + job id      (X-Api-Key)
+GET  /api/v1/assets/{asset_id}/url -> signed GET      (X-Api-Key)
+```
+
+Things to know if this starts showing traffic:
+
+- **Auth is `X-Api-Key` via `core/security.py`**, which already supports rotation
+  (`api_key` + `api_key_prev`, constant-time compare). An HMAC scheme and Entra
+  client-credentials were both considered for the cross-app call and rejected as
+  duplicate machinery — these routes check a key, not a token.
+- **`require_api_key` is a shared-secret gate with no notion of *which* caller
+  it is.** If per-app attribution or revocation matters, that is a real gap —
+  today a leaked key is a leaked key for every caller.
+- **Batch sizes are capped on the auditor's side at 25 units (~250 images)**
+  specifically because `openai_image_rate_limiter` is 5 events/60s and the
+  limiters are **process-local** with `min-instances=1`. A larger batch is mostly
+  queue. If external batches become routine, the Valkey-backed limiter noted in
+  the Rate limiting section stops being optional.
+- **Dispatch on the auditor's side is OFF by default** (`PAINT_DISPATCH_ENABLED`
+  unset) because paint is real vendor spend. Do not assume traffic has started
+  just because the queue exists.
+- **Bytes arrive by pre-signed PUT, not a shared bucket.** This app is on GCS,
+  df-auto-edit is on Vercel Blob, and there is no store both can reach — so
+  `mint_read_url` / signed PUT is the integration surface, permanently.
+
+---
+
 ## Approvals + Export flow
 
-- **Save Project** (`POST /api/projects/save`) — required precondition for any export. Upserts the project row and flips `projects.saved_at`. FastAPI 403s every export endpoint until this is set.
-- **Approve set** (`POST /api/approvals`, [api.ts:169](apps/web/lib/api.ts#L169)) — copies each asset to `gs://cleanshot-derivatives-prod/approved/{email}/{dir}/` keyed by the signed-in user's email (from Better Auth session). Creates an `approval_set` row visible in the History tab.
-- **Single-click Save+Approve** — the Resize flow calls both immediately after the user clicks the action button. No separate "Approve All" button anymore (`ApproveAllButton.tsx` was deleted).
+- **Export IS the save.** There is no Save Project button; clicking `7x5 EXPORT` saves the project and then exports, in that order. **`_require_saved_project` still 403s every export endpoint until `projects.saved_at` is set**, which is why the save has to run first and why Make + Model still gate the export button. The project metadata FORM is still there — only the button is gone.
+- **The stored copy is the exported file.** `/export/pro/preview` writes the finished JPEG straight into `approved/{email}/{dir}/` and registers an `assets` row (`operation=export`) plus the approval-set rows. It no longer writes a working copy under `session/.../pro/` and copies it across afterwards — that produced two copies of every image, one clean and one exported. **One copy, one location.**
+- **Originals go with it.** `original_asset_ids` on `ExportProRequest` carries the pre-enhance asset ids; they're server-side copied into the same directory as `original_*`, de-duplicated (several exported variants can share one source).
+- **Only selected images are persisted.** Unselected variants never reach the export call.
+- **Re-export is idempotent per (session, gcs_dir)** — it reuses the existing approval set and rebuilds its membership rather than stacking a duplicate entry in the Photo Library.
+- **The frontend no longer calls `approveSet` on the export path.** That call copied the PRE-export bytes and is exactly the duplicate the above removes. `POST /api/approvals` still exists and is unchanged for other callers.
 - **Export endpoints** (all in `routers/export.py`, FastAPI side fully built):
   - `/api/v1/export/fullsize` — signed GET URL for the full-size PNG (1-hour expiry).
   - `/api/v1/export/pro` — 1024×731 crop, JPEG ≤100 KB iterated quality. Single JPEG or ZIP for batches. Sets `X-Warning: target-size-unachievable` when the size target can't be met.
   - `/api/v1/export/pro/preview` — per-image signed URLs + size metadata (complements the binary download). **This is the path the UI actually uses** (`exportProPreviewStream`). Filenames are meta-derived: per-image `_build_pro_filename` (`Toyota_8FGU25_2019_01[_Provider].jpg`) and the ZIP `_build_zip_filename` (`Toyota_8FGU25_2019.zip`). Both the ZIP and per-image download links force their name via `mint_read_url(..., download_filename=...)` which sets `response-content-disposition` on the signed URL — required because the HTML `download` attribute is ignored for cross-origin (`storage.googleapis.com`) hrefs. Stream now also emits `zip_filename`. The legacy non-streaming `/api/v1/export/pro` endpoint still uses generic `{asset_id}_pro.jpg` / `cleanshot_pro_export.zip` names (not UI-wired).
   - `/api/v1/export/custom` — arbitrary dimensions, JPEG/PNG/WebP/BMP.
   - `/api/v1/export/zip` — streaming ZIP for batch downloads.
-- **AI-disclaimer watermark.** Optional opt-in flag (`ai_disclaimer: bool`) on `ExportProRequest`. When `True`, pyvips burns the string `"*Disclaimer:  AI enhanced images - used for representational purposes"` into the bottom-right corner of every output JPEG. Rendered via Pango markup (`text(..., rgba=True)`) so the `*Disclaimer:` label is **green** (`#22c55e`) and the body white, with a black shadow at ~65% alpha + foreground at ~92% alpha for legibility on both light and dark backgrounds, **Roboto Bold 11 pt** (needs `fonts-roboto` in the Dockerfile — without it Pango silently falls back to Liberation), 12 px margin. Constant lives in two places that must stay in sync: `AI_DISCLAIMER_WATERMARK` (+ `AI_DISCLAIMER_LABEL` for the green-split point) in `apps/web/components/export/ExportControls.tsx` (UI preview) and `apps/api/src/cleanshot_api/services/image_processing.py` (pyvips render). Helper: `_apply_disclaimer_watermark()`.
+- **AI-disclaimer watermark — CURRENTLY AN OPTIONAL CHECKBOX, defaulting ON.** It was briefly made unconditional (2026-08-21) and then reverted **pending a final decision on how the watermark gets applied**, so expect this to move again. The flag (`ai_disclaimer: bool`) is back on `ExportProRequest`, but note it now defaults **`True`** on the wire and in `export_pro()`, unlike the original which defaulted `False` — a caller that omits it gets the disclaimer rather than silently dropping it. There is no tooltip claiming all exports are watermarked; that was removed with the revert. When `True`, pyvips burns the string `"*Disclaimer:  AI enhanced images - used for representational purposes"` into the bottom-right corner of every output JPEG. Rendered via Pango markup (`text(..., rgba=True)`) so the `*Disclaimer:` label is **green** (`#22c55e`) and the body white, with a black shadow at ~65% alpha + foreground at ~92% alpha for legibility on both light and dark backgrounds, **Roboto Bold 11 pt** (needs `fonts-roboto` in the Dockerfile — without it Pango silently falls back to Liberation), 12 px margin. Constant lives in two places that must stay in sync: `AI_DISCLAIMER_WATERMARK` (+ `AI_DISCLAIMER_LABEL` for the green-split point) in `apps/web/components/export/ExportControls.tsx` (UI preview) and `apps/api/src/cleanshot_api/services/image_processing.py` (pyvips render). Helper: `_apply_disclaimer_watermark()`.
 - **Collage export removed (2026-06-18).** Both the plain `/export/collage` preset and the 5-image `/export/branded-collage` marketing composer were deleted — endpoints, BFF proxies, `ExportCollageRequest`/`ExportBrandedCollageRequest` schemas, `export_collage`/`compose_branded_collage` (+ `_cover_crop`/`_fit_with_letterbox`) helpers, and the entire collage UI in `ExportControls.tsx`. Lesson #19 and the shipped-archive collage bullets below are kept only as historical record. Don't reintroduce without a fresh reason.
 - All BFF proxies in `apps/web/app/api/export/*` are wired (no more 501 stubs).
 
@@ -356,7 +371,7 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 
 ## Frontend UI system, Flags & access control
 
-**`STYLE_GUIDE.md` (repo root) is the canonical UI reference.** Rewritten 2026-07-30 for the **Discount Forklift house palette** (see Latest session). Conform to it for any new UI; extend it in-PR rather than inventing one-offs. Key rules baked in across the app:
+**`STYLE_GUIDE.md` (repo root) is the canonical UI reference.** Rewritten for the **Discount Forklift house palette**. Conform to it for any new UI; extend it in-PR rather than inventing one-offs. Key rules baked in across the app:
 
 - **`apps/web/styles/globals.css` is the SINGLE source of truth for colour.** 17 semantic tokens in Tailwind v4 `@theme` (`bg-panel`, `text-ink`, `border-line`, …). Never a raw hex, never a Tailwind palette family — the offending families are **deleted** (`--color-zinc-*: initial`, etc.), so `bg-zinc-900` generates no CSS and a stray legacy class is visibly unstyled instead of silently reintroducing a blue-grey.
 - **Three hard constraints:** every grey is a true neutral (`r == g == b`) · no amber/orange/mustard anywhere · the only blue-dominant colours allowed are the **three** house purples `#914EA6` / `#743E85` / `#B786C6` (every hue-285° colour is blue-dominant, so a purple attention colour necessarily widened this from two to three).
@@ -367,11 +382,12 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 - **Selected/active state, one pattern everywhere:** raised surface + lime border (`bg-panel-hi border-accent`).
 - **Links/CTAs:** bold **lime** (global base-layer rule in `globals.css`). Not purple (buttons only); the old `sky-400` and `#CE6FEC` are both blue-dominant and banned.
 - **Fonts:** `font-display` Archivo Black (h1 + uppercase section headings) · Archivo body · IBM Plex Mono labels/metadata, via `next/font/google` in `app/layout.tsx`. **Never combine `font-display` with `font-bold`** — Archivo Black is single-weight and the browser fakes a smeared bold.
-- **Auto-advance is GONE** — removed entirely. The per-card "Hold" on Enhance now just means "exclude from the bulk Send to Scan".
+- **Auto-advance is GONE** — removed entirely, and so is Send-to-Scan. The per-card "Hold" on Enhance now means "exclude from export and from the per-image batch operations".
 - **Tooltip accordions:** `TipBanner` is collapsible by default, driven by `apps/web/lib/useVisitCount.ts` — expanded visits 1-4, collapsed visit 5+ (localStorage `cleanshot_visit_count`). One callout per tab; `tone="info"` is neutral + lime icon, `tone="warn"` is purple (`attn`). The Enhance equipment-details callout is the exception: always defaults expanded.
 - **Equipment selectors** render as toggle-cards (raised + lime border selected / dark + radio-dot unselected), grouped warehouse-forks vs aerial via `EQUIPMENT_GROUPS` in `lib/types.ts`.
 - **Scrollbar gutter:** `html { scrollbar-gutter: stable }` reserves the gutter so cards don't jump when the scrollbar appears.
-- **Per-provider identity hues are GONE** — a three-accent palette can't encode six model colours. Provider selection is structural; the speed pill (lime "Fast" / purple "Slow") carries differentiation.
+- **Enhance provider selection carries no identity hue** — a three-accent palette can't encode six model colours. Selection is structural (raised surface + lime border); the speed pill (lime "Fast" / purple "Slow") carries differentiation.
+- **SCAN provider colours are a documented EXCEPTION.** `SCAN_PROVIDER_COLOR` in `lib/scan-helpers.ts` gives Gemini `#4A9EFF`, OpenAI `#22D3EE`, Anthropic `#FF8A3D`. Literal hexes, not `@theme` tokens, and applied as inline `style` so no restyle or library default can flatten them — a previous pass collapsed all three progress bars onto one neutral grey and the strip stopped telling you which vendor was still running. Two of the three are blue-dominant, which the constraint above otherwise restricts; accepted, because these are identity colours, not UI state. All three pass AA as text on bg/panel/well (lowest 5.07:1), so they're safe on labels and chips too. The bar keeps its hue when complete — done-ness is width + a separate lime ✓, not a hue swap. Same precedent as the Tweak button's literal `#0A84FF`.
 
 **Vercel Flags SDK + PostHog** — `apps/web/flags.ts`. `identify()` resolves the operator from the Better Auth session (`getSessionEmail(await headers())`) so PostHog targets flags per-user by email. Example flag `myFlag`/`my-flag` is a template — rename to the real PostHog flag key. Adapter env vars come from `vercel env pull` (.env.local, gitignored); must also exist in Vercel Production.
 
@@ -382,7 +398,7 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 ## Open work items (prioritised)
 
 1. **Per-user access control — Phase 2 (admin audit logging).** Phase 1 (config + UI gating + server-side model lock) shipped 2026-05-28. Phase 2 NOT built: (a) `enhance_audit_log` table in `migrate_auth.py` (`id, timestamp, user_email, model_used, prompt_text, result_text`); (b) thread `user_email` through `/api/enhance` BFF → FastAPI `/api/v1/enhance` → `EnhanceTaskPayload` → `_run_enhance`, which writes the row on completion (result_text = output asset id + signed URL + status) for `tracking` users; (c) admin API `GET /api/admin/audit?user=` + BFF proxy; (d) "Audit" tab in `AdminDashboard.tsx`, filterable by user. Decision still open: full worker-side logging (captures result) vs cheaper BFF-only enqueue logging (no result). See HANDOFF.md.
-2. **Per-model enhance prompts.** ⚠️ **2026-07-13 UPDATE:** investigated with the eval harness — prompt wording is NOT a reliable lever for the hard warehouse-electric types (Gemini model limit; see Latest session). Per-model *phrasing* may still help cross-model consistency on the easy types, but it's deprioritized behind the parked bets (best-of-N / model-routing / scan recalibration). Original note kept below. Single biggest quality lever left. Current `_build_enhance_prompt` is ~200 lines of declarative scene prose tuned for Gemini Nano Banana edit semantics, and it ships verbatim to every provider. Kontext especially is mismatched — BFL positions it for short imperative prompts (1–3 sentences) to preserve subject identity; long prose dilutes that. Reve has a 2560-char `edit_instruction` cap and explicitly auto-enhances the instruction internally, so it benefits from terse imperative prose too. Discussed plan: add `_build_kontext_prompt` first (Phase A, smallest win), then `_build_reve_prompt`, then `_build_openai_prompt` + eval harness (Phase B). Grok can share OpenAI's style.
+2. **Per-model enhance prompts.** ⚠️ **2026-07-13 UPDATE:** investigated with the eval harness — prompt wording is NOT a reliable lever for the hard warehouse-electric types (Gemini model limit; see "Durable findings" above). Per-model *phrasing* may still help cross-model consistency on the easy types, but it's deprioritized behind the parked bets (best-of-N / model-routing / scan recalibration). Original note kept below. Single biggest quality lever left. Current `_build_enhance_prompt` is ~200 lines of declarative scene prose tuned for Gemini Nano Banana edit semantics, and it ships verbatim to every provider. Kontext especially is mismatched — BFL positions it for short imperative prompts (1–3 sentences) to preserve subject identity; long prose dilutes that. Reve has a 2560-char `edit_instruction` cap and explicitly auto-enhances the instruction internally, so it benefits from terse imperative prose too. Discussed plan: add `_build_kontext_prompt` first (Phase A, smallest win), then `_build_reve_prompt`, then `_build_openai_prompt` + eval harness (Phase B). Grok can share OpenAI's style.
 3. **OpenAI `/v1/responses` rate pressure.** Enhance (gpt-5 + image_generation tool) and scan (gpt-5.4) both pull from the same endpoint quota. Already caused scan cascade failures once. Pick one: tier-bump the OpenAI org, OR add a scan-side `AsyncRateLimiter` on `/v1/responses`.
 4. ~~**Raise Cloud Tasks `max_dispatches_per_second`** from `0.1` to `1.5` for `cleanshot-image-gen`.~~ **DONE 2026-05-27** — operator ran the gcloud command. Was the single biggest perceived-speed win: 10-image × 6-provider batch dispatch dropped from ~600s to ~40s. Per-provider rate limiters (`5/60s` OpenAI, `3/30s` Reve/Grok) are now the binding ceiling, as planned.
 5. **~~Drop Gemini `thinking_level: High` → `Medium`~~ — DEAD LEVER.** `gemini-3.1-flash-image-preview` ONLY accepts `"High"`; both `"Medium"` and `"Low"` return `400 INVALID_ARGUMENT`. Code comment at `_enhance_with_gemini` says as much. Re-evaluate when an image-gen model with a real thinking-level spectrum ships to AI Studio. Until then, do not waste cycles on this knob.
@@ -394,32 +410,10 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 11. **OpenAI as opt-in, not default-on.** `gpt-5 + image_generation` is the slowest provider (~75s vs ~20s Gemini) AND it shares `/v1/responses` quota with scan (see item #3). The "Select all providers" checkbox we shipped in `f004606` makes the cost visible, but consider also un-checking OpenAI on initial mount if the operator hasn't manually selected it. Default-on for a 75s provider penalises every batch.
 12. **Considered + declined (do not re-litigate without new evidence):**
     - **Runway Gen-4** — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the per-image cost, slower API. Note in CLAUDE.md to prevent re-evaluation.
-13. **Recently shipped, archived from this list:**
-    - **Per-user access control Phase 1 (2026-05-28).** `lib/access-control.ts` config + UI gating (Workspace tabs, EnhancePanel locked-model/no-toggles/custom-prompt-only, MetaCard metadata hidden) + authoritative server-side model lock in the `/api/enhance` BFF route. Inert until `AUTH_ENABLED=true`. Phase 2 (admin audit logging) is open work item #1.
-    - **UI consistency overhaul + `STYLE_GUIDE.md` (2026-05-27/28).** 9-section pass: removed auto-advance entirely, global bold sky-400 links, green/blue/red button system, no full-width buttons, collapsible tooltip accordions (`useVisitCount`, expanded visits 1-4 / collapsed 5+), standardized drag-drop zones, equipment toggle-cards, Modify bottom button row (gold tooltip removed), compacted Resize export cards (black bg + thin border, "PRO CONSTRAINTS EXPORT" / "COLLAGE EXPORT", yellow bullets), Scan pre-scan image previews, Enhance equipment-details accordion, `scrollbar-gutter: stable` (no card-jump). `STYLE_GUIDE.md` at repo root is the canonical reference.
-    - **Vercel Flags SDK + PostHog (2026-05-28, commit `e103f2b`).** `apps/web/flags.ts` with session-based `identify()`. Template flag `my-flag` — rename to real PostHog key when gating a feature.
-    - **Better Auth `trustedOrigins` for discountforklift.ai (2026-05-28).** Added apex + www + Vercel + localhost so the 2nd domain's sign-in POSTs aren't CSRF-rejected. SSO re-enable (`AUTH_ENABLED=true`) + per-domain Entra redirect URIs are operator steps.
-    - **GCS CORS policy `infra/gcs-cors.json` (2026-05-28).** Fixed "GCS PUT network error" uploads from the new domain — bucket CORS now allows discountforklift.ai. Operator applied to both browser-PUT buckets. See lesson #26.
-    - **frozen-lockfile CI fix (2026-05-28, commit `fe9b3fc`).** Root `npm install` had polluted the pnpm lockfile's root importer with flags deps. See lesson #25.
-    - **Cloud Tasks dispatch-rate bump 0.1 → 1.5 /s (2026-05-27).** Operator ran `gcloud tasks queues update cleanshot-image-gen --max-dispatches-per-second=1.5 --max-concurrent-dispatches=20 ...`. Single biggest perceived-speed win in the whole session — a 10-image × 6-provider batch (60 jobs) now dispatches in ~40s instead of ~600s. Per-provider rate limiters are now the binding ceiling, not the queue. No code change.
-    - **Per-provider speed tuning (2026-05-27, commit `8cf10c4`).** OpenAI `reasoning_effort: low` cuts ~25-40s off each gpt-5 call (75s → ~45s); Ideogram `rendering_speed: TURBO` (25s → ~15s); Kontext poll cadence tightened (front-load 0.5-1.0s intervals + steady 1.0s, max attempts 90) to catch completion ~1-2s sooner. Gemini `thinking_level="High"` confirmed as the only accepted value — not a knob.
-    - **7-equipment expansion (2026-05-27, commits `16d47d9` + `7e3ee21` + `59b5520`).** Added Reach Truck, Order Picker, Pallet Jack, Walkie Stacker as enhance equipment types alongside Forklift, Telehandler, Scissor Lift. Backend `EQUIPMENT_DISPLAY` / `EQUIPMENT_ANATOMY` / `EQUIPMENT_BODY_PARTS` dicts extended with per-type anatomy prose. `paint_forks_on` rule relaxed from `equipment_type in ("forklift", "telehandler")` to `equipment_type != "scissor_lift"` since the 4 new types all carry visible forks. Frontend `EQUIPMENT_GROUPS` introduced (warehouse forks vs aerial) — chip strip now renders as two visually distinct segmented controls instead of one continuous row, wired across MetaCard + ResizePanel.
-    - **Vercel Speed Insights wired + Real Experience Score fix pass (2026-05-27, commits `feb4fdf` → `00cf91e` → `9e7bf70` → `a9298b6`).** `<SpeedInsights />` added to root layout. Initial RES was 74 / "Needs Improvement" with CLS=0.29 (poor) and LCP=3.49s (yellow). Fixes shipped: explicit `width`/`height` on UserMenu avatar (36×36) + Header logo (230×64, intrinsic 1438×400) + thumbnail images; dynamic-import of Scan/Modify/Resize/History panels (Enhance stays static as the default tab) + `visitedTabs: Set<TabId>` gate so panel chunks only download on first activation but stay mounted afterwards (state preserved); TipBanner step list deferred one paint after mount; `<link rel="preload" as="image">` for logo + `<link rel="preconnect" crossOrigin="anonymous">` for Cloud Run API; UserMenu skeleton placeholder while `useSession.isPending`; tab-hover/focus prefetch of dynamic-imported chunks via `TAB_PREFETCH` map in Workspace + `onPrefetch` prop on TabBar.
-    - **Deploy-web CI pipeline rewrite (2026-05-27, commits `b75bdf4` + `cc4370e`).** Dropped `amondnet/vercel-action@v25` (rotted — pinned `vercel@25.1.0`, rejected by current Vercel API with "version 47.2.2 or later required"). Now installs `vercel@latest` per-run and invokes the three-command CI pattern (`vercel pull` → `vercel build` → `vercel deploy --prebuilt`). Also dropped redundant `working-directory: apps/web` that was path-doubling with the project's Root Directory setting. Captured the why in hard-won lessons #22 + #23.
-    - **Vercel Deployment Protection disabled on Production (2026-05-27, operator-side toggle).** Was silently blocking the production alias even though CI reported deploys + alias step as successful — symptoms: `clean-shot-web.vercel.app` 404'd with `DEPLOYMENT_NOT_FOUND`, immutable deployment URL 401'd with `_vercel_sso_nonce`. Internal tool already has its own auth gate (Better Auth + Microsoft SSO), so Vercel-side protection was double-locking. Captured as lesson #24.
-    - **`engines.node` pinned 22.x + Speed Insights install (2026-05-27, commits `b578742` + `feb4fdf`).** Vercel was warning that `">=22.11.0"` would silently jump majors when Node 24 lands as a supported runtime. Pinned to `22.x` (still picks up patches + minors). `@vercel/speed-insights@2.0.0` added as a dep alongside the existing `@vercel/analytics`.
-    - **Cloud Run `min-instances` 2 → 5 (2026-05-26).** Warmer pool kills cold-start tax on burst dispatch. Mild monthly cost bump (~3 extra always-on CPU at idle); the latency win on the first 1-2 requests of a new batch is worth it. Pair with the Cloud Tasks dispatch-rate bump (now done — first bullet above) to fully unlock burst throughput.
-    - **Infinite photo library storage (this session).** GCS lifecycle rule deleted; `approval_sets.expires_at` made nullable; UI badge hides when NULL. Photo library now keeps approved sets forever. Operator ran `gcloud storage buckets update gs://cleanshot-derivatives-prod --clear-lifecycle` after the code change shipped. See commit `32df157`.
-    - **Enhance UX defaults overhaul (this session).** Toggles default OFF on landing (previously baked in `newPaintJob` / `paintForksRedYellowTips` / `removeRentalBranding` — silently repeating across batches). "Select all" checkbox added to the AI providers row header — toggles between "all 6 providers" and "just Gemini," never to zero. See commit `f004606`.
-    - **Modify → Resize CTA (this session).** Green success card with "Continue to Resize →" button appears under Apply after a successful modify run. Existing `onModifyApplied → setResizeAssets` path already pushed the modified images into Workspace state, so the button just flips the active tab. See commit `d06424a`.
-    - **Recraft → Reve swap (this session).** Wired Recraft V3 end-to-end on 2026-05-26 (`b03032a` + five fix commits), then gutted same day after operator preferred Reve's output on quality. Reve restored as 6th primary generator with the previous `_enhance_with_reve` implementation (sync /v1/image/edit, base64 JSON, 2560-char prompt cap, `latest-fast` pinned for RPM headroom). Recraft secret left in Secret Manager pending operator decision on full delete.
-    - Ideogram as 5th primary enhance generator + per-variant Edit/Inpaint tools (`1babd98`, `7d9ef6b`, `d0e93b1`, `ad7b202`). Initially declined as a primary generator on 2026-05-26 (creative-drift concern); reversed same day after operator request — wired end-to-end to the existing `_tweak_with_ideogram` helper. The two per-variant tools (cyan ✎ Edit + rose 🖌 Inpaint) ship alongside it for targeted decal/text repair on completed variants.
-    - Showroom Floor toggle on Enhance advanced toggles (this commit). New `showroomFloor` field in `EnhanceToggles`; backend prompt block under `_build_enhance_prompt` adds a SHOWROOM / STUDIO FLOOR action when set. Off by default — applying it to non-studio photos would over-clean a real ground surface.
-    - Branded collage composer (`/api/v1/export/branded-collage` + Create Image Collage UI + preview-with-save-to-history) (`0a0b48a`, `68cc6b0`).
-    - Branded collage layout proportions matched to company's blue reference (`cc531e8`).
-    - AI-disclaimer watermark with operator opt-in checkbox (`8de9203`).
-    - Auto-advance toggle disabled during beta (greyed-out in Header; `onClick` no-op; one-line restore when it graduates).
-    - Phase 3 toggles auto-reset + re-enhance with new toggles (`4291f17`), per-provider scan isolation (`0747d14`), Erase tool + canvas UI (`acd33ec`, `5f9bffa`, `370d542`), Kontext via RunComfy as 4th generator (`008cd51`, `85f16cc`), OpenAI gpt-5 + image_generation tool migration (`fe02b3c`), Reve removed (`a0cedac`).
+13. **Judge spend is not logged to `usage_events`.** Needs `OperationEnum.judge` + an `ALTER TYPE` (lesson #12). There is also no rate limiter on the judge's Anthropic calls — it shares scan's `claude-sonnet-4-6` tier.
+14. **Fork conditionals are experimental and off by default.** Whether they help is unmeasured. If they prove out, the next step is automatic detection via a pre-pass on the source photo (see the Enhance tab section for why the existing scan can't do it).
+15. **The disclaimer watermark's final form is undecided.** It is an optional checkbox defaulting ON, pending a decision on how the watermark gets applied. Expect it to move.
+16. **Two orphaned components retained deliberately:** `components/modify/ModifyPanel.tsx` and `components/enhance/CommandBar.tsx`. Neither is rendered; both are kept as dormant code rather than deleted.
 
 ---
 

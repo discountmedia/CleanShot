@@ -1,26 +1,31 @@
 "use client";
 // apps/web/components/export/ExportControls.tsx
 //
-// Save Project + Export controls — extracted from the old Resize tab so the
-// same Save / PRO-export flow can be embedded at the bottom of BOTH the
-// Enhance and Scan tabs (the standalone Resize tab was removed). Operates on a
-// caller-supplied `assets` list (Enhance feeds it the picked winners; Scan
-// feeds it the approved cards) and keeps a local, drag-reorderable copy of
-// that list so the operator can set export order without round-tripping
-// through Workspace state.
+// Export controls — extracted from the old Resize tab so the same export flow
+// can be embedded at the bottom of BOTH the Enhance and Scan tabs (the
+// standalone Resize tab was removed). Operates on a caller-supplied `assets`
+// list (Enhance feeds it the picked winners; Scan feeds it the approved cards)
+// and keeps a local, drag-reorderable copy of that list so the operator can set
+// export order without round-tripping through Workspace state.
 //
-// Flow (unchanged from the old Resize tab):
+// Flow (2026-08-21 — EXPORT IS THE ONLY SAVE ACTION):
 //   1. Confirm the project fields (pre-filled from Workspace meta + login email).
-//   2. Click "Save Project" → POST /api/projects/save (also approves the set to
-//      Your Photo Library). Backend flips projects.saved_at, unblocking exports.
-//   3. Click "PRO export" and download.
+//   2. Click "7x5 EXPORT". That one click saves the project (FastAPI still
+//      gates export on projects.saved_at, so this has to happen first) and then
+//      runs the export, which writes the finished files straight into the
+//      user's Photo Library.
+//
+// The old "Save Project" button is gone, and so is the separate approveSet
+// call it made: that call copied the PRE-export bytes into the library, which
+// is exactly the duplicate this design removes. What the library holds now is
+// the final exported file — cropped, upscaled, and watermarked if the
+// disclaimer checkbox was on — and the pre-enhance originals, one copy each.
 //
 // Deliberately omits the standalone uploader + Clear-all that the Resize tab
 // had — the host tab (Enhance / Scan) already owns image intake and clearing.
 
 import { useState, useEffect, useMemo } from "react";
 import {
-  approveSet,
   exportProPreviewStream,
   saveProject,
   type ExportProPreviewItem,
@@ -29,9 +34,12 @@ import { formatBytes } from "../../lib/compress";
 import { type ForkliftMeta } from "../../lib/types";
 
 // Watermark string burnt into the bottom-right corner of every exported JPEG
-// when the operator ticks "Add AI disclaimer". Backend pyvips uses the same
-// string; keep in sync if you change one (hard-won lesson #20). The leading
-// "*Disclaimer:" label is rendered green; the rest white.
+// when the disclaimer checkbox is on. Briefly unconditional (2026-08-21), now
+// back to a checkbox pending a final decision on how the watermark gets
+// applied — the difference from the original is that it defaults ON, so the
+// operator opts OUT rather than in. Backend pyvips uses the same string; keep
+// in sync if you change one (hard-won lesson #20). The leading "*Disclaimer:"
+// label is rendered green; the rest white.
 export const AI_DISCLAIMER_LABEL = "*Disclaimer:";
 export const AI_DISCLAIMER_WATERMARK =
   "*Disclaimer:  AI enhanced images - used for representational purposes";
@@ -41,6 +49,8 @@ export interface ExportAsset {
   filename:     string;
   thumbnailUrl: string;
   provider?:    string;
+  /** Asset id of the pre-enhance original, saved alongside the export. */
+  originalAssetId?: string;
 }
 
 export interface ExportControlsProps {
@@ -181,11 +191,11 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
   }, [meta, userEmail]);
 
   // ── Status flags ──
-  const [isSaving,        setIsSaving]        = useState(false);
-  const [isSaved,         setIsSaved]         = useState(false);
-  const [isExporting,     setIsExporting]     = useState(false);
-  const [error,           setError]           = useState<string | null>(null);
-  const [addAiDisclaimer, setAddAiDisclaimer] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [error,       setError]       = useState<string | null>(null);
+  // Defaults ON — the disclaimer is the expected case and turning it off is
+  // the deliberate act.
+  const [addAiDisclaimer, setAddAiDisclaimer] = useState(true);
 
   // ── PRO export preview state ──
   const [previewItems, setPreviewItems] = useState<ExportProPreviewItem[]>([]);
@@ -199,69 +209,52 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
 
   const { valid: formValid, yearNum } = validateForm(form);
   const hasAssets = orderedAssets.length > 0;
-  const canSave   = formValid && !isSaving;
-  const canExport = isSaved && hasAssets && !isExporting;
+  // Make + Model still gate export, because the save that export performs
+  // needs them — they are what the export filenames and the library folder
+  // are built from.
+  const canExport = formValid && hasAssets && !isExporting;
 
   const updateField = <K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
-  // ─── Save ───────────────────────────────────────────────────────────────────
+  // ─── Save (no longer a button — the first half of Export) ────────────────
 
-  const handleSave = async () => {
-    // yearNum === null is a VALID save now (unknown year). Only formValid gates.
-    if (!formValid) return;
-    setError(null);
-    setIsSaving(true);
-    try {
-      const derivedTitle =
-        [form.make, form.model, form.year].map((s) => s.trim()).filter(Boolean).join(" ")
-        || "Untitled";
-      const tireTypeOut = form.tireType.trim() || "unknown";
-      const capacityOut = form.capacity.trim() || "unknown";
-      const fuelTypeOut = form.fuelType.trim() || "unknown";
-      const usernameOut = form.username.trim() || (userEmail && userEmail !== "dev@local" ? userEmail : "unknown");
+  /**
+   * Commit the project metadata. FastAPI's export endpoints 403 until
+   * `projects.saved_at` is set, so this has to run before the export call.
+   *
+   * It no longer calls `approveSet`. That call used to copy the pre-export
+   * bytes into the Photo Library; the export itself now writes the finished
+   * files there, so keeping it would store each image twice — once clean,
+   * once exported.
+   */
+  const saveProjectMetadata = async () => {
+    const derivedTitle =
+      [form.make, form.model, form.year].map((str) => str.trim()).filter(Boolean).join(" ")
+      || "Untitled";
+    const usernameOut =
+      form.username.trim() || (userEmail && userEmail !== "dev@local" ? userEmail : "unknown");
 
-      // 1. Commit project metadata (unlocks exports server-side).
-      await saveProject({
-        sessionId,
-        title:     derivedTitle,
-        make:      form.make.trim(),
-        year:      yearNum,
-        model:     form.model.trim(),
-        tireType:  tireTypeOut,
-        capacity:  capacityOut,
-        fuelType:  fuelTypeOut,
-        username:  usernameOut,
-        photoType: "auction",
-      });
-
-      // 2. Commit the curated set to History (Save is the single trigger
-      // for both — no separate Approve action). Skips if nothing queued.
-      if (orderedAssets.length > 0) {
-        await approveSet({
-          sessionId,
-          assetIds: orderedAssets.map((a) => a.assetId),
-          projectMeta: {
-            make:  form.make.trim()  || "unknown",
-            model: form.model.trim() || "unknown",
-            year:  form.year.trim(),
-          },
-        });
-      }
-
-      setIsSaved(true);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Save failed");
-    } finally {
-      setIsSaving(false);
-    }
+    // yearNum === null is a VALID save (unknown year).
+    await saveProject({
+      sessionId,
+      title:     derivedTitle,
+      make:      form.make.trim(),
+      year:      yearNum,
+      model:     form.model.trim(),
+      tireType:  form.tireType.trim() || "unknown",
+      capacity:  form.capacity.trim() || "unknown",
+      fuelType:  form.fuelType.trim() || "unknown",
+      username:  usernameOut,
+      photoType: "auction",
+    });
   };
 
   // ─── PRO export ───────────────────────────────────────────────────────────
 
   const handleExport = async () => {
-    if (!hasAssets) return;
+    if (!hasAssets || !formValid) return;
     setError(null);
     setIsExporting(true);
     setPreviewItems([]);
@@ -272,11 +265,18 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
     setProgressCurrent(0);
     setProgressFilename("");
     try {
+      // Save first — export is gated on it server-side, and this is the click
+      // that replaces the removed Save Project button.
+      await saveProjectMetadata();
+
       await exportProPreviewStream(
         {
           sessionId,
           assetIds:  orderedAssets.map((a) => a.assetId),
           providers: orderedAssets.map((a) => a.provider ?? null),
+          originalAssetIds: orderedAssets
+            .map((a) => a.originalAssetId)
+            .filter((id): id is string => typeof id === "string" && id.length > 0),
           aiDisclaimer: addAiDisclaimer,
         },
         {
@@ -420,20 +420,15 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
               Project details
             </span>
             <span className="text-sm text-ink-soft leading-relaxed">
-              Clicking <span className="font-semibold text-ink">Save Project</span> does two things:
-              it locks in this metadata so the export buttons will work, AND
-              it copies the queued images into Your Photo Library so you can
-              re-download them later. Only{" "}
+              Exporting saves this project for you — there is no separate save
+              step. The exported images and their original photos go into Your
+              Photo Library under your account, and this metadata is what names
+              them. Only{" "}
               <span className="font-semibold text-accent">Make</span> and{" "}
               <span className="font-semibold text-accent">Model</span> are
               required — the rest pre-fill from the Enhance tab.
             </span>
           </div>
-          {isSaved && (
-            <span className="text-sm uppercase tracking-[0.18em] font-semibold text-accent shrink-0">
-              ✓ Saved
-            </span>
-          )}
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5">
@@ -467,28 +462,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
           Some images could not be compressed under 99 KB at acceptable quality — those tiles are flagged below. Inspect them before downloading; the ZIP still contains the lowest-quality version the encoder could produce.
         </p>
       )}
-
-      {/* ── Save action ── */}
-      <button
-        onClick={handleSave}
-        disabled={!canSave}
-        className={`
-          inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
-          ${canSave
-            ? isSaved
-              ? "border-cta bg-cta hover:bg-cta-dark text-white"
-              : "border-cta bg-cta hover:bg-cta-dark text-white"
-            : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
-        `}
-      >
-        {isSaving
-          ? "Saving project…"
-          : isSaved
-            ? "Re-save Project"
-            : !formValid
-              ? "Fill all fields to save"
-              : "Save Project"}
-      </button>
 
       {/* ── AI-disclaimer toggle ── */}
       <label
@@ -530,27 +503,40 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
         </div>
       </label>
 
-      {/* ── PRO export button ── */}
-      <button
-        onClick={handleExport}
-        disabled={!canExport}
-        className={`
-          inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
-          ${canExport
-            ? "border-cta bg-cta hover:bg-cta-dark text-white"
-            : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
-        `}
-      >
-        {isExporting
-          ? "Resizing & generating previews…"
-          : !isSaved
-            ? "Save project first"
+      {/* ── Export button ── */}
+      <div className="space-y-2">
+        <button
+          onClick={handleExport}
+          disabled={!canExport}
+          title="Exported images are upscaled for quality — you MUST run the image optimizer in PRO after uploading them."
+          className={`
+            inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
+            ${canExport
+              ? "border-cta bg-cta hover:bg-cta-dark text-white"
+              : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
+          `}
+        >
+          {isExporting
+            ? "Saving & exporting…"
             : !hasAssets
               ? "No assets queued"
-              : previewItems.length > 0
-                ? `Re-resize ${orderedAssets.length} image${orderedAssets.length !== 1 ? "s" : ""} (PRO)`
-                : `PRO export — 7:5, full resolution (${orderedAssets.length})`}
-      </button>
+              : !formValid
+                ? "Enter Make and Model to export"
+                : "7x5 EXPORT"}
+        </button>
+
+        {/* Tips sit beside the button rather than in the title attribute alone
+            — a hover-only warning about a mandatory follow-up step is a
+            warning most operators never see. */}
+        <p className="text-sm text-attn font-semibold leading-relaxed max-w-prose">
+          Exported images have been <span className="font-bold">upscaled for quality</span>, so you
+          MUST run the image optimizer in PRO after uploading them.
+        </p>
+        <p className="text-sm text-ink-soft leading-relaxed max-w-prose">
+          Exported images are saved to Your Photo Library along with their
+          original photos.
+        </p>
+      </div>
 
       {/* ── Streaming progress ── */}
       {isExporting && (

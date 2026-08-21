@@ -193,6 +193,37 @@ class SignedGetUrlResponse(BaseModel):
     expires_at: datetime
 
 
+class ForkVisibility(BaseModel):
+    """
+    Which parts of the fork are actually in frame in THIS source photo.
+
+    Per-image, not per-batch: whether the fork tips got cropped is a property
+    of one camera angle, not of the job the operator queued.
+
+    Both default True — "the fork is fully visible" — so every existing caller
+    and every photo where this isn't a problem produces byte-identical prompts
+    to before these fields existed.
+
+    These REMOVE prompt fragments rather than adding counter-instructions on
+    top of them. Emphatic "do not draw X" phrasing backfires on Gemini (see the
+    reverted Phase A guardrail experiment, CLAUDE.md 2026-07-13), so the fix
+    for "the model invents a fork shank" is to stop asking for one, not to ask
+    harder for its absence.
+    """
+    model_config = {"populate_by_name": True}
+
+    # False → the upright/shank portion is out of frame. The prompt drops the
+    # clause that describes painting it, so the model has nothing to satisfy
+    # by painting part of the overhead guard or carriage into a shank.
+    vertical_visible: bool = Field(True, alias="verticalVisible")
+    # False → the tips are cropped out. The yellow-tip clause is SUBSTITUTED
+    # (not merely deleted) with a red-only instruction, because leaving the
+    # tips unmentioned lets the model fall back on its yellow-tip prior, and
+    # asking for yellow tips that aren't in frame makes it shorten the forks
+    # to bring some into view.
+    tips_visible: bool = Field(True, alias="tipsVisible")
+
+
 class EnhanceRequest(BaseModel):
     session_id: uuid.UUID
     asset_id: uuid.UUID
@@ -219,6 +250,17 @@ class EnhanceRequest(BaseModel):
     # lift" / "USED telehandler"). Defaults to forklift for backward
     # compatibility with callers that don't pass it.
     equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "turret_truck", "articulated_forklift", "order_picker", "pallet_jack", "walkie_stacker"] = "forklift"
+    # Per-image fork framing. See ForkVisibility.
+    fork_visibility: ForkVisibility = Field(
+        default_factory=ForkVisibility, alias="forkVisibility",
+    )
+    # True when the CALLER already composed the fork-framing wording into
+    # `custom_prompt` (the Enhance tab does this when the operator's prompt is
+    # still the recommended text — it rebuilds it from fragments per image,
+    # which is a clean REMOVAL rather than a counter-instruction). The worker
+    # then skips appending its own FORK FRAMING note, so the two paths can't
+    # both fire and say the same thing twice.
+    fork_framing_in_prompt: bool = Field(False, alias="forkFramingInPrompt")
     # Optional custom prompt — when present, overrides the toggle-derived
     # prompt and is passed to the model verbatim. The frontend's
     # "Custom prompt (advanced)" section produces this; the toggles
@@ -495,6 +537,55 @@ class ExportFullsizeResponse(BaseModel):
     expires_at: datetime
 
 
+# ─── Saved prompts ────────────────────────────────────────────────────────────
+
+# Titles are dropdown labels, bodies are enhance prompts. Both are bounded so a
+# paste accident can't write an unbounded blob into a per-user table.
+_PROMPT_TITLE_MAX = 120
+_PROMPT_BODY_MAX  = 8000
+
+
+class SavedPrompt(BaseModel):
+    id: uuid.UUID
+    user_email: str
+    title: str
+    body: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class CreateSavedPromptRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=_PROMPT_TITLE_MAX)
+    body: str = Field(min_length=1, max_length=_PROMPT_BODY_MAX)
+    # True only when the user has been shown the "that title exists" prompt and
+    # chose Overwrite. Default False so a collision is always surfaced rather
+    # than silently clobbering a prompt the user may have spent effort on.
+    overwrite: bool = False
+
+    @field_validator("title", "body")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        # min_length=1 accepts "   ". A whitespace title is an empty title as
+        # far as the dropdown is concerned, so reject it here rather than
+        # storing a row that renders as a blank option.
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+
+class RenameSavedPromptRequest(BaseModel):
+    title: str = Field(min_length=1, max_length=_PROMPT_TITLE_MAX)
+
+    @field_validator("title")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+
 class ExportProRequest(BaseModel):
     """PRO preset: 1024px, 7×5 crop, JPEG ≤100 kb."""
     session_id: uuid.UUID
@@ -505,10 +596,20 @@ class ExportProRequest(BaseModel):
     # so duplicate variants of the same source image stay distinguishable
     # in the ZIP (e.g. "..._01_Gemini.jpg" vs "..._01_Openai.jpg").
     providers: list[str | None] | None = None
-    # When true, the export pipeline burns the AI-disclaimer watermark
-    # string into the bottom-right corner of every exported JPEG. Off
-    # by default — operator opts in via the Resize-tab checkbox.
-    ai_disclaimer: bool = False
+    # Asset ids of the ORIGINAL pre-enhance photos, parallel-ish to asset_ids
+    # (a source can appear once even if several of its variants export). Saved
+    # into the project alongside the exported files so the library keeps the
+    # before as well as the after. Optional: an export with no known originals
+    # simply saves the exported files.
+    original_asset_ids: list[uuid.UUID] = Field(default_factory=list)
+    # When true, the export pipeline burns the AI-disclaimer watermark string
+    # into the bottom-right corner of every exported JPEG.
+    #
+    # Defaults True, unlike the pre-2026-08-21 version of this field, because
+    # the UI checkbox is now checked by default and the operator opts OUT. A
+    # caller that omits it therefore gets the disclaimer rather than silently
+    # dropping it.
+    ai_disclaimer: bool = True
 
 
 class ModifyAdjustments(BaseModel):
@@ -805,6 +906,17 @@ class EnhanceTaskPayload(BaseModel):
     # Equipment type — feeds _build_enhance_prompt's per-type guardrails.
     # Ignored when custom_prompt is set (the operator's verbatim text wins).
     equipment_type: Literal["forklift", "rough_terrain", "scissor_lift", "telehandler", "reach_truck", "turret_truck", "articulated_forklift", "order_picker", "pallet_jack", "walkie_stacker"] = "forklift"
+    # Per-image fork framing. See ForkVisibility.
+    fork_visibility: ForkVisibility = Field(
+        default_factory=ForkVisibility, alias="forkVisibility",
+    )
+    # True when the CALLER already composed the fork-framing wording into
+    # `custom_prompt` (the Enhance tab does this when the operator's prompt is
+    # still the recommended text — it rebuilds it from fragments per image,
+    # which is a clean REMOVAL rather than a counter-instruction). The worker
+    # then skips appending its own FORK FRAMING note, so the two paths can't
+    # both fire and say the same thing twice.
+    fork_framing_in_prompt: bool = Field(False, alias="forkFramingInPrompt")
     # The operator's prompt. Set by either:
     #   • Scan tab "Regenerate Image" (a COMPLETE anomaly-derived prompt), or
     #   • Enhance tab prompt box (the PRIMARY input, prompt-first redesign

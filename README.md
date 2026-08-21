@@ -1,15 +1,15 @@
 # CleanShot
 
-AI-powered forklift image processing platform. Upload raw forklift photos, enhance them with Gemini, scan for quality issues across three AI providers, resize to marketplace specs, and export — all in a single workflow.
+AI-powered forklift image processing platform. Upload raw forklift photos, enhance them with a prompt you write, see an automatic quality scan beside each result, adjust and retry per image, then export to marketplace specs — all on one tab.
 
-> **Current-state note (updated 2026-07-21).** Much of the body below has drifted from the live app. The corrections that matter:
-> - **Enhance providers: 2 live** — Gemini and OpenAI (gpt-5 + image tool). **Grok was made dormant 2026-07-21** (kept as dead code, gone from the picker). Kontext / Ideogram / Reve were already retired as *generators* (Kontext & Ideogram survive only as per-variant edit tools; Flux is the Erase tool). Any "4 providers" / "6 providers" text below is stale.
-> - **Enhance is prompt-first (2026-07-21):** the operator writes their own prompt (now *required*), with an equipment-aware "Insert recommended prompt" starter. Toggles no longer build the prompt — they *augment* the operator's prompt. The old one-size built-in prompt is a dormant fallback only.
-> - **Best-of-N auto-pick (2026-07-21):** a multi-provider batch is auto-judged (a Claude vision call ranks the variants) and the winner is auto-selected — the operator sees one vetted image instead of grading each. Manual override stays one click.
-> - **Tabs: `Enhance → Scan → Your Photo Library`** — no standalone Resize or Modify tab. Modify is embedded in Enhance; resize/export is the embedded `ExportControls`.
-> - **Scan is differential (before/after):** compares the enhanced output against the original and flags *unintended* changes — not just isolated defects.
-> - **10 equipment types** — Turret Truck (VNA) + Articulated (Bendi) alongside forklift / rough-terrain / reach truck / order picker / walkie stacker / pallet jack / telehandler / scissor lift.
-> - **Photo-library storage is indefinite**, not 30 days (GCS lifecycle rule removed 2026-05-26).
+> **Current-state note (updated 2026-08-21).** Some of the body below still describes older behaviour. The corrections that matter:
+> - **Enhance providers: 2 live** — Gemini and OpenAI (gpt-5 + image tool). **Grok is dormant** (kept as dead code, gone from the picker). Kontext / Ideogram / Reve were retired as *generators* (Kontext & Ideogram survive only as per-variant edit tools; Flux is the Erase tool). Any "4 providers" / "6 providers" text below is stale.
+> - **Enhance is prompt-first:** the operator writes their own prompt (required), with an equipment-aware "Insert recommended prompt" starter and **saved prompts** they can reuse. Toggles *augment* that prompt; they no longer build it.
+> - **Only four toggles are visible** — rental-fleet branding removal, floor cleanup, remove people, shine tires. The rest are hidden, not deleted (`VISIBLE_TOGGLES` in `apps/web/lib/types.ts`).
+> - **Scan is inline on Enhance.** Every generated image is scanned automatically and the verdict renders beside that image. Nothing navigates to the Scan tab.
+> - **Tabs: `Enhance → Scan → Your Photo Library`.** Scan is now a **standalone** tool with its own uploader. There is no Resize or Modify tab, and no bulk adjustment panel.
+> - **Export is the only save action.** It writes the finished files and their pre-enhance originals into the user's Photo Library. The Save Project button is gone.
+> - **Photo-library storage is indefinite**, not 30 or 60 days (GCS lifecycle rule removed 2026-05-26).
 > - Live bucket names are `cleanshot-originals-prod` / `cleanshot-derivatives-prod` (the `-493512` names below are illustrative).
 >
 > **`CLAUDE.md` is the canonical, continuously-updated project briefing — trust it over this README where they disagree.**
@@ -32,7 +32,7 @@ AI-powered forklift image processing platform. Upload raw forklift photos, enhan
 - [Cloud Tasks Setup](#cloud-tasks-setup)
 - [Deploying to Production](#deploying-to-production)
 - [The Workflow](#the-workflow)
-- [Image History & 30-Day Storage](#image-history--30-day-storage)
+- [Image History & Storage](#image-history--storage)
 - [Adding Authorized Users](#adding-authorized-users)
 - [Troubleshooting](#troubleshooting)
 
@@ -40,12 +40,18 @@ AI-powered forklift image processing platform. Upload raw forklift photos, enhan
 
 ## What It Does
 
-CleanShot takes raw forklift photos and runs them through a four-step pipeline:
+The whole job happens on the **Enhance** tab:
 
-1. **Enhance** — Operator picks any subset of **4 image-edit providers** (Google Gemini Nano Banana, OpenAI gpt-5 + image_generation tool, xAI Grok Imagine, BFL Flux Kontext Max via RunComfy) and gets side-by-side variants per source image. A toggle row drives the curated treatment (paint refresh, rust removal, decal restoration, rental-branding strip, etc.). A per-variant **Erase tool** opens a mask-drawing canvas for surgical removal of stickers, scratches, or background clutter via BFL's `flux-tools/erase-v1`.
-2. **Scan** — Up to three AI providers (Gemini Flash, GPT-5.4, Claude Sonnet/Opus) each give a pass/fail verdict with confidence scores and an anomaly list. Per-provider failures are isolated — one vendor's 429 no longer cancels the others. Failed images can be regenerated in-place without starting over.
-3. **Resize** — Auto-crops to 1024×731 (7:5), zoom-to-fill, JPEG compressed to ≤99 KB. Ready for auction platforms and dealer inventory systems.
-4. **Export** — Individual downloads, ZIP batch, or PRO preset exports. Approved sets are saved to each user's GCS library for 60 days.
+1. **Write a prompt.** The operator's own words drive the result. "Insert recommended prompt" drops an equipment-aware starter to edit, and any prompt can be **saved to your profile under a title** and re-inserted later in one click. Four toggles (rental-branding removal, floor cleanup, remove people, shine tires) append emphasis on top.
+2. **Generate.** Pick Gemini, OpenAI, or both; each runs as an independent variant per source image. A multi-provider batch is auto-judged by a Claude vision call and the winner pre-selected — manual override is one click.
+3. **Read the scan inline.** Every generated image is scanned automatically against its original, and the verdict plus anomaly list renders on that image's card. Results arrive per image; one slow or failed scan never blocks the others.
+4. **Fix per image.** Each result carries its own **Retry** (re-roll that one variant with the current prompt) and its own **contrast / saturation** adjustment, applied to that image only and persisted through export.
+5. **Export.** `7x5 EXPORT` crops to 7:5 at full resolution and writes the finished files — plus the pre-enhance originals — straight into your Photo Library. That is the save; there is no separate Save Project step. Only selected images are persisted.
+
+Two side tools:
+
+- **Scan tab** — the same three-provider consensus scan (Gemini Flash, GPT-5.4, Claude Sonnet/Opus) as a **standalone** tool with its own uploader, for images that didn't come from Enhance. Note that a standalone upload has no "before" to compare against, so it gets the isolated scan rather than the differential one.
+- **Per-variant Erase / Tweak** — a mask-drawing canvas (BFL `flux-tools/erase-v1`) and a text-instruction edit (Gemini) on any completed variant.
 
 ---
 
@@ -390,11 +396,13 @@ CleanShot uses Cloud SQL Postgres 17. The schema is split into two migrations:
 **Core schema** (`apps/api/src/cleanshot_api/db/migrate.py`) — runs automatically when `ENVIRONMENT=local`:
 
 - `sessions`, `projects`, `assets`, `jobs`, `scan_results`, `consensus_results`
+- `user_profiles` — per-user editable details + avatar
+- `saved_prompts` — per-user reusable enhance prompts. Unique on `(user_email, lower(title))`, so a duplicate title is refused by the database rather than by a pre-check
 
 **Auth + approval schema** (`apps/api/src/cleanshot_api/db/migrate_auth.py`):
 
 - `authorization` — domain/email allowlist for runtime additions
-- `approval_sets` — one row per "Approve All" click, with 30-day expiry
+- `approval_sets` — one row per exported set. `expires_at` is nullable and NULL means stored indefinitely; only legacy rows carry an expiry
 - `approval_set_assets` — images in each approval set
 
 **Better Auth tables** — run once via CLI:
@@ -514,37 +522,52 @@ gcloud run services update-traffic cleanshot-api \
 
 ### Enhance tab
 
-1. Drop up to 10 images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.
-2. Pick the equipment type (forklift / scissor lift / telehandler) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest also pre-fills the Resize tab's Save Project form.
-3. **Pick one or more AI providers** from the provider chips: Gemini, OpenAI (gpt-5), Grok, Kontext. Each selected provider runs as an independent variant per source image.
-4. Open the **Advanced** section to toggle curated treatment emphasis (paint refresh, rust removal, decal restoration, fork colours, lighting, rental-branding strip), or open the **Custom prompt** field for full prompt override (bypasses all toggles).
-5. Click **Enhance** — images upload to GCS, enhance jobs enqueue per provider, the SourceCompareCard grid renders with one card per source image and a column for each variant.
-6. **Pick a winner** from each card's variants and either let auto-advance ship them to Scan or hit **Send N to Scan →** manually.
-7. **Per-variant tools** sit on each completed thumbnail: ↻ to regenerate with a different roll of the same provider, or the eraser icon to open the **Erase dialog** for mask-based surgical removal of stickers, scratches, or background objects.
+1. Drop images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.
+2. Pick the equipment type (10 types, from forklift to turret truck) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest pre-fills the export form.
+3. **Write the prompt** — required. Use **Insert recommended prompt** for an equipment-aware starter, or pick one of your **saved prompts** from the dropdown. `SAVE PROMPT TO PROFILE` stores the current text under a title you choose; titles are unique per user, and a collision asks whether to overwrite or rename. Inserted text is a copy — editing it never changes the saved original.
+4. Optionally set the four visible toggles. They *append emphasis* to your prompt; they don't replace it.
+5. **Pick one or more providers** (Gemini, OpenAI). Each runs as an independent variant per source image.
+6. Click **Enhance**. Images upload to GCS, jobs enqueue per provider, and one `SourceCompareCard` renders per source image with its variants side by side. Re-running an unchanged batch is allowed — generation is non-deterministic and a second roll is often the point.
+7. **Each completed variant carries its own controls**: **Retry** (re-roll this one image with the current prompt and toggles, replacing it in place), **Tweak** (text-instruction edit via Gemini), and a compact **contrast / saturation** section whose Apply re-renders that image and carries through to export.
+8. **The scan appears inline** under each variant as it lands — a consensus verdict with the per-provider breakdown and anomaly list. Nothing navigates away.
+9. **Export.** Fill Make + Model, then `7x5 EXPORT`.
+
+### Fork conditionals (experimental, off by default)
+
+Conditional fork instructions inside the prompt don't hold when the fork isn't fully in frame: with the upright section out of shot the model paints part of the carriage or overhead guard into a shank, and with the tips cropped it shortens the forks to bring tips into view so it has something to paint yellow.
+
+The **Fork conditionals** switch sits directly above the Enhance button and is **off by default**, session-only, and never enabled as a side effect of anything else. Turning it on reveals two per-image controls — *vertical fork section not visible* and *fork tips not visible*. These **remove** the offending prompt fragment (and, for tips, substitute a red-only instruction) rather than piling on more instructions, because emphatic "do not draw X" phrasing backfires on Gemini.
+
+Turning the switch off restores the previous prompt exactly, with no residual effect, and takes effect on the next run — images already generated are untouched. If you've rewritten the prompt yourself there's no fragment of ours left to remove, so the constraint is appended as an explicit instruction instead and the UI says so.
 
 ### Erase tool (per-variant)
 
-Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), optionally type a one-line hint for what should fill the cleaned area, and submit. Routes through BFL's `flux-tools/erase-v1`. On accept, the cleaned image replaces the variant in-place — the winner-pick + sent-to-Scan state stays coherent.
+Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), optionally type a one-line hint for what should fill the cleaned area, and submit. Routes through BFL's `flux-tools/erase-v1`. On accept, the cleaned image replaces the variant in-place.
 
-### Scan tab
+### Scan tab (standalone)
 
-1. Images arrive automatically after enhancement completes (or operator can use the Skip-Scan→Resize shortcut to bypass).
-2. Each image shows results from up to three AI providers with verdict chips, confidence bars, and anomaly lists. Per-provider failures are isolated and surfaced as "provider — failed" instead of hanging on "pending" forever.
-3. Failed images show a **Regenerate** button with an auto-generated prompt built from the detected anomalies — edit the prompt or use it as-is, pick which provider runs the regen.
-4. **Bulk-approve undecided** advances every image without an explicit reject; or hit Save Project from the Resize tab once you're done curating.
+Decoupled from the Enhance pipeline. Nothing on Enhance sends images here.
 
-### Resize tab
+1. Upload images with the tab's own uploader.
+2. Each image shows results from up to three AI providers with verdict chips, per-provider progress bars in that provider's own colour, and anomaly lists. Per-provider failures are isolated and surfaced as "provider — failed" instead of hanging on "pending".
+3. Failed images show a **Regenerate** button with an auto-generated prompt built from the detected anomalies — edit it or use it as-is, and pick which provider runs the regen.
 
-1. Images are automatically cropped to 1024×731 (7:5 aspect ratio)
-2. Zoom-to-fill — no letterboxing, forklift centred and maximised in frame
-3. Each image compressed to ≤99 KB JPEG
-4. Download individually or as a ZIP
+Because a standalone upload has no pre-enhance original to compare against, it gets the **isolated** scan. The **differential** (before/after) scan still runs — inline on the Enhance tab, where the original is known.
+
+### Export
+
+1. Cropped to 7:5 at the source's full resolution, zoom-to-fill, no letterboxing.
+2. Exported images are **upscaled**, so they must go through the image optimizer in PRO after upload — the button says so.
+3. An optional **AI disclaimer watermark** checkbox, **on by default**. This was briefly mandatory and is back to a checkbox pending a final decision on how the watermark gets applied; the rendering code is unchanged either way.
+4. Clicking export saves the project, writes the finished files and their originals to your Photo Library, and gives you per-image downloads plus a ZIP.
 
 ---
 
-## Image History & 30-Day Storage
+## Image History & Storage
 
-Every time a user clicks **Approve All**, the approved images are copied to:
+Exporting is what writes to the library. The stored copy **is the exported file** — cropped, upscaled, and watermarked if the disclaimer box was ticked — alongside the pre-enhance originals, one copy of each, in one place. Unselected variants are never persisted. Re-exporting the same session updates that set rather than stacking a duplicate.
+
+Files land under:
 
 ```
 gs://cleanshot-derivatives-493512/approved/{email}/{YYYY-MM-DD}_{make}_{model}/{filename}

@@ -1,68 +1,88 @@
-# Session handoff — updated 2026-07-21
+# Session handoff — updated 2026-08-21
 
-Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. the "Latest session (2026-07-21)" block). This file is the "where we are right now / what's pending" snapshot.
+Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. "Enhance tab — current shape"). This file is the "where we are right now / what's pending" snapshot.
 
 ---
 
 ## Repo state
 
-- **Branch:** `main`. Everything through `cf3ff1c` is pushed.
-- **Direct-to-main is the norm** (no PR review). If the auto-mode classifier blocks a push, run `git push origin main` yourself.
-- **Live API revision** after the last deploy in this session: `cleanshot-api-00149-gqm` → the regen fix (`cf3ff1c`) was deploying at handoff time; confirm the newer revision is serving before smoke-testing (`gcloud run services describe cleanshot-api --region=us-central1 --format="value(status.latestReadyRevisionName)"`).
-- **Untracked:** `AGENTS.md` (a Codex-facing briefing) is present but not committed — see note under "Docs" below.
+- **Branch:** `main`. Direct-to-main is the norm (no PR review).
+- **This push is a large one** — it carries the Enhance-tab restructure, saved prompts, scan-bar colours, and the experimental fork conditionals, all in one commit. If something is off in prod, that is the commit to look at.
+- **It ships a schema change.** `saved_prompts` is added to `db/migrate.py`, which runs on API startup, so the deploy applies it. No `ALTER TYPE` was needed — `OperationEnum.export` already existed for the export asset rows.
+- **Untracked:** `AGENTS.md` (a Codex-facing pointer to CLAUDE.md) is present but not committed, as found.
 
 ---
 
-## What shipped this session (2026-07-21) — all on the Enhance tab
+## What shipped in this batch
 
-| # | Change | Commits |
-|---|--------|---------|
-| 1 | **Best-of-N auto-pick** — a Claude judge ranks the multi-provider variants for each image and auto-selects the winner (operator sees one vetted image, not N). Sync `POST /api/v1/enhance/judge`. | `9d268ab` + fixes `98c6027` |
-| 2 | **Grok made dormant** — dropped from the picker (`ENHANCE_PROVIDERS`), kept as dead code. Live picker is now **Gemini + OpenAI only**. | `fb4e24a` |
-| 3 | **Prompt-first Enhance** — the operator's prompt is now required + primary; "Insert recommended prompt" gives an equipment-aware editable starter; toggles now AUGMENT the prompt (spine_override) instead of overriding it. | `e7afc09` |
-| 3b | **Regen fix** — the prompt-first reroute double-appended guardrails to the Scan-tab Regenerate path; fixed with a `prompt_is_complete` verbatim flag. | `cf3ff1c` |
+**Enhance tab restructure**
+- Toggles reduced to four visible (`VISIBLE_TOGGLES`); the rest hidden, not deleted.
+- Scan runs inline on Enhance, read from the auto-enqueued backend scans. No navigation to the Scan tab.
+- Scan tab decoupled into a standalone tool with its own uploader.
+- Per-image Retry restored on each variant (it had been deliberately removed in an earlier pass — the operator asked for it back).
+- Per-image contrast/saturation; the bulk `ModifyPanel` is unmounted.
+- Re-enhance dirty-input guard removed.
+- Export writes to the user's project (finished files + originals, one copy each) and is the only save action; Save Project button gone.
 
-Both #1 and #3 got a post-ship adversarial review (multi-agent workflow); the HIGH from #1 (re-enhance-during-judge race) and the mediums from #3 (regen double-guardrail) were fixed. **Both reviews are complete — no open review findings.**
+**Saved prompts** — new `saved_prompts` table, `routers/saved_prompts.py`, `/api/prompts` BFF, `SavedPromptsBar.tsx`. Unique per user on `lower(title)`; a collision is a 409 the UI turns into overwrite-or-rename.
+
+**Scan provider colours** — `SCAN_PROVIDER_COLOR`, a documented palette exception, applied on both tabs.
+
+**Fork conditionals** — experimental, OFF by default, session-only master switch above the Enhance button.
+
+**Reverted:** the mandatory disclaimer. It is an optional checkbox again, now defaulting ON.
 
 ---
 
-## The one thing still owed: a real end-to-end smoke test
+## The thing still owed: a real end-to-end smoke test
 
-Everything above is verified by `tsc` / py-parse / lint / live-route probes + adversarial review, but **nobody has put a real photo through the pipeline in prod yet.** When you're back, run a **3-provider… wait, 2-provider (Gemini + OpenAI) batch** in the UI (or `~/enhance-smoke.sh`) and confirm:
+Everything is verified by `tsc` / `next build` / lint / py-compile and by exercising the prompt-fragment builders directly. **Nobody has put a real photo through the pipeline in prod for any of this.** The API changes in particular are compile-verified only — there is no Python env on the dev machine, so the test suite has not been run.
 
-1. **Prompt-first:** Enhance is disabled until you type/insert a prompt; "Insert recommended prompt" fills an equipment-appropriate starter; a toggle appends (doesn't replace).
-2. **Best-of-N:** after both variants land, a "judging…" spinner → green **★ Best of 2** badge on the winner; it flows to Export.
-3. **The race fix:** hit **Re-enhance mid-judge** — the new batch judges cleanly, no stale badge, image never dropped from Export.
-4. **Regen fix:** on the Scan tab, Regenerate a **scissor lift** (or any non-forklift) — output shouldn't grow hallucinated forks/mast (that was the double-guardrail bug).
+Highest-value checks, in order:
 
-Hard-refresh first (Vercel) so you're on the latest web build.
+1. **Export → library.** Run a 2-provider batch, pick winners, export. Confirm the Photo Library shows the exported files AND the originals, exactly once each, and that a re-export updates that set instead of adding a duplicate.
+2. **Saved prompts.** Save a prompt, re-insert it, save a colliding title (expect overwrite/rename, not a silent duplicate), rename, delete. Confirm a second user cannot see the first's prompts once `AUTH_ENABLED=true`.
+3. **Inline scan.** Confirm verdicts appear per variant and that a single failed scan marks only its own image.
+4. **Fork conditionals.** Off by default. Turn on, tick both controls on one image, retry, and check the output stops inventing a shank / shortening the forks. Then turn the switch off and confirm the prompt goes back to exactly what it was.
+5. **Default-path prompt drift.** The fork block was split from one paragraph into sentences. The "both visible" case is meant to be semantically identical — worth a side-by-side on a few images before trusting it on a real batch, given this repo's history with prompt changes.
+
+---
+
+## Open questions
+
+- **How should the disclaimer watermark finally work?** It is a checkbox defaulting ON as a holding position. Until that is decided, expect this to move again. Note the server-side defaults are now `True` (they were `False` before), so an omitted flag watermarks rather than silently skipping.
+- **Do the fork conditionals actually help?** Unmeasured. If they do, the next step is automatic detection — which needs a pre-pass on the SOURCE photo, because the existing scan runs after enhance.
+- **Is `deformed_part` worth suppressing at the display layer?** Raised and deferred. `geometry_altered` is already gone from the differential vocabulary, but the isolated scan (standalone Scan-tab uploads) still reports `deformed_part`, which covers both warped geometry and genuinely melted structure.
+- **Should `computeConsensus` still return `"mixed"` when one of three providers fails?** A single over-eager vote costs a clean pass badge. This is a verdict-semantics decision, not a bug.
+- **Brightness / crop / straighten** are unreachable from the UI now that the bulk panel is gone, though the backend still supports them. Wanted per-image, or genuinely retired?
 
 ---
 
 ## Pending CODE work (parked, prioritised)
 
-1. **Best-of-N follow-ups** (deferred at ship): (a) log the judge's Claude spend to `usage_events` — needs an `OperationEnum.judge` value + `ALTER TYPE ... ADD VALUE` (hard-won lesson #12) + threading it through `judge_variants`; (b) add an `AsyncRateLimiter` on the judge's Anthropic calls (shares scan's `claude-sonnet-4-6` tier — add if 429s appear on big batches).
-2. **Prompt-first Phase 2 — iterative refinement.** "Write a 2nd/3rd prompt to change the image more, rather than starting over." The per-variant **Tweak** tool (✎ Gemini) already does text-guided refinement on a completed variant — surface/rename it as the iterative path rather than building new.
-3. **Scan differential recalibration** (parked from 2026-07-13). The live differential scan over-fires vs the operator's actual bar — flags intended repaint/backrest, 1-2 char model-# drift, subtle geometry. Tighten `_build_differential_prompt` + the intended-edits whitelist. Clean deployable win. (Note: best-of-N's judge is a *separate* Claude call from the scan; this item is still open.)
-4. **Model-routing / best-of-N for hard equipment types.** Prompt wording is a DEAD lever for warehouse-electric gear (reach/order-picker/walkie/pallet) — Gemini drifts regardless (see memory `enhance-warehouse-electric-model-limit`). The real levers are best-of-N (now shipped — extend it) or routing those types to a different model. With Grok gone, the fan-out is Gemini vs OpenAI.
-5. **Per-user access control — Phase 2 (admin audit logging).** Still unbuilt. `enhance_audit_log` table + thread `user_email` through `/api/enhance` → `_run_enhance` (writes row on completion for `tracking` users) + admin `GET /api/admin/audit` + an "Audit" tab. NOTE: `access-control.ts` is currently **defanged** (`USER_RESTRICTIONS = {}`, `getRestriction()` returns null) — the old brian/asia/aj/stephen locks are gone. Rebuild `USER_RESTRICTIONS` if per-user gating is wanted again.
+1. **Judge follow-ups:** log the judge's Claude spend to `usage_events` (needs `OperationEnum.judge` + `ALTER TYPE`, lesson #12); add an `AsyncRateLimiter` on the judge's Anthropic calls (shares scan's `claude-sonnet-4-6` tier).
+2. **Prompt-first Phase 2 — iterative refinement.** "Change it more without starting over." The per-variant **Tweak** tool already does text-guided refinement — surface/rename it rather than building new.
+3. **Model-routing for hard equipment types.** Prompt wording is a DEAD lever for warehouse-electric gear (reach / order-picker / walkie / pallet) — Gemini drifts regardless. The real levers are best-of-N (shipped, extend it) or routing those types elsewhere.
+4. **Per-user access control — Phase 2 (admin audit logging).** Still unbuilt. NOTE: `access-control.ts` is currently **defanged** (`USER_RESTRICTIONS = {}`); rebuild it if per-user gating is wanted again.
+5. **Extract `_load_image_bytes`** to `services/gcs.download_image` — triplicated across the workers (TODO marker in code).
 
 ---
 
 ## Pending OPERATOR steps (dashboards / gcloud / env — not code)
 
-- **`AUTH_ENABLED=true`** in Vercel (Production) when ready — locks the whole app behind Microsoft SSO + activates the email allowlist. Confirm the allowlist first; test on Preview. (Still inert; workspace runs as `dev@local`.)
-- **CLAUDE.md quick-reference secrets list** still names `cleanshot-xai-key` (Grok) as in-use — it's now dormant but the secret stays in place (one-line re-enable). `cleanshot-recraft-key` is still safe to delete.
-- Domain onboarding is a **4-place checklist** (hard-won lesson #26): Vercel + `lib/auth.ts` trustedOrigins + Entra redirect URI + `infra/gcs-cors.json` (re-apply to BOTH buckets).
+- **`AUTH_ENABLED=true`** in Vercel (Production) when ready — locks the app behind Microsoft SSO + activates the email allowlist. Confirm the allowlist first; test on Preview. Still inert; the workspace runs as `dev@local`. **Saved prompts are keyed on the signed-in email**, so everything saved while running as `dev@local` belongs to `dev@local`.
+- **Watch the first API revision after this push** — it runs the `saved_prompts` migration on startup.
+- `cleanshot-xai-key` (Grok) is dormant but the secret stays (one-line re-enable). `cleanshot-recraft-key` is still safe to delete.
+- Domain onboarding is a **4-place checklist** (lesson #26): Vercel + `lib/auth.ts` trustedOrigins + Entra redirect URI + `infra/gcs-cors.json` (re-apply to BOTH buckets).
 
 ---
 
 ## Docs
 
-- **CLAUDE.md** — updated this session (new 2026-07-21 block, provider picker → 2 live, Grok dormant, prompt-first + regen fix). Authoritative.
-- **README.md** — top "current-state note" refreshed; the body below it is still stale by design (it defers to CLAUDE.md).
-- **AGENTS.md** — was a stale ~2026-05-28 fork of CLAUDE.md (6 providers, old tab order, "Codex" branding). Reworked into a thin pointer to CLAUDE.md to kill the dual-maintenance drift. **Left untracked** (as found — `git add AGENTS.md` if you want it in the repo).
-- **STYLE_GUIDE.md / ENTRA_SETUP.md / .instructions.md** — unaffected by this session (evergreen).
+- **CLAUDE.md** — rewritten this session. The three per-session log blocks were replaced by one durable "Enhance tab — current shape" section (keeping the findings that still constrain work), and the archived changelog was pruned. Authoritative.
+- **README.md** — current-state note, "What It Does", "The Workflow", and the storage section rewritten to match the app.
+- **AGENTS.md** — a thin pointer to CLAUDE.md. **Left untracked** (as found — `git add AGENTS.md` if you want it in the repo).
+- **STYLE_GUIDE.md / ENTRA_SETUP.md / .instructions.md** — unaffected (evergreen).
 
 ---
 
@@ -70,7 +90,7 @@ Hard-refresh first (Vercel) so you're on the latest web build.
 
 - **Deps:** `cd apps/web && pnpm add <dep>` — NEVER npm, NEVER from repo root (lesson #25).
 - **After API pushes**, arm a Cloud Run revision watcher for a one-shot "deploy done" ping; web-only pushes (Vercel) don't need it.
-- **New UI:** conform to `STYLE_GUIDE.md` (green/blue/red buttons, no full-width, bold sky-400 links, yellow-300 hints).
-- **`gcloud` is off the session PATH** — call by full path (`C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd`), and from Bash it needs PowerShell's `&` call operator, not `cmd /c` (the spaced path mangles). See memory `gcloud-local-access`.
-- **Pre-existing lint debt** in `EnhancePanel.tsx` (one `enhanceJobsRef` "refs during render" error from commit `93c8dfe`) — not the deploy gate; `tsc` is. Don't chase it.
-- Commit trailer: `Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>`.
+- **New UI:** conform to `STYLE_GUIDE.md`. Note it predates the house-palette rewrite in places — `globals.css` tokens win where they disagree.
+- **`gcloud` is off the session PATH** — call by full path (`C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd`), and from Bash it needs PowerShell's `&` call operator, not `cmd /c`.
+- **Pre-existing lint debt:** 8 errors, unchanged by this batch — one `enhanceJobsRef` "refs during render" in `EnhancePanel.tsx` plus `react-hooks/set-state-in-effect` across several files. Not the deploy gate; `tsc` is. Don't chase them.
+- Commit trailer: `Co-Authored-By: Claude Opus 5 (1M context) <noreply@anthropic.com>`.

@@ -154,7 +154,7 @@ _PRO_MIN_WIDTH = 1024
 _PRO_JPEG_QUALITY = 92
 
 
-def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = False) -> ExportResult:
+def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = True) -> ExportResult:
     """
     PRO preset: the LARGEST 7:5 crop the source supports, JPEG at fixed high
     quality. Crop-not-letterbox: always fills the frame.
@@ -173,8 +173,17 @@ def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = False) -> ExportResu
     cap is a separate decision with real latency/cost consequences for the
     model calls; see open item #6 in CLAUDE.md.
 
-    When `ai_disclaimer=True`, burns the AI_DISCLAIMER_WATERMARK string into the
+    When `ai_disclaimer=True`, the AI_DISCLAIMER_WATERMARK is burned into the
     bottom-right corner BEFORE encoding, so it lands in the final JPEG bytes.
+
+    This was briefly unconditional (2026-08-21) and is back to a flag pending a
+    final decision on how the watermark gets applied. The default is True, so a
+    caller that says nothing still gets the disclaimer — the UI checkbox is
+    likewise on by default and the operator opts OUT. Reverting to unconditional
+    is deleting the parameter and the `if` below.
+
+    This remains the single place the watermark is applied and the single place
+    export bytes are produced, so nothing downstream re-applies it.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
@@ -204,8 +213,9 @@ def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = False) -> ExportResu
     # Step 3: attention-weighted crop to the computed box.
     img = img.smartcrop(target_w, target_h, interesting="attention")
 
-    # Step 3b: Optional disclaimer watermark — applied AFTER the crop so it lands
-    # at a fixed pixel offset from the final corner regardless of source aspect.
+    # Step 3b: Optional disclaimer watermark — applied AFTER the crop so it
+    # lands at a fixed pixel offset from the final corner regardless of source
+    # aspect, and BEFORE the encode so it is part of the bytes, not an overlay.
     if ai_disclaimer:
         img = _apply_disclaimer_watermark(img)
 

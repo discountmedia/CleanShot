@@ -9,7 +9,6 @@
 //   4. Advanced collapsible — toggles + custom prompt (preserved verbatim)
 //   5. Enhance N Images button
 //   6. SourceCompareCards — one per uploaded file, 5-up variant grid
-//   7. CommandBar — sticky footer with ready/working/undecided/held tally
 //      + primary "Send N to Scan →" CTA
 //
 // State changes vs. previous version:
@@ -30,6 +29,7 @@ import { buildEnhanceFilename, convertToJpeg, formatBytes } from "../../lib/comp
 import {
   DEFAULT_TOGGLES,
   TOGGLE_LABELS,
+  VISIBLE_TOGGLES,
   TOGGLE_DESCRIPTIONS,
   isEnhanceable,
   type EnhanceToggles,
@@ -38,6 +38,7 @@ import {
   type UploadFile,
 } from "../../lib/types";
 import {
+  applyModifyBatch,
   enqueueEnhance,
   getAssetUrl,
   getSessionState,
@@ -56,7 +57,18 @@ import {
   type ServerAsset,
 } from "../../lib/import-hydrate";
 import { useHandoffPoller } from "../../lib/useHandoffPoller";
-import { buildRecommendedPrompt } from "../../lib/recommended-prompt";
+import {
+  anyScanPending,
+  readInlineScans,
+  type InlineScanState,
+} from "../../lib/inline-scan";
+import {
+  DEFAULT_FORK_VISIBILITY,
+  buildRecommendedPrompt,
+  isDefaultForkVisibility,
+  matchesRecommendedPrompt,
+  type ForkVisibility,
+} from "../../lib/recommended-prompt";
 import { useJobPoller } from "../../lib/polling";
 import {
   ENHANCE_PROVIDERS,
@@ -67,9 +79,12 @@ import type { UserRestriction } from "../../lib/access-control";
 
 import { MetaCard } from "./MetaCard";
 import { ProviderRow } from "./ProviderRow";
-import { CommandBar } from "./CommandBar";
+import { SavedPromptsBar } from "./SavedPromptsBar";
+import { ForkFramingControls } from "./ForkFramingControls";
 import {
+  NEUTRAL_ADJUSTMENT,
   SourceCompareCard,
+  type VariantAdjustment,
   type SourceVariant,
 } from "./SourceCompareCard";
 import { EraseDialog, type EraseDialogResult } from "./EraseDialog";
@@ -79,7 +94,6 @@ import { AlertBanner } from "../workspace/AlertBanner";
 // Modify-tab darkroom controls relocated to live INSIDE Enhance below the
 // variants grid (2026-06-01) — the Modify tab itself is being deleted.
 // Embedded mode hides the TipBanner + standalone uploader.
-import { ModifyPanel } from "../modify/ModifyPanel";
 import { ExportControls } from "../export/ExportControls";
 
 const MAX_UPLOADS = 150;
@@ -89,10 +103,18 @@ const MAX_UPLOADS = 150;
 function ThumbnailCard({
   file,
   onPreviewExpired,
+  forkVisibility,
+  onForkVisibilityChange,
+  showForkControls,
 }: {
   file: UploadFile;
   /** Re-mints the signed GET URL for an imported asset whose preview 404'd. */
   onPreviewExpired: (file: UploadFile) => void;
+  /** Per-image fork framing for THIS photo. */
+  forkVisibility: ForkVisibility;
+  onForkVisibilityChange: (next: ForkVisibility) => void;
+  /** False for scissor lifts, which have a platform and no forks at all. */
+  showForkControls: boolean;
 }) {
   // Imported previews are signed GCS GET URLs with a 1-hour life
   // (_SIGNED_URL_EXPIRY_GET in services/gcs.py — a SHARED constant also used by
@@ -115,7 +137,8 @@ function ThumbnailCard({
   };
 
   return (
-    <div className="relative group rounded-lg overflow-hidden bg-panel border border-line">
+    <div className="rounded-lg overflow-hidden bg-panel border border-line">
+    <div className="relative group">
       {previewDead ? (
         <div className="w-full aspect-square flex items-center justify-center bg-well px-2 text-center">
           <span className="text-[10px] font-mono text-ink-faint">
@@ -205,6 +228,21 @@ function ThumbnailCard({
       <div className="absolute bottom-0 inset-x-0 bg-linear-to-t from-black/80 to-transparent px-2 py-1.5 translate-y-full group-hover:translate-y-0 transition-transform">
         <p className="text-xs text-white truncate">{file.filename}</p>
       </div>
+    </div>
+
+    {/* Fork framing, set BEFORE the first run. Under the image rather than
+        over it — the operator is judging this photo to decide, so covering
+        it would be self-defeating. */}
+    {showForkControls && (
+      <div className="border-t border-line px-2 py-1.5 bg-well">
+        <ForkFramingControls
+          value={forkVisibility}
+          onChange={onForkVisibilityChange}
+          promptIsCustom={false}
+          compact
+        />
+      </div>
+    )}
     </div>
   );
 }
@@ -327,7 +365,6 @@ export interface EnhancePanelProps {
   expectedImportCount?: number;
   meta: Partial<ForkliftMeta>;
   onMetaChange: (meta: Partial<ForkliftMeta>) => void;
-  onSendToScan: (items: CompletedEnhanceItem[]) => void;
   onClearPipeline: () => void;
   /**
    * Explicit "Clear all" only. Tells Workspace to forget the session handle so
@@ -356,7 +393,6 @@ export function EnhancePanel({
   expectedImportCount = 0,
   meta,
   onMetaChange,
-  onSendToScan,
   onClearPipeline,
   onDiscardSession,
   onFileCountChange,
@@ -486,11 +522,6 @@ export function EnhancePanel({
     },
   );
 
-  // True when the operator has changed a toggle since the most recent batch
-  // reached a terminal state. Drives the "re-enhance with new toggles"
-  // path on the Enhance button — without this we'd lock them into the
-  // previous batch's settings until they cleared the workspace.
-  const [togglesDirty, setTogglesDirty] = useState(false);
   // One-shot guard so the auto-reset effect fires exactly once per batch
   // transition into terminal state. Reset back to false the moment the
   // batch is no longer terminal (new run started, items cleared, etc.).
@@ -540,7 +571,6 @@ export function EnhancePanel({
   // preserved from the prior implementation. Keyed by jobId so each
   // (file × provider) pair has its own entry.
   const [completed, setCompleted] = useState<Map<string, CompletedEnhanceItem>>(new Map());
-  const [sentJobIds, setSentJobIds] = useState<Set<string>>(new Set());
 
   // Hoisted from the old JobStatusRow internal state so the variant
   // thumbnails can share poll updates. Keyed by jobId.
@@ -674,11 +704,9 @@ export function EnhancePanel({
   useEffect(() => {
     if (batchTerminal && !resetDoneForBatchRef.current) {
       resetDoneForBatchRef.current = true;
+      // The auto-reset IS the side-effect here; the one-shot ref gates it so
+      // there's no loop.
       setToggles(DEFAULT_TOGGLES);
-      // We're the ones moving toggles here — don't count it as a
-      // user-initiated dirty change.
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- intentional: the auto-reset IS the side-effect; gated by the one-shot ref so no loop.
-      setTogglesDirty(false);
     } else if (!batchTerminal && resetDoneForBatchRef.current) {
       resetDoneForBatchRef.current = false;
     }
@@ -754,6 +782,198 @@ export function EnhancePanel({
     },
     [updateJobState],
   );
+
+  // ─── Inline scan (Enhance tab) ─────────────────────────────────────────
+  //
+  // Every enhance output is scanned automatically by the backend already —
+  // `_run_enhance` enqueues a differential scan job against the original the
+  // moment a variant lands. So this does NOT start scans; it reads the ones
+  // that exist and shows each verdict beside the image it belongs to.
+  //
+  // One session read resolves the whole batch, and each variant's card renders
+  // as soon as ITS OWN row appears — no waiting on the slowest scan, and a job
+  // that fails marks only its own variant.
+  const [scansByAsset, setScansByAsset] = useState<Map<string, InlineScanState>>(
+    () => new Map(),
+  );
+
+  // ─── Per-image fork framing ────────────────────────────────────────────
+  //
+  // Which parts of the fork are in frame, PER SOURCE PHOTO. Per-image is the
+  // only shape that makes sense: whether the tips got cropped is a property of
+  // one camera angle, not of the batch. The wire format already supported this
+  // — every queued image gets its own EnhanceTaskPayload — so this needed a
+  // new field, not new plumbing.
+  //
+  // A file missing from this map is fully-visible, which is the common case
+  // and reproduces the pre-existing prompt exactly.
+  const [forkVisByFile, setForkVisByFile] = useState<Map<string, ForkVisibility>>(
+    () => new Map(),
+  );
+
+  /**
+   * Master switch for the whole fork-conditionals feature. EXPERIMENTAL, so it
+   * is OFF by default and only an explicit click turns it on.
+   *
+   * Deliberately plain `useState` with no persistence: not localStorage, not
+   * the session, not derived from any other setting. It resets to off on every
+   * page load, and nothing else in this component can turn it on as a side
+   * effect. If the feature produces strange output, one click gets the
+   * operator back to the prompt the app built before it existed.
+   */
+  const [forkConditionalsOn, setForkConditionalsOn] = useState(false);
+
+  /**
+   * THE gate. Every read of fork visibility goes through here, so switching
+   * the feature off leaves no residual effect on the assembled prompt: the
+   * per-file selections stay in `forkVisByFile` (so they come back if the
+   * operator re-enables it) but are never consulted, and every caller sees
+   * fully-visible — byte-identical to the pre-feature behaviour.
+   *
+   * Turning it off mid-batch therefore affects only the NEXT run. Images
+   * already generated are untouched; nothing re-enqueues on this flag.
+   */
+  const forkVisFor = useCallback(
+    (fileId: string): ForkVisibility =>
+      forkConditionalsOn
+        ? (forkVisByFile.get(fileId) ?? DEFAULT_FORK_VISIBILITY)
+        : DEFAULT_FORK_VISIBILITY,
+    [forkConditionalsOn, forkVisByFile],
+  );
+
+  const setForkVis = useCallback((fileId: string, next: ForkVisibility) => {
+    setForkVisByFile((prev) => {
+      const map = new Map(prev);
+      map.set(fileId, next);
+      return map;
+    });
+  }, []);
+
+  // Is the box still holding the recommended text (in any fork-visibility
+  // combination), or has the operator written their own?
+  const promptIsCustom = useMemo(
+    () =>
+      customPromptActive &&
+      !matchesRecommendedPrompt(customPrompt, meta.equipmentType ?? "forklift", {
+        make:  meta.make,
+        model: meta.model,
+        year:  meta.year,
+      }),
+    [customPromptActive, customPrompt, meta.equipmentType, meta.make, meta.model, meta.year],
+  );
+
+  /**
+   * The prompt to enqueue for ONE image, and whether the fork framing is
+   * already baked into it.
+   *
+   * Two paths, and which one runs is the whole design:
+   *
+   *  • Recommended text untouched → rebuild it from fragments using THIS
+   *    image's fork visibility. The offending clause is simply absent. This is
+   *    the reliable path, because the model is never asked for the thing it
+   *    would otherwise invent.
+   *
+   *  • Operator wrote their own → leave their words exactly as typed. There is
+   *    no fragment of ours to remove, and rewriting their prompt would throw
+   *    their edits away. The backend appends an explicit FORK FRAMING note
+   *    instead; the UI says so next to the controls rather than letting the
+   *    control appear to do nothing.
+   *
+   * The prompt BOX still shows one shared prompt — per-image variation happens
+   * here at enqueue time, because fork framing is a property of the photo and
+   * the box is not per photo.
+   */
+  const promptForFile = useCallback(
+    (fileId: string): { prompt: string | undefined; framingInPrompt: boolean } => {
+      if (!customPromptActive) return { prompt: undefined, framingInPrompt: false };
+      // Feature off → the operator's text goes out VERBATIM, with no rebuild
+      // at all. Rebuilding it even from default fragments would round-trip
+      // their prompt through our assembler, and any wording drift there would
+      // be a residual effect of a feature that is supposed to be inert.
+      if (!forkConditionalsOn) return { prompt: customPrompt, framingInPrompt: false };
+      if (promptIsCustom) return { prompt: customPrompt, framingInPrompt: false };
+      const fork = forkVisFor(fileId);
+      return {
+        prompt: buildRecommendedPrompt(
+          meta.equipmentType ?? "forklift",
+          { make: meta.make, model: meta.model, year: meta.year },
+          fork,
+        ),
+        // Rebuilt from fragments, so the framing IS the prompt — tell the
+        // worker not to append its own note on top.
+        framingInPrompt: !isDefaultForkVisibility(fork),
+      };
+    },
+    [
+      customPromptActive, customPrompt, promptIsCustom, forkVisFor,
+      forkConditionalsOn,
+      meta.equipmentType, meta.make, meta.model, meta.year,
+    ],
+  );
+
+  // Per-image adjustment state. Declared up here with the rest of the batch
+  // state because the batch-wipe handlers below reset it alongside
+  // `completed` / `jobStateMap`; the handlers that drive it live further down
+  // next to the other per-variant actions.
+  const [adjByFile, setAdjByFile] = useState<
+    Map<string, Partial<Record<EnhanceProvider, VariantAdjustment>>>
+  >(() => new Map());
+  const [adjustingJobs, setAdjustingJobs] = useState<Set<string>>(() => new Set());
+
+  // Asset ids of every completed variant currently on screen. This is the
+  // lookup key on both sides: the scan job's input_asset_id and the
+  // scan_results row's asset_id are both the enhance OUTPUT asset.
+  const completedAssetIds = useMemo(() => {
+    const out: string[] = [];
+    for (const item of completed.values()) out.push(item.outputAssetId);
+    return out;
+  }, [completed]);
+
+  // Poll while anything is unresolved, then stop. `deadline` keeps a variant
+  // whose scan job never materialises (older asset, worker drop) from polling
+  // the session read forever.
+  const scanDeadlineRef = useRef(0);
+  useEffect(() => {
+    if (completedAssetIds.length > 0) {
+      scanDeadlineRef.current = Date.now() + 4 * 60 * 1000;
+    }
+  }, [completedAssetIds]);
+
+  useEffect(() => {
+    if (!sessionId || completedAssetIds.length === 0) return;
+
+    let cancelled = false;
+    let timer: number | undefined;
+
+    const tick = async () => {
+      try {
+        const state = await getSessionState(sessionId);
+        if (cancelled) return;
+        const next = readInlineScans(state, completedAssetIds);
+        setScansByAsset(next);
+        const everyoneReported = completedAssetIds.every((id) => {
+          const s = next.get(id);
+          return s !== undefined && s.status !== "waiting";
+        });
+        if (everyoneReported || Date.now() > scanDeadlineRef.current) return;
+      } catch {
+        // A failed read is not a failed scan — keep the prior state and try
+        // again on the next tick until the deadline.
+        if (cancelled) return;
+        if (Date.now() > scanDeadlineRef.current) return;
+      }
+      timer = window.setTimeout(tick, 5000);
+    };
+
+    void tick();
+
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
+  }, [sessionId, completedAssetIds]);
+
+  const scansPending = useMemo(() => anyScanPending(scansByAsset), [scansByAsset]);
 
   // ─── Auto-pick "best of N" ─────────────────────────────────────────────
   //
@@ -1045,7 +1265,9 @@ export function EnhancePanel({
           forkliftMeta: meta,
           provider: p,
           equipmentType: meta.equipmentType ?? "forklift",
-          customPrompt: customPromptActive ? customPrompt : undefined,
+          customPrompt: promptForFile(id).prompt,
+          forkVisibility: forkVisFor(id),
+          forkFramingInPrompt: promptForFile(id).framingInPrompt,
           idempotencyKey: `enhance-${id}-${p}`,
         });
         perProviderJobIds.set(p, jobId);
@@ -1072,8 +1294,9 @@ export function EnhancePanel({
    * Re-run enhance on a single (file, provider) result. Swaps the jobId in
    * `enhanceJobs[fileId][provider]` and evicts the previous job's
    * `completed` / `jobStateMap` entries so the variant thumb resets to
-   * spinner. `sentJobIds` is intentionally untouched — already-forwarded
-   * jobs stay historical fact.
+   * spinner. Powers both the per-variant Retry button on the thumb and the
+   * failed-variant retry strip, so a retry always re-runs with the CURRENT
+   * prompt and toggle state.
    */
   const retryProvider = useCallback(
     async (file: UploadFile, provider: EnhanceProvider) => {
@@ -1090,7 +1313,9 @@ export function EnhancePanel({
           forkliftMeta:   meta,
           provider,
           equipmentType:  meta.equipmentType ?? "forklift",
-          customPrompt:   customPromptActive ? customPrompt : undefined,
+          customPrompt:   promptForFile(file.id).prompt,
+          forkVisibility: forkVisFor(file.id),
+          forkFramingInPrompt: promptForFile(file.id).framingInPrompt,
           idempotencyKey: `enhance-${file.id}-${provider}-regen-${++regenSeqRef.current}`,
         });
 
@@ -1152,7 +1377,13 @@ export function EnhancePanel({
         setGlobalError(msg);
       }
     },
-    [sessionId, toggles, meta, customPromptActive, customPrompt],
+    // forkVisFor + promptForFile MUST be here: without them this closure keeps
+    // the fork state from the render it was created in, so a Retry fired after
+    // ticking "tips not visible" would re-run with the OLD framing — the exact
+    // case the button exists for.
+    // The prompt no longer appears directly — promptForFile resolves it, and
+    // carries customPrompt / customPromptActive in its own deps.
+    [sessionId, toggles, meta, forkVisFor, promptForFile],
   );
 
   const handleEnhanceAll = async () => {
@@ -1205,7 +1436,9 @@ export function EnhancePanel({
         setFiles((prev) => prev.filter(survives));
         setEnhanceJobs(new Map());
         setCompleted(new Map());
-        setSentJobIds(new Set());
+        setScansByAsset(new Map());
+        setAdjByFile(new Map());
+        setAdjustingJobs(new Set());
         setJobStateMap(new Map());
         setChosenByFile(new Map());
         setHeldFiles(new Set());
@@ -1218,7 +1451,6 @@ export function EnhancePanel({
         onClearPipeline();
         // Brand-new batch — clear the dirty flag + auto-reset latch so the
         // post-batch toggle reset fires fresh when this run completes.
-        setTogglesDirty(false);
         resetDoneForBatchRef.current = false;
       }
     }
@@ -1267,7 +1499,9 @@ export function EnhancePanel({
     // downstream Scan/Resize state has to be cleared too.
     setEnhanceJobs(new Map());
     setCompleted(new Map());
-    setSentJobIds(new Set());
+    setScansByAsset(new Map());
+    setAdjByFile(new Map());
+    setAdjustingJobs(new Set());
     setJobStateMap(new Map());
     setChosenByFile(new Map());
     setHeldFiles(new Set());
@@ -1276,7 +1510,6 @@ export function EnhancePanel({
     judgeStartedRef.current = new Set();
     judgeEpochRef.current += 1;   // invalidate any in-flight judge from the prior batch
     onClearPipeline();
-    setTogglesDirty(false);
     resetDoneForBatchRef.current = false;
     setIsRunning(true);
 
@@ -1298,7 +1531,9 @@ export function EnhancePanel({
               forkliftMeta:   meta,
               provider:       p,
               equipmentType:  meta.equipmentType ?? "forklift",
-              customPrompt:   customPromptActive ? customPrompt : undefined,
+              customPrompt:   promptForFile(file.id).prompt,
+              forkVisibility: forkVisFor(file.id),
+              forkFramingInPrompt: promptForFile(file.id).framingInPrompt,
               idempotencyKey: `re-enhance-${file.id}-${p}-${++regenSeqRef.current}`,
             });
             perProviderJobIds.set(p, jobId);
@@ -1322,29 +1557,136 @@ export function EnhancePanel({
     setIsRunning(false);
   }, [
     files,
-    makeValid,
+    forkVisFor,
+    promptForFile,
     metaGate,
     restriction,
     selectedProviders,
     sessionId,
     toggles,
     meta,
-    customPromptActive,
-    customPrompt,
+    // customPrompt / customPromptActive are not listed: the prompt is resolved
+    // through promptForFile, which carries them in its own deps.
     onClearPipeline,
   ]);
 
-  /**
-   * Call this from any UI control that mutates `toggles` because the user
-   * touched it (the per-toggle switch + the "Reset" defaults button).
-   * Marks the workspace dirty so the Enhance button re-enables in
-   * re-enhance mode. Gated on batchTerminal so toggling around BEFORE the
-   * first enhance run doesn't bury the operator under a "you changed
-   * something" flag with nothing to re-run yet.
-   */
-  const markUserToggleChange = useCallback(() => {
-    if (batchTerminal) setTogglesDirty(true);
-  }, [batchTerminal]);
+
+  // ─── Per-image adjustments ─────────────────────────────────────────────
+  //
+  // Replaces the bulk darkroom (ModifyPanel) that used to sit at the bottom of
+  // this page and applied one contrast/saturation setting to every picked
+  // winner at once. Each variant now carries its own two sliders.
+  //
+  // Uncommitted values live here and drive a CSS-filter preview on the thumb.
+  // Apply renders the real bytes through the SAME backend path the darkroom
+  // used (`applyModifyBatch`, one asset at a time via its `perAsset` contract)
+  // and swaps the result into `completed` — which is what `pickedWinners` and
+  // therefore ExportControls read, so an applied adjustment persists through
+  // export with no extra plumbing.
+
+  const handleAdjustChange = useCallback(
+    (fileId: string, provider: EnhanceProvider, adj: VariantAdjustment) => {
+      setAdjByFile((prev) => {
+        const next = new Map(prev);
+        next.set(fileId, { ...(next.get(fileId) ?? {}), [provider]: adj });
+        return next;
+      });
+    },
+    [setAdjByFile],
+  );
+
+  const handleAdjustApply = useCallback(
+    async (fileId: string, provider: EnhanceProvider) => {
+      const jobId = enhanceJobs.get(fileId)?.get(provider);
+      if (!jobId) return;
+      const item = completed.get(jobId);
+      if (!item) return;
+      const adj = adjByFile.get(fileId)?.[provider];
+      if (!adj) return;
+      if (adjustingJobs.has(jobId)) return;
+
+      setAdjustingJobs((prev) => new Set(prev).add(jobId));
+      try {
+        const { items } = await applyModifyBatch({
+          sessionId,
+          assetIds: [item.outputAssetId],
+          // Contrast + saturation only. brightness / rotation / crop stay
+          // neutral — those controls came off with the bulk panel and the
+          // backend treats 1.0 / 0 / "free" / 1.0 as no-ops.
+          adjustments: {
+            brightness:  1.0,
+            contrast:    adj.contrast,
+            saturation:  adj.saturation,
+            rotationDeg: 0,
+            cropAspect:  "free",
+            cropZoom:    1.0,
+          },
+        });
+        const rendered = items[0];
+        if (!rendered) return;
+
+        // Replace the variant in place so the thumb, the winner pick, and the
+        // export set all move to the adjusted asset together.
+        setCompleted((prev) => {
+          const cur = prev.get(jobId);
+          if (!cur) return prev;
+          const next = new Map(prev);
+          next.set(jobId, {
+            ...cur,
+            outputAssetId: rendered.assetId,
+            outputUrl:     rendered.url,
+          });
+          return next;
+        });
+        // Mirror into jobStateMap for symmetry with the Erase / Tweak patches —
+        // the tool-open flows read outputAssetId from there as a fallback.
+        setJobStateMap((prev) => {
+          const cur = prev.get(jobId);
+          if (!cur) return prev;
+          const next = new Map(prev);
+          next.set(jobId, { ...cur, outputAssetId: rendered.assetId });
+          return next;
+        });
+        // The adjustment is now baked into the bytes, so the sliders return to
+        // neutral — leaving them where they were would double-apply on the
+        // CSS preview and on any second Apply.
+        setAdjByFile((prev) => {
+          const forFile = prev.get(fileId);
+          if (!forFile) return prev;
+          const next = new Map(prev);
+          next.set(fileId, { ...forFile, [provider]: NEUTRAL_ADJUSTMENT });
+          return next;
+        });
+      } catch (err: unknown) {
+        setGlobalError(err instanceof Error ? err.message : "Adjustment failed");
+      } finally {
+        setAdjustingJobs((prev) => {
+          const next = new Set(prev);
+          next.delete(jobId);
+          return next;
+        });
+      }
+    },
+    [
+      sessionId, enhanceJobs, completed, adjByFile, adjustingJobs,
+      setAdjustingJobs, setCompleted, setJobStateMap, setAdjByFile, setGlobalError,
+    ],
+  );
+
+  // Providers whose Apply is in flight, shaped per-file for the compare card.
+  const adjustingByFile = useMemo(() => {
+    const out = new Map<string, Partial<Record<EnhanceProvider, boolean>>>();
+    for (const f of files) {
+      const fileJobs = enhanceJobs.get(f.id);
+      if (!fileJobs) continue;
+      const perProvider: Partial<Record<EnhanceProvider, boolean>> = {};
+      for (const [provider, jobId] of fileJobs.entries()) {
+        if (adjustingJobs.has(jobId)) perProvider[provider] = true;
+      }
+      if (Object.keys(perProvider).length > 0) out.set(f.id, perProvider);
+    }
+    return out;
+  }, [files, enhanceJobs, adjustingJobs]);
 
   // ─── Winner pick / Hold ────────────────────────────────────────────────
 
@@ -1604,36 +1946,38 @@ export function EnhancePanel({
   //   • has a winner pick
   //   • the winner's jobId has a completed entry
   //   • the winner's jobId hasn't already been sent
-  const readyToSend = useMemo(() => {
-    const out: CompletedEnhanceItem[] = [];
+  // Per-file, per-provider scan lookup for the compare cards. Keyed the same
+  // way `variantsByFile` is so the card can render a verdict directly beneath
+  // the variant it describes.
+  const scansByFile = useMemo(() => {
+    const out = new Map<string, Partial<Record<EnhanceProvider, InlineScanState>>>();
     for (const f of files) {
-      if (heldFiles.has(f.id)) continue;
-      const chosen = chosenByFile.get(f.id);
-      if (!chosen) continue;
-      const variants = enhanceJobs.get(f.id);
-      const jobId = variants?.get(chosen);
-      if (!jobId || sentJobIds.has(jobId)) continue;
-      const item = completed.get(jobId);
-      if (item) out.push(item);
+      const fileJobs = enhanceJobs.get(f.id);
+      if (!fileJobs) continue;
+      const perProvider: Partial<Record<EnhanceProvider, InlineScanState>> = {};
+      for (const [provider, jobId] of fileJobs.entries()) {
+        const item = completed.get(jobId);
+        if (!item) continue;
+        const scan = scansByAsset.get(item.outputAssetId);
+        if (scan) perProvider[provider] = scan;
+      }
+      if (Object.keys(perProvider).length > 0) out.set(f.id, perProvider);
     }
     return out;
-  }, [files, heldFiles, chosenByFile, enhanceJobs, completed, sentJobIds]);
+  }, [files, enhanceJobs, completed, scansByAsset]);
 
-  // Sibling of readyToSend used by the embedded Darkroom panel below.
-  // Same winner-resolution chain (file → chosenByFile → enhanceJobs
-  // [file][chosen] → completed[jobId]) and ALSO filters held files so
-  // "Hold" reads consistently as "exclude from every batch operation"
-  // — without this filter, an operator who held a file before its job
-  // completed (and lost track of which they held) would silently get
-  // batch slider adjustments applied to it. Unlike readyToSend we do
-  // NOT filter by sentJobIds: an already-sent variant may still need
-  // a brighter re-pass before a subsequent Resize export.
+  // The operator-picked winners — the set that gets exported (and, as of
+  // 2026-08-21, saved to the project by that same export click).
   //
-  // Returns the jobId alongside each item so onModifyApplied can patch
-  // results back keyed by assetId → jobId. assetId is guaranteed
-  // one-to-one with jobId (each job owns its own outputAssetId, and
-  // every job ID is unique per batch), so building a Map<assetId,
-  // jobId> never silently de-dupes.
+  // Winner-resolution chain: file → chosenByFile → enhanceJobs[file][chosen]
+  // → completed[jobId]. Held files are filtered out so "Hold" reads
+  // consistently as "exclude from every batch operation".
+  //
+  // Returns the jobId alongside each item so per-image adjustments can patch
+  // results back keyed by assetId → jobId. assetId is guaranteed one-to-one
+  // with jobId (each job owns its own outputAssetId, and every job ID is
+  // unique per batch), so building a Map<assetId, jobId> never silently
+  // de-dupes.
   const pickedWinners = useMemo(() => {
     const out: Array<{ jobId: string; item: CompletedEnhanceItem }> = [];
     for (const f of files) {
@@ -1647,70 +1991,6 @@ export function EnhancePanel({
     }
     return out;
   }, [files, heldFiles, chosenByFile, enhanceJobs, completed]);
-
-  // Manual "Send N to Scan →" CTA handler used by CommandBar.
-  const handleSendAll = useCallback(() => {
-    if (readyToSend.length === 0) return;
-    onSendToScan(readyToSend);
-    setSentJobIds((prev) => {
-      const next = new Set(prev);
-      for (const it of readyToSend) next.add(it.jobId);
-      return next;
-    });
-  }, [readyToSend, onSendToScan]);
-
-  // ─── CommandBar tallies ────────────────────────────────────────────────
-
-  const commandCounts = useMemo(() => {
-    let ready = 0;
-    let working = 0;
-    let undecided = 0;
-    let held = 0;
-    for (const f of files) {
-      const fileJobs = enhanceJobs.get(f.id);
-      if (!fileJobs || fileJobs.size === 0) continue;
-      if (heldFiles.has(f.id)) {
-        held++;
-        continue;
-      }
-      let allTerminal = true;
-      let anyComplete = false;
-      for (const jobId of fileJobs.values()) {
-        const job = jobStateMap.get(jobId);
-        const status = job?.status;
-        if (status === "complete") anyComplete = true;
-        if (status !== "complete" && status !== "failed" && status !== "cancelled") {
-          allTerminal = false;
-        }
-      }
-      const chosen = chosenByFile.get(f.id);
-      const chosenJobId = chosen ? fileJobs.get(chosen) : undefined;
-      const chosenJobStatus = chosenJobId ? jobStateMap.get(chosenJobId)?.status : undefined;
-      const chosenComplete = chosenJobStatus === "complete";
-      const isSent = chosenJobId ? sentJobIds.has(chosenJobId) : false;
-
-      // Bucket priority (top to bottom):
-      //   1. ready    — operator has picked a winner AND that winner's
-      //                 variant is complete AND not yet sent. The OTHER
-      //                 providers for this source may still be in flight;
-      //                 the operator's pick is enough to ship now. This
-      //                 used to require `allTerminal` which forced
-      //                 operators to wait for the slowest provider; the
-      //                 new ordering lets them move early.
-      //   2. working  — at least one provider is still running and there's
-      //                 nothing shippable yet.
-      //   3. undecided — everything settled, at least one variant
-      //                 completed, but no winner picked.
-      if (chosen && chosenComplete && !isSent) {
-        ready++;
-      } else if (!allTerminal) {
-        working++;
-      } else if (anyComplete && !chosen) {
-        undecided++;
-      }
-    }
-    return { ready, working, undecided, held };
-  }, [files, enhanceJobs, jobStateMap, heldFiles, chosenByFile, sentJobIds]);
 
   // ─── Render ────────────────────────────────────────────────────────────
 
@@ -1737,7 +2017,9 @@ export function EnhancePanel({
     setFiles([]);
     setEnhanceJobs(new Map());
     setCompleted(new Map());
-    setSentJobIds(new Set());
+    setScansByAsset(new Map());
+    setAdjByFile(new Map());
+    setAdjustingJobs(new Set());
     setJobStateMap(new Map());
     setChosenByFile(new Map());
     setHeldFiles(new Set());
@@ -1750,7 +2032,6 @@ export function EnhancePanel({
     // the imports back. The automatic post-batch reset does NOT do this.
     onDiscardSession?.();
     setGlobalError(null);
-    setTogglesDirty(false);
     resetDoneForBatchRef.current = false;
   };
 
@@ -1929,7 +2210,16 @@ export function EnhancePanel({
           <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-11 gap-2">
             {files.map((f) => (
               <div key={f.id} className="relative group">
-                <ThumbnailCard file={f} onPreviewExpired={refreshImportPreview} />
+                <ThumbnailCard
+                  file={f}
+                  onPreviewExpired={refreshImportPreview}
+                  forkVisibility={forkVisFor(f.id)}
+                  onForkVisibilityChange={(next) => setForkVis(f.id, next)}
+                  showForkControls={
+                    forkConditionalsOn &&
+                    (meta.equipmentType ?? "forklift") !== "scissor_lift"
+                  }
+                />
                 <button
                   onClick={() => removeFile(f.id)}
                   className="absolute -top-1.5 -right-1.5 bg-danger rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity z-10"
@@ -2028,7 +2318,14 @@ export function EnhancePanel({
                 <h3 className="text-lg font-semibold text-ink">
                   Your prompt <span className="text-attn">*</span>
                 </h3>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-4">
+                  {/* Primary action. Behaviour is unchanged — only the weight:
+                      filled lime, larger type, real padding, an icon. It was a
+                      plain text link sitting at the same weight as the "Clear"
+                      link next to it, which read as secondary for what is the
+                      main way an unfamiliar operator gets a usable prompt.
+                      text-header-bg is mandatory on a lime fill (white is
+                      ~1.5:1). */}
                   <button
                     type="button"
                     onClick={() => {
@@ -2039,10 +2336,22 @@ export function EnhancePanel({
                           year:  meta.year,
                         }),
                       );
-                      markUserToggleChange();
                     }}
-                    className="text-sm font-bold text-accent hover:text-accent transition-colors"
+                    className="inline-flex items-center gap-2 text-base font-bold uppercase tracking-[0.1em] px-5 py-3 rounded-lg bg-accent hover:bg-accent/85 text-header-bg shadow-lg transition-colors"
                   >
+                    <svg
+                      className="w-5 h-5"
+                      fill="none"
+                      viewBox="0 0 24 24"
+                      stroke="currentColor"
+                      strokeWidth={2.5}
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z"
+                      />
+                    </svg>
                     {customPromptActive ? "Reset to recommended" : "Insert recommended prompt"}
                   </button>
                   {customPromptActive && (
@@ -2050,7 +2359,6 @@ export function EnhancePanel({
                       type="button"
                       onClick={() => {
                         setCustomPrompt("");
-                        markUserToggleChange();
                       }}
                       className="text-sm text-ink-soft hover:text-ink transition-colors font-semibold"
                     >
@@ -2070,11 +2378,18 @@ export function EnhancePanel({
                 value={customPrompt}
                 onChange={(e) => {
                   setCustomPrompt(e.target.value);
-                  markUserToggleChange();
                 }}
                 placeholder="Example: Give this forklift a clean respray in its original orange, keep every decal, paint the forks red with yellow tips, glossy tire sidewalls, brighten the lighting, tidy the background."
                 rows={6}
                 className="w-full bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition leading-relaxed"
+              />
+
+              {/* Save the current prompt to the operator's profile, or drop a
+                  previously saved one back into the box. Inserted text is a
+                  COPY — editing it here never writes back to the saved row. */}
+              <SavedPromptsBar
+                currentPrompt={customPrompt}
+                onInsert={(body) => setCustomPrompt(body)}
               />
               <p className="text-sm text-ink-soft leading-relaxed">
                 Your prompt is the base. The built-in safety guardrails (keep the
@@ -2098,7 +2413,6 @@ export function EnhancePanel({
                   type="button"
                   onClick={() => {
                     setToggles(DEFAULT_TOGGLES);
-                    markUserToggleChange();
                   }}
                   className="text-sm text-ink-soft hover:text-ink transition-colors font-semibold"
                 >
@@ -2115,9 +2429,15 @@ export function EnhancePanel({
                 (Optional — leave them all off to let your prompt stand on its own.)
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {(Object.keys(TOGGLE_LABELS) as Array<keyof EnhanceToggles>)
-                  // Equipment-conditional toggle visibility — keep in lock-step
-                  // with the backend paint_forks_on / three_wheel gates:
+                {VISIBLE_TOGGLES
+                  // VISIBLE_TOGGLES (lib/types.ts) is the single list that
+                  // decides what renders — the other keys stay in state at
+                  // their DEFAULT_TOGGLES value and still reach the backend
+                  // prompt builder. Restoring one is a one-line edit there.
+                  //
+                  // The equipment-conditional gates below stay in lock-step
+                  // with the backend paint_forks_on / three_wheel gates, so
+                  // they keep working if either key is made visible again:
                   //  • paintForksRedYellowTips — every type EXCEPT scissor_lift.
                   //  • threeWheel — ONLY when equipmentType is "forklift".
                   .filter((key) => {
@@ -2135,7 +2455,6 @@ export function EnhancePanel({
                       checked={toggles[key]}
                       onChange={(v) => {
                         setToggles((prev) => ({ ...prev, [key]: v }));
-                        markUserToggleChange();
                       }}
                     />
                   ))}
@@ -2153,11 +2472,60 @@ export function EnhancePanel({
         </p>
       )}
 
+      {/* ── Fork conditionals: master switch ──
+          Sits immediately above the Enhance button, OUTSIDE the collapsible
+          settings section, and is visible whenever this tab is. That placement
+          is the point: the feature is experimental, so the way back to
+          known-good output has to be one click from where the operator is
+          standing when they notice the output is wrong — not a setting they
+          have to go hunting for.
+
+          Hidden entirely for scissor lifts, which have a platform and no
+          forks, so the control would do nothing there. */}
+      {(meta.equipmentType ?? "forklift") !== "scissor_lift" && (
+        <div
+          className={`rounded-xl border-2 px-4 py-3 transition-colors ${
+            forkConditionalsOn ? "border-attn bg-panel" : "border-line bg-well/40"
+          }`}
+        >
+          <label className="flex items-start gap-3 cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={forkConditionalsOn}
+              onChange={(e) => setForkConditionalsOn(e.target.checked)}
+              className="mt-1 w-5 h-5 accent-accent shrink-0"
+            />
+            <div className="min-w-0">
+              <p className="text-base font-bold text-ink leading-snug">
+                Fork conditionals{" "}
+                <span className="text-sm uppercase tracking-[0.16em] font-bold text-attn border border-attn rounded px-2 py-0.5 ml-1">
+                  Experimental
+                </span>
+              </p>
+              <p className="text-sm text-attn mt-1.5 leading-relaxed">
+                This feature is experimental and may produce unexpected results.
+              </p>
+              <p className="text-sm text-ink-soft mt-1.5 leading-relaxed">
+                Turns on per-image controls for photos where the fork isn&apos;t
+                fully in frame, letting you drop the fork instructions the model
+                can&apos;t satisfy. While this is off, prompts are built exactly
+                as they were before the feature existed. Switching it off takes
+                effect on the next run and never changes images you&apos;ve
+                already generated.
+              </p>
+            </div>
+          </label>
+        </div>
+      )}
+
       {/* ── Enhance button ── */}
       {(() => {
         const reEnhanceCount = files.filter(isEnhanceable).length;
-        const canReEnhance =
-          togglesDirty && batchTerminal && reEnhanceCount > 0;
+        // No dirty-input guard. The operator may re-run an identical
+        // batch at will — same prompt, same toggles — because generation
+        // is non-deterministic and a second roll is often the whole point
+        // (removed 2026-08-21).
+        const canReEnhance = batchTerminal && reEnhanceCount > 0;
         const buttonActive =
           (pendingCount > 0 || canReEnhance) && metaGate && !isRunning;
         const onClick = pendingCount > 0 ? handleEnhanceAll : handleReEnhance;
@@ -2207,6 +2575,7 @@ export function EnhancePanel({
             </h2>
             <span className="text-sm text-ink italic">
               One card per source · all providers compared side-by-side
+              {scansPending && " · scanning results as they land"}
             </span>
           </header>
 
@@ -2230,8 +2599,6 @@ export function EnhancePanel({
               const variants = variantsByFile.get(f.id);
               if (!variants) return null;
               const chosen = chosenByFile.get(f.id) ?? null;
-              const chosenJobId = chosen ? enhanceJobs.get(f.id)?.get(chosen) : undefined;
-              const isSent = chosenJobId ? sentJobIds.has(chosenJobId) : false;
               return (
                 <SourceCompareCard
                   key={f.id}
@@ -2239,9 +2606,24 @@ export function EnhancePanel({
                   variants={variants}
                   chosen={chosen}
                   held={heldFiles.has(f.id)}
-                  sent={isSent}
+                  /* Nothing forwards to the Scan tab any more — the scan is
+                     inline on this card. Kept as a prop so the card's own
+                     "already sent" treatment survives for a future caller. */
+                  sent={false}
                   nowMs={nowMs}
                   judgeResult={judgeByFile.get(f.id) ?? null}
+                  scans={scansByFile.get(f.id) ?? {}}
+                  forkVisibility={forkVisFor(f.id)}
+                  onForkVisibilityChange={(next) => setForkVis(f.id, next)}
+                  promptIsCustom={promptIsCustom}
+                  showForkControls={
+                    forkConditionalsOn &&
+                    (meta.equipmentType ?? "forklift") !== "scissor_lift"
+                  }
+                  adjustments={adjByFile.get(f.id) ?? {}}
+                  adjusting={adjustingByFile.get(f.id) ?? {}}
+                  onAdjustChange={(provider, adj) => handleAdjustChange(f.id, provider, adj)}
+                  onAdjustApply={(provider) => void handleAdjustApply(f.id, provider)}
                   judging={judgingFiles.has(f.id)}
                   onChoose={(provider) => chooseWinner(f.id, provider)}
                   onToggleHold={() => toggleHold(f.id)}
@@ -2257,103 +2639,11 @@ export function EnhancePanel({
         </div>
       )}
 
-      {/* ── Darkroom (Adjustments / Crop / Straighten) ──
-          FILTERED to operator-picked winners (the `pickedWinners` memo
-          above) — variants without a Choose click don't appear, and
-          held files are excluded so Hold reads as a real opt-out from
-          every batch operation. The live-preview grid inside
-          ModifyPanel renders directly from `resizeAssets`, so it
-          shrinks to winners-only too. Single-provider runs auto-pick
-          on job completion (see handleJobComplete); multi-provider
-          runs require explicit Choose clicks per card.
-
-          Race defense: the `onModifyApplied` arrow and the
-          `resizeAssets` array are both fresh on every render, but
-          ModifyPanel's `handleApply` is recreated each render too and
-          runs to completion on the at-click closure. That click-time
-          closure pins (a) the `pairs[i].original.assetId` values it
-          will send back, AND (b) THIS callback's `pickedWinners`
-          snapshot — the two are guaranteed to be from the same
-          render. So even if the operator re-picks a winner during the
-          await, the assetIdToJobId lookup below succeeds against the
-          original (pre-Apply) state and patches the right jobId.
-
-          Winner changed AFTER Apply: the modified bytes are persisted
-          under the OLD jobId in `completed`. The new winner is the
-          original untouched variant. Acceptable; do not cascade.
-
-          Embedded mode hides the TipBanner + standalone uploader. */}
-      {pickedWinners.length > 0 && (
-        <ModifyPanel
-          embedded={true}
-          sessionId={sessionId}
-          resizeAssets={pickedWinners.map(({ item }) => ({
-            assetId:      item.outputAssetId,
-            filename:     item.filename,
-            thumbnailUrl: item.outputUrl,
-            outputUrl:    item.outputUrl,
-            provider:     item.provider,
-          }))}
-          onModifyApplied={(pairs) => {
-            // outputAssetId is structurally one-to-one with jobId (each
-            // job mints its own asset), so this Map can't silently de-
-            // duplicate keys.
-            const assetIdToJobId = new Map(
-              pickedWinners.map(({ jobId, item }) => [item.outputAssetId, jobId]),
-            );
-            if (pairs.length !== pickedWinners.length) {
-              console.warn(
-                "[darkroom] partial result: sent",
-                pickedWinners.length,
-                "got",
-                pairs.length,
-                "— some variants may not have been patched",
-              );
-            }
-            // Patch `completed` so SourceCompareCard's variant thumb
-            // re-renders with the Darkroom-rendered image immediately
-            // (variantsByFile derives from `completed`).
-            setCompleted((prev) => {
-              const updated = new Map(prev);
-              for (const { original, modified } of pairs) {
-                const jobId = assetIdToJobId.get(original.assetId);
-                if (!jobId) continue;
-                const cur = updated.get(jobId);
-                if (!cur) continue;
-                updated.set(jobId, {
-                  ...cur,
-                  outputAssetId: modified.assetId,
-                  // ModifyPanel guarantees outputUrl is set on the
-                  // returned modified asset (see ModifyPanel.handleApply),
-                  // so no defensive fallback is needed.
-                  outputUrl:     modified.outputUrl!,
-                });
-              }
-              return updated;
-            });
-            // Mirror outputAssetId into jobStateMap for symmetry with
-            // the Erase / Tweak / Ideogram patches — some downstream
-            // tool-open flows read it as a fallback identifier for the
-            // current asset behind a job.
-            setJobStateMap((prev) => {
-              const updated = new Map(prev);
-              for (const { original, modified } of pairs) {
-                const jobId = assetIdToJobId.get(original.assetId);
-                if (!jobId) continue;
-                const cur = updated.get(jobId);
-                if (!cur) continue;
-                updated.set(jobId, { ...cur, outputAssetId: modified.assetId });
-              }
-              return updated;
-            });
-          }}
-        />
-      )}
-
-      {/* ── Save & export ──
+      {/* ── Export ──
           Moved here from the removed Resize tab. Operates on the
-          operator-picked winners — Save Project unlocks the PRO export,
-          then download from right inside Enhance. */}
+          operator-picked winners. Export is also the save: the click writes
+          the finished files into Your Photo Library. Only picked winners get
+          here, so unselected variants are never persisted. */}
       {pickedWinners.length > 0 && (
         <ExportControls
           sessionId={sessionId}
@@ -2362,6 +2652,9 @@ export function EnhancePanel({
             filename:     item.filename,
             thumbnailUrl: item.outputUrl,
             provider:     item.provider,
+            // The pre-enhance photo. Export saves it into the project
+            // alongside the enhanced file, so the library keeps the before.
+            originalAssetId: item.sourceAssetId,
           }))}
           meta={meta}
           userEmail={userEmail}
@@ -2381,17 +2674,6 @@ export function EnhancePanel({
         </p>
       )}
 
-      {/* ── Sticky command bar — Send to Scan + Skip Scan render inline
-            so they're the same size and read as a pair. ── */}
-      {enhanceJobs.size > 0 && (
-        <CommandBar
-          readyCount={commandCounts.ready}
-          workingCount={commandCounts.working}
-          undecidedCount={commandCounts.undecided}
-          heldCount={commandCounts.held}
-          onSendAll={handleSendAll}
-        />
-      )}
     </div>
   );
 }

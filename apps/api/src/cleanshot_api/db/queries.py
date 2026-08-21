@@ -117,6 +117,132 @@ async def get_user_profile(
     return dict(row) if row else None
 
 
+# ─── Saved prompts ────────────────────────────────────────────────────────────
+#
+# Every function here takes user_email and puts it in the WHERE clause. That is
+# the whole access-control story for saved prompts: there is no shared or
+# public prompt, so a query that forgets the email is a bug, not a feature.
+
+
+async def list_saved_prompts(
+    conn: asyncpg.Connection,
+    user_email: str,
+) -> list[dict]:
+    rows = await conn.fetch(
+        """
+        SELECT id, user_email, title, body, created_at, updated_at
+        FROM   saved_prompts
+        WHERE  user_email = $1
+        ORDER  BY updated_at DESC
+        """,
+        user_email.lower(),
+    )
+    return [dict(r) for r in rows]
+
+
+async def get_saved_prompt_by_title(
+    conn: asyncpg.Connection,
+    user_email: str,
+    title: str,
+) -> dict | None:
+    """Case-insensitive title lookup, matching the unique index."""
+    row = await conn.fetchrow(
+        """
+        SELECT id, user_email, title, body, created_at, updated_at
+        FROM   saved_prompts
+        WHERE  user_email = $1 AND lower(title) = lower($2)
+        """,
+        user_email.lower(),
+        title,
+    )
+    return dict(row) if row else None
+
+
+async def create_saved_prompt(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str,
+    title: str,
+    body: str,
+) -> dict:
+    """
+    Insert a new prompt. Raises asyncpg.UniqueViolationError when the title is
+    already taken for this user — the caller turns that into a 409 so the UI
+    can offer overwrite-or-rename instead of silently creating a duplicate.
+    """
+    row = await conn.fetchrow(
+        """
+        INSERT INTO saved_prompts (user_email, title, body)
+        VALUES ($1, $2, $3)
+        RETURNING id, user_email, title, body, created_at, updated_at
+        """,
+        user_email.lower(), title, body,
+    )
+    assert row is not None
+    return dict(row)
+
+
+async def overwrite_saved_prompt_body(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str,
+    title: str,
+    body: str,
+) -> dict | None:
+    """Replace the body of an existing title. The explicit 'overwrite' answer."""
+    row = await conn.fetchrow(
+        """
+        UPDATE saved_prompts
+        SET    body = $3, updated_at = now()
+        WHERE  user_email = $1 AND lower(title) = lower($2)
+        RETURNING id, user_email, title, body, created_at, updated_at
+        """,
+        user_email.lower(), title, body,
+    )
+    return dict(row) if row else None
+
+
+async def rename_saved_prompt(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str,
+    prompt_id: uuid.UUID,
+    title: str,
+) -> dict | None:
+    """
+    Rename one prompt. The user_email in the WHERE clause is what stops a
+    guessed id from renaming someone else's row. Raises
+    asyncpg.UniqueViolationError if the new title collides.
+    """
+    row = await conn.fetchrow(
+        """
+        UPDATE saved_prompts
+        SET    title = $3, updated_at = now()
+        WHERE  user_email = $1 AND id = $2
+        RETURNING id, user_email, title, body, created_at, updated_at
+        """,
+        user_email.lower(), prompt_id, title,
+    )
+    return dict(row) if row else None
+
+
+async def delete_saved_prompt(
+    conn: asyncpg.Connection,
+    *,
+    user_email: str,
+    prompt_id: uuid.UUID,
+) -> bool:
+    """Returns True when a row was actually removed (False = not theirs / gone)."""
+    result = await conn.execute(
+        """
+        DELETE FROM saved_prompts
+        WHERE user_email = $1 AND id = $2
+        """,
+        user_email.lower(), prompt_id,
+    )
+    return result.endswith(" 1")
+
+
 async def set_user_avatar(
     conn: asyncpg.Connection,
     user_email: str,

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -8,7 +9,15 @@ import zipfile
 import uuid
 
 import asyncpg
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    Header,
+    HTTPException,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import StreamingResponse
 
 from cleanshot_api.core.security import require_api_key
@@ -20,7 +29,12 @@ from cleanshot_api.models.schemas import (
     ExportFullsizeResponse,
     ExportProRequest,
     ExportZipRequest,
+    OperationEnum,
 )
+# The approvals route owns the "where does a saved set live" rule. Importing
+# its builder keeps export and approvals from drifting into two different
+# directory conventions for the same Photo Library.
+from cleanshot_api.routers.approvals import _build_gcs_dir as build_approved_dir
 from cleanshot_api.services import gcs as gcs_service
 from cleanshot_api.services.image_processing import (
     export_custom,
@@ -152,6 +166,152 @@ async def export_fullsize(
     return ExportFullsizeResponse(url=signed_url, expires_at=expires_at)
 
 
+
+async def _record_export_set(
+    *,
+    pool: asyncpg.Pool,
+    gcs_client,
+    settings,
+    session_id: uuid.UUID,
+    project,
+    user_email: str,
+    approved_dir: str,
+    exports: list[dict],
+    original_asset_ids: list[uuid.UUID],
+) -> None:
+    """
+    File a completed export under the user's profile.
+
+    Export is now the only save action, so this runs on every export and is
+    what puts images in the Photo Library. Two kinds of file land in
+    `approved_dir`:
+
+      * the EXPORTED images — already written there by the caller, since they
+        are the only copy; this function just registers an `assets` row and the
+        approval-set membership for each.
+      * the pre-enhance ORIGINALS — server-side copied in from wherever they
+        live (no bytes transit the API), so the set holds the before as well as
+        the after.
+
+    Failure here must not cost the operator their download: the bytes are
+    already in GCS and the ZIP is about to be minted, so a DB or copy error is
+    logged and swallowed rather than turned into a failed export.
+    """
+    if not exports and not original_asset_ids:
+        return
+
+    dest_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
+    members: list[dict] = []
+
+    try:
+        async with pool.acquire() as conn:
+            # 1. The exported files. Their bytes are already at gcs_uri.
+            for exp in exports:
+                asset = await queries.create_asset(
+                    conn,
+                    session_id=session_id,
+                    operation=OperationEnum.export,
+                    gcs_uri=exp["gcs_uri"],
+                    content_hash=exp["sha256"],
+                    project_id=project.id if project else None,
+                )
+                members.append({
+                    "asset_id": asset.id,
+                    "gcs_path": exp["gcs_uri"],
+                    "filename": exp["filename"],
+                })
+
+        # 2. The originals. De-duplicated because several exported variants can
+        #    share one source photo, and the set should hold it once.
+        for original_id in dict.fromkeys(original_asset_ids):
+            async with pool.acquire() as conn:
+                original = await queries.get_asset(conn, original_id)
+            if original is None:
+                continue
+            src_without_scheme = original.gcs_uri[len("gs://"):]
+            src_bucket_name, _, src_obj = src_without_scheme.partition("/")
+            src_filename = src_obj.split("/")[-1]
+            dest_path = f"{approved_dir}/original_{src_filename}"
+            src_blob = gcs_client.bucket(src_bucket_name).blob(src_obj)
+            await asyncio.to_thread(
+                dest_bucket.copy_blob, src_blob, dest_bucket, dest_path
+            )
+            members.append({
+                "asset_id": original.id,
+                "gcs_path": f"gs://{settings.gcs_bucket_derivatives}/{dest_path}",
+                "filename": f"original_{src_filename}",
+            })
+
+        if not members:
+            return
+
+        async with pool.acquire() as conn:
+            # Re-export is a normal action now that export is the save button,
+            # and it overwrites the same GCS objects. Reuse the existing set for
+            # this (session, directory) instead of stacking a second identical
+            # entry in the Photo Library each time.
+            existing = await conn.fetchrow(
+                """
+                SELECT id FROM approval_sets
+                WHERE session_id = $1 AND gcs_dir = $2
+                ORDER BY created_at DESC
+                LIMIT 1
+                """,
+                session_id,
+                approved_dir,
+            )
+            if existing is not None:
+                approval_set_id = existing["id"]
+                # Membership is rebuilt from this export, so a set that
+                # previously held more images doesn't keep the dropped ones.
+                await conn.execute(
+                    "DELETE FROM approval_set_assets WHERE approval_set_id = $1",
+                    approval_set_id,
+                )
+                await conn.execute(
+                    "UPDATE approval_sets SET image_count = $2 WHERE id = $1",
+                    approval_set_id,
+                    len(members),
+                )
+            else:
+                row = await conn.fetchrow(
+                    """
+                    INSERT INTO approval_sets
+                        (user_email, session_id, project_id, gcs_dir, make, model,
+                         image_count)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7)
+                    RETURNING id
+                    """,
+                    user_email,
+                    session_id,
+                    project.id if project else None,
+                    approved_dir,
+                    project.make if project else "",
+                    project.model if project else "",
+                    len(members),
+                )
+                approval_set_id = row["id"]
+            for m in members:
+                await conn.execute(
+                    """
+                    INSERT INTO approval_set_assets
+                        (approval_set_id, asset_id, gcs_path, filename)
+                    VALUES ($1, $2, $3, $4)
+                    """,
+                    approval_set_id,
+                    m["asset_id"],
+                    m["gcs_path"],
+                    m["filename"],
+                )
+    except Exception:
+        logger.exception(
+            "Failed to record export set for session %s — the exported files "
+            "are in GCS and the download is unaffected, but they will not "
+            "appear in the Photo Library",
+            session_id,
+        )
+
+
 @router.post(
     "/export/pro",
     dependencies=[Depends(require_api_key)],
@@ -222,6 +382,7 @@ async def export_pro_preset(
 async def export_pro_preview(
     body: ExportProRequest,
     request: Request,
+    x_user_email: str = Header(..., alias="X-User-Email"),
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> StreamingResponse:
     """
@@ -242,8 +403,19 @@ async def export_pro_preview(
     GCS downloads + uploads run in parallel; the pyvips resize loop and
     ZIP-builder are sequential (CPU-bound and single-writer respectively).
 
+    Export IS the save (2026-08-21). There is no separate "Save Project"
+    action any more: the exported JPEG is written straight into the caller's
+    project directory and recorded as an approval set, so what the Photo
+    Library holds is the FINAL file — cropped, upscaled, and watermarked when
+    the disclaimer flag is on — not a clean pre-export copy. Exactly one copy of each exported image
+    exists, in one place. The pre-enhance originals named in
+    `body.original_asset_ids` are copied into the same directory so the
+    library keeps the before alongside the after. Unselected variants are
+    never sent here and are therefore never persisted.
+
     GCS layout (cleanshot-derivatives-prod):
-      session/{session_id}/pro/{asset_id}.jpg   ← per-image previews
+      approved/{email}/{date}_{make}_{model}_{session-short}/{filename}.jpg
+                                                ← exported files + originals
       session/{session_id}/pro/export_pro.zip   ← bundle (overwritten per call)
     """
     async with pool.acquire() as conn:
@@ -255,6 +427,16 @@ async def export_pro_preview(
     settings = get_settings()
     gcs_client = gcs_lib.Client(project=settings.gcp_project)
     derivatives_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
+
+    # Destination for the saved set. Same builder the approvals route uses, so
+    # the Photo Library reads these rows without knowing they came from export.
+    user_email = x_user_email.lower()
+    approved_dir = build_approved_dir(
+        user_email,
+        project.make or "",
+        project.model or "",
+        body.session_id,
+    )
 
     # Build a per-asset_id → provider lookup before the stream starts.
     # `body.providers` is a parallel list to `body.asset_ids`; missing /
@@ -292,6 +474,7 @@ async def export_pro_preview(
             # only fight the GIL). Captioning is gone — filenames are
             # built from project.make / .model / .year + sequence number.
             items: list[dict] = []
+            saved_exports: list[dict] = []
             zip_buf = io.BytesIO()
             any_warning = False
 
@@ -318,7 +501,11 @@ async def export_pro_preview(
                         total=total,
                         provider=provider_by_asset_id.get(asset_id),
                     )
-                    out_object = f"session/{body.session_id}/pro/{asset_id}.jpg"
+                    # The ONLY copy of this exported image. It goes directly
+                    # to the project directory — writing a working copy under
+                    # session/.../pro/ first and copying it across afterwards
+                    # is what produced the duplicate this replaces.
+                    out_object = f"{approved_dir}/{out_filename}"
                     out_uri    = f"gs://{settings.gcs_bucket_derivatives}/{out_object}"
 
                     # Upload (I/O bound) — thread it so we don't block.
@@ -341,6 +528,12 @@ async def export_pro_preview(
 
                     probe = pyvips.Image.new_from_buffer(result.data, "")
 
+                    saved_exports.append({
+                        "gcs_uri":  out_uri,
+                        "filename": out_filename,
+                        "sha256":   hashlib.sha256(result.data).hexdigest(),
+                    })
+
                     items.append({
                         "asset_id":     str(asset_id),
                         "filename":     out_filename,
@@ -357,6 +550,21 @@ async def export_pro_preview(
                         "total":    total,
                         "filename": out_filename,
                     }) + "\n"
+
+            # ── Phase 2b: file the exported set under the user's profile ──
+            # Identity comes from the signed-in session's X-User-Email header —
+            # the same one the approvals route uses. No new identity mechanism.
+            await _record_export_set(
+                pool=pool,
+                gcs_client=gcs_client,
+                settings=settings,
+                session_id=body.session_id,
+                project=project,
+                user_email=user_email,
+                approved_dir=approved_dir,
+                exports=saved_exports,
+                original_asset_ids=body.original_asset_ids,
+            )
 
             # ── Phase 3: upload bundled ZIP, mint URL, emit result ──
             zip_bytes = zip_buf.getvalue()

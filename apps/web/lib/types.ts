@@ -167,6 +167,26 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   threeWheel: false,
 };
 
+/**
+ * The ONLY toggles rendered in the Enhance UI (2026-08-21).
+ *
+ * The tool is now prompt-first — the operator's typed prompt does the heavy
+ * lifting, so the toggle wall was shrunk to the four that still earn their
+ * space. Everything else is HIDDEN, NOT DELETED: the keys stay in
+ * EnhanceToggles, in DEFAULT_TOGGLES, in TOGGLE_LABELS/DESCRIPTIONS, in the
+ * panel's state, and in the backend prompt-injection path. A hidden toggle
+ * simply keeps its DEFAULT_TOGGLES value (all currently false), so nothing is
+ * silently forced on.
+ *
+ * To restore one, add its key back to this list — that is the whole change.
+ */
+export const VISIBLE_TOGGLES: ReadonlyArray<keyof EnhanceToggles> = [
+  "removeRentalBranding",
+  "showroomFloor",
+  "removePeople",
+  "shineTires",
+] as const;
+
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   newPaintJob: "New Paint Job",
   removeRust: "Remove Rust",
