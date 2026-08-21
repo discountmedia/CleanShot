@@ -37,6 +37,15 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 
 **Differential scan can report colour again.** It could not: a blanket "a repaint is NEVER a defect" in the rubric, and an `AnomalyItem.type` description that listed `wrong_colour` while forbidding "paint/colour changes" in the same sentence, meant a full grey-to-orange body repaint scanned clean. Now scoped to same-colour-family, with two explicit defects (body panel colour family, non-marking tyres turned black).
 
+**"Original factory colour" removed from every prompt in the repo.** It asks
+the model what the colour WAS, which pulls a faded or already-repainted unit
+toward a remembered brand palette. Swept from the recommended prompt, the live
+Scan-tab regen prompt, the enhance spine, and the dormant master-prompt library.
+`prompts.py` had been naming brand colours outright.
+
+**Header banner trimmed** to just the `Beta V.2` chip; the testing/support-ticket
+line is gone. `/profile` and support tickets are unchanged.
+
 **Sizing standardised at 2800x2000.** `upscale_to_standard()` runs once at the end of enhancement; `export_pro` no longer resizes or crops. Input resolution is uncapped on both the client and the enhance worker; the scan path keeps its own 2576px cap, set to Anthropic's high-resolution vision tier so nothing is uploaded that the model would only downscale.
 
 ---
@@ -64,6 +73,10 @@ Highest-value checks, in order:
 - **Is `deformed_part` worth suppressing at the display layer?** Raised and deferred. `geometry_altered` is already gone from the differential vocabulary, but the isolated scan (standalone Scan-tab uploads) still reports `deformed_part`, which covers both warped geometry and genuinely melted structure.
 - **Does the uncapped input break OpenAI?** The 1024px cap existed because `/v1/responses` with full-res smartphone photos was reliably blowing past a 90s timeout. That was the stated reason in the code. Removing it may bring the timeouts back; watch enhance latency and failure rate on the first real batches. `INPUT_MAX_LONG_EDGE_PX` is still there, unapplied, so restoring the cap is one line.
 - **Export file size and ZIP memory.** 2800x2000 at Q92 is roughly 1.5-3 MB per image, up from ~150-300 KB. The ZIP builder buffers the whole archive in `io.BytesIO` before upload, so a 150-image batch goes from ~40 MB to ~300 MB resident on a Cloud Run instance. Not addressed — it is outside the sizing path — but it is now a real ceiling on batch size.
+- **Does the colour-phrasing sweep actually help?** Unmeasured, like everything
+  else in this batch. It is a prompt change, so it needs a before/after on real
+  images rather than a code review. Watch specifically for a faded unit coming
+  back in its own colour instead of a brighter brand colour.
 - **Centre crop vs attention crop.** `_cover_crop` centres, as specified. On an extreme aspect ratio a centre crop can slice the ends off the machine where `smartcrop(interesting="attention")` would follow it. Worth revisiting if operators report cropped forks.
 - **Should `computeConsensus` still return `"mixed"` when one of three providers fails?** A single over-eager vote costs a clean pass badge. This is a verdict-semantics decision, not a bug.
 - **Brightness / crop / straighten** are unreachable from the UI now that the bulk panel is gone, though the backend still supports them. Wanted per-image, or genuinely retired?

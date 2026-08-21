@@ -28,27 +28,21 @@ export function Header({
        buttons, and a red rule here would read as an error state. */
     <header className="bg-header-bg border-b border-line">
       {/* BETA banner — sits above the logo row so it's the first thing the
-          operator sees on page load. Links to the user profile page where
-          they can file a support ticket. Now PURPLE rather than amber or
-          red: the palette has no amber, and red is reserved for genuinely
-          destructive controls, so purple carries attention.
-          Uses `attn` (light purple #B786C6) for text/border over a neutral
-          panel — the CTA purples are fill-only and fail AA as text. */}
+          operator sees on page load. PURPLE rather than amber or red: the
+          palette has no amber, and red is reserved for genuinely destructive
+          controls, so purple carries attention. Uses `attn` (light purple
+          #B786C6) for text/border over a neutral panel — the CTA purples are
+          fill-only and fail AA as text.
+
+          The "site is currently in testing / send a support ticket" line was
+          removed 2026-08-21; the version chip is the whole banner now. Support
+          tickets are still filed from /profile — that route and its UI are
+          unchanged, this only stopped advertising it in the header. */}
       <div className="bg-panel border-b border-attn">
-        <div className="px-6 py-3.5 flex items-center justify-center gap-3 text-center flex-wrap">
-          <span className="text-sm uppercase tracking-[0.18em] font-bold text-attn border border-attn rounded px-3 py-1 shrink-0">
+        <div className="px-6 py-2.5 flex items-center justify-center">
+          <span className="text-sm uppercase tracking-[0.18em] font-bold text-attn border border-attn rounded px-3 py-1">
             Beta V.2
           </span>
-          <p className="text-base sm:text-lg font-semibold uppercase tracking-[0.12em] text-attn leading-snug">
-            Site is currently in testing — bugs will be present.{" "}
-            <Link
-              href="/profile"
-              className="font-bold text-accent underline hover:text-accent transition-colors"
-            >
-              Send a support ticket through the user profile page
-            </Link>{" "}
-            to report bugs or request features.
-          </p>
         </div>
       </div>
 

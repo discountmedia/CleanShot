@@ -78,6 +78,17 @@ The fix is **fragment removal, not counter-instruction** — emphatic "do not dr
 - **Tried and REVERTED — don't redo blindly:** the Phase A enhance-prompt change (make/model/year identity anchor + "PRESERVE EXACT DIMENSIONS" guardrail) shipped as `48c653f` and was reverted in `1585f46` after it regressed output. Emphatic "don't change X" guardrails backfire on Gemini — the "don't think of an elephant" effect.
 - **Operator's holistic pass/fail bar** (a part-diff count does NOT predict it): FAIL for cab/mast/body recoloured to a DIFFERENT hue, desaturation, added wheels/parts, reshaping, an obviously-AI look, or a legible model-# significantly wrong. PASS/tolerate: same-colour body respray, red forks + yellow tips, BLACK backrest/carriage, cleaned background/floor, better lighting, subtle geometry, 1-2 char model-# drift.
 - **Paint is STANDING policy in the differential scan prompt**, not a per-batch whitelist entry — same-colour respray, red/orange forks + yellow tips, black backrest/carriage/load guard, repainted wheels/counterweight are always expected. This is what stopped the scan false-positiving on the exact edits the operator asked for. Geometry flags were removed from the differential vocabulary entirely ("no one understands what that means" — it was the label on most false positives); gross deformity still lands as `size_changed`/`part_added`/`part_removed`.
+- **Never write "original factory colour" (or any brand-colour list) into a
+  prompt.** It asks the model what the colour WAS, which invites it to correct
+  a faded or already-repainted unit toward a remembered brand palette — the
+  operator reported it "trips Gemini up in most cases", and it is a plausible
+  contributor to the grey-to-orange body repaint below. Phrase colour against
+  what the model can SEE: "the same colour", "the colour it already is". This
+  was swept out of every prompt in the repo on 2026-08-21 (recommended prompt,
+  Scan-tab regen, the enhance spine, and the dormant `master_prompts.py` /
+  `prompts.py`). `prompts.py` was the worst case — it literally listed "Toyota
+  gray, Hyster yellow, CAT yellow, Crown beige, Komatsu yellow-orange" as the
+  respray target. Restoring any of that phrasing re-opens the bug.
 - **The differential scan CAN and MUST report body colour changes.** It briefly
   could not: the rubric said "A repaint is NEVER a defect. Do not report any
   anomaly for paint" while defect #5 pointed back at that same rule, and the
@@ -327,7 +338,7 @@ Things to know if this starts showing traffic:
 - **The frontend no longer calls `approveSet` on the export path.** That call copied the PRE-export bytes and is exactly the duplicate the above removes. `POST /api/approvals` still exists and is unchanged for other callers.
 - **Export endpoints** (all in `routers/export.py`, FastAPI side fully built):
   - `/api/v1/export/fullsize` — signed GET URL for the full-size PNG (1-hour expiry).
-  - `/api/v1/export/pro` — 1024×731 crop, JPEG ≤100 KB iterated quality. Single JPEG or ZIP for batches. Sets `X-Warning: target-size-unachievable` when the size target can't be met.
+  - `/api/v1/export/pro` — encodes the stored 2800×2000 image at fixed Q92. No resize, no crop, no byte target, so `size_warning` / `X-Warning: target-size-unachievable` can no longer be raised (the field survives on the response; nothing reads it). Single JPEG or ZIP for batches.
   - `/api/v1/export/pro/preview` — per-image signed URLs + size metadata (complements the binary download). **This is the path the UI actually uses** (`exportProPreviewStream`). Filenames are meta-derived: per-image `_build_pro_filename` (`Toyota_8FGU25_2019_01[_Provider].jpg`) and the ZIP `_build_zip_filename` (`Toyota_8FGU25_2019.zip`). Both the ZIP and per-image download links force their name via `mint_read_url(..., download_filename=...)` which sets `response-content-disposition` on the signed URL — required because the HTML `download` attribute is ignored for cross-origin (`storage.googleapis.com`) hrefs. Stream now also emits `zip_filename`. The legacy non-streaming `/api/v1/export/pro` endpoint still uses generic `{asset_id}_pro.jpg` / `cleanshot_pro_export.zip` names (not UI-wired).
   - `/api/v1/export/custom` — arbitrary dimensions, JPEG/PNG/WebP/BMP.
   - `/api/v1/export/zip` — streaming ZIP for batch downloads.
@@ -450,6 +461,11 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 - **Auto-advance is GONE** — removed entirely, and so is Send-to-Scan. The per-card "Hold" on Enhance now means "exclude from export and from the per-image batch operations".
 - **Tooltip accordions:** `TipBanner` is collapsible by default, driven by `apps/web/lib/useVisitCount.ts` — expanded visits 1-4, collapsed visit 5+ (localStorage `cleanshot_visit_count`). One callout per tab; `tone="info"` is neutral + lime icon, `tone="warn"` is purple (`attn`). The Enhance equipment-details callout is the exception: always defaults expanded.
 - **Equipment selectors** render as toggle-cards (raised + lime border selected / dark + radio-dot unselected), grouped warehouse-forks vs aerial via `EQUIPMENT_GROUPS` in `lib/types.ts`.
+- **The header banner is just the version chip** (`Beta V.2`). The "site is
+  currently in testing / send a support ticket through the user profile page"
+  line was removed 2026-08-21. Support tickets still work and are still filed
+  from `/profile` — the header simply stopped advertising it. The version string
+  lives inline in `components/workspace/Header.tsx`, not in a constant.
 - **Scrollbar gutter:** `html { scrollbar-gutter: stable }` reserves the gutter so cards don't jump when the scrollbar appears.
 - **Enhance provider selection carries no identity hue** — a three-accent palette can't encode six model colours. Selection is structural (raised surface + lime border); the speed pill (lime "Fast" / purple "Slow") carries differentiation.
 - **SCAN provider colours are a documented EXCEPTION.** `SCAN_PROVIDER_COLOR` in `lib/scan-helpers.ts` gives Gemini `#4A9EFF`, OpenAI `#22D3EE`, Anthropic `#FF8A3D`. Literal hexes, not `@theme` tokens, and applied as inline `style` so no restyle or library default can flatten them — a previous pass collapsed all three progress bars onto one neutral grey and the strip stopped telling you which vendor was still running. Two of the three are blue-dominant, which the constraint above otherwise restricts; accepted, because these are identity colours, not UI state. All three pass AA as text on bg/panel/well (lowest 5.07:1), so they're safe on labels and chips too. The bar keeps its hue when complete — done-ness is width + a separate lime ✓, not a hue swap. Same precedent as the Tweak button's literal `#0A84FF`.
