@@ -202,7 +202,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
   const [zipUrl,       setZipUrl]       = useState<string | null>(null);
   const [zipFilename,  setZipFilename]  = useState<string>("cleanshot_pro_export.zip");
   const [zipSizeBytes, setZipSizeBytes] = useState<number>(0);
-  const [anyWarning,   setAnyWarning]   = useState<boolean>(false);
   const [progressTotal,    setProgressTotal]    = useState<number>(0);
   const [progressCurrent,  setProgressCurrent]  = useState<number>(0);
   const [progressFilename, setProgressFilename] = useState<string>("");
@@ -260,7 +259,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
     setPreviewItems([]);
     setZipUrl(null);
     setZipSizeBytes(0);
-    setAnyWarning(false);
     setProgressTotal(0);
     setProgressCurrent(0);
     setProgressFilename("");
@@ -293,7 +291,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             setZipUrl(resp.zipUrl);
             setZipFilename(resp.zipFilename);
             setZipSizeBytes(resp.zipSizeBytes);
-            setAnyWarning(resp.anySizeWarning);
           },
         },
       );
@@ -308,17 +305,11 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
 
   return (
     <div className="space-y-6">
-      {/* ── Spec card ── */}
-      <div className="bg-well border border-line rounded-xl p-5 space-y-5">
-        <div className="space-y-2.5">
-          <h3 className="text-lg font-semibold text-accent">PRO CONSTRAINTS EXPORT</h3>
-          <ul className="text-base text-ink space-y-1.5 leading-relaxed" role="list">
-            <li>• <strong className="font-semibold text-accent">1024 × 731 px</strong> — 7:5 aspect ratio</li>
-            <li>• <strong className="font-semibold text-accent">Zoom-to-fill</strong> — smart-crop to subject, no letterboxing</li>
-            <li>• <strong className="font-semibold text-accent">≤ 99 KB JPEG</strong> — quality iterated until target</li>
-          </ul>
-        </div>
-      </div>
+      {/* The "PRO CONSTRAINTS EXPORT" spec card was removed 2026-08-21. All
+          three of its lines had gone stale: exports are 2800x2000 (not
+          1024x731), the crop is a centred cover-crop (not a smart-crop to
+          subject), and there is no byte target any more (fixed Q92, no quality
+          iteration). */}
 
       {/* ── Export set (reorderable) ── */}
       {orderedAssets.length > 0 && (
@@ -457,12 +448,6 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
           {error}
         </p>
       )}
-      {anyWarning && (
-        <p className="text-sm text-attn bg-panel border border-attn rounded-lg px-4 py-3" role="status">
-          Some images could not be compressed under 99 KB at acceptable quality — those tiles are flagged below. Inspect them before downloading; the ZIP still contains the lowest-quality version the encoder could produce.
-        </p>
-      )}
-
       {/* ── AI-disclaimer toggle ── */}
       <label
         className={`flex items-start gap-3 rounded-xl border-2 px-4 py-3 cursor-pointer transition-colors select-none ${
@@ -648,14 +633,12 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
                       >
                         {dimensionsLabel}
                       </span>
-                      <span
-                        className={`text-[10px] font-mono px-2 py-0.5 rounded ${
-                          item.sizeWarning
-                            ? "bg-panel text-attn border border-attn"
-                            : "bg-header-bg/70 text-ink-soft"
-                        }`}
-                        title={item.sizeWarning ? "Couldn't compress under 99 KB" : ""}
-                      >
+                      {/* Plain size readout. The warning treatment that used
+                          to live here keyed off `item.sizeWarning`, which the
+                          backend can no longer set — export does one Q92 encode
+                          with no byte target, so there is nothing to miss. The
+                          field stays on the API type; nothing reads it. */}
+                      <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-header-bg/70 text-ink-soft">
                         {formatBytes(item.sizeBytes)}
                       </span>
                     </div>
