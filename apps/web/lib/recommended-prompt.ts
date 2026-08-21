@@ -164,8 +164,14 @@ export function recommendedPromptFragments(
   fragments.push({
     id: "respray",
     text:
+      // "in its ORIGINAL factory color" was changed to "in the same color"
+      // 2026-08-21 (operator: it trips Gemini up in most cases). The likely
+      // reason is that "original factory color" asks the model to reason about
+      // what the factory colour WAS, which invites it to correct a faded or
+      // repainted unit toward a remembered brand colour. "The same color" is a
+      // comparison against the pixels in front of it, which is what we want.
       `Give this used ${noun} a clean, listing-ready look with an inexpensive ` +
-      "shop-quality respray in its ORIGINAL factory color — do not change the color.",
+      "shop-quality respray in the same color — do not change the color.",
   });
 
   fragments.push({
