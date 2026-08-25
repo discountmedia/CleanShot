@@ -2329,9 +2329,9 @@ export function EnhancePanel({
                   Your prompt <span className="text-attn">*</span>
                 </h3>
                 {/* The two ways of filling the prompt box, side by side and on
-                    one baseline: pick a saved prompt, or drop in the
+                    one baseline: pick a shared template, or drop in the
                     recommended starter. `items-center` + matching vertical
-                    padding keeps them aligned; `flex-wrap` lets the dropdown
+                    padding keeps them aligned; `flex-wrap` lets the picker
                     fall under the button on a narrow screen instead of
                     squeezing it. */}
                 <div className="flex flex-wrap items-center gap-4">
@@ -2405,11 +2405,12 @@ export function EnhancePanel({
                 className="w-full bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition leading-relaxed"
               />
 
-              {/* Save the current prompt to the operator's profile + manage
-                  what's already saved. The INSERT dropdown for these lives up
-                  beside "Insert recommended prompt"; both read the same state.
-                  Inserted text is a COPY — editing it here never writes back
-                  to the saved row. */}
+              {/* Save the current prompt to the SHARED template library +
+                  manage the ones this user created. The picker for these lives
+                  up beside "Insert recommended prompt"; both read the same
+                  state. Templates are company-wide — anyone can contribute,
+                  everyone can use — and inserted text is a COPY, so editing it
+                  here never writes back to the shared row. */}
               <SavedPromptsBar
                 state={savedPrompts}
                 currentPrompt={customPrompt}

@@ -268,18 +268,67 @@ export interface SavedPrompt {
   id:        string;
   title:     string;
   body:      string;
+  /** Who wrote it. Display name when they have one, else their email local-part. */
+  authorName:  string;
+  authorEmail: string;
+  /** True when the signed-in user wrote it — drives a "yours" hint, nothing more. */
+  authorIsMe:  boolean;
+  /** Admin-ness, not ownership: deleting removes a template for everyone. */
+  canDelete: boolean;
+  /** Distinct users who have upvoted it. */
+  voteCount: number;
+  /** Whether the signed-in user is one of them. */
+  votedByMe: boolean;
+  /** Times it has been loaded into the prompt box. */
+  useCount:  number;
   createdAt: string;
   updatedAt: string;
 }
 
+/** How the template list is ordered. All three sort the same fetched array. */
+export type TemplateSort = "recent" | "top" | "used";
+
 /**
- * Thrown when a save would collide with a title the user already has. Carries
- * a distinct type rather than a message match so the caller can branch on it
- * and offer overwrite-or-rename, which is the whole point of the 409.
+ * Pull FastAPI's `detail` out of a BFF error body so the UI can show the real
+ * reason ("Only an admin can delete…") instead of a JSON blob. Falls back to
+ * the raw text when the body isn't the shape we expect.
+ */
+function detailOf(text: string): string {
+  try {
+    const parsed = JSON.parse(text) as { detail?: unknown };
+    if (typeof parsed.detail === "string") {
+      // The BFF wraps FastAPI's body as {detail: "<raw text>"}, so `detail`
+      // is sometimes itself a JSON string carrying the real one. Unwrap once.
+      try {
+        const inner = JSON.parse(parsed.detail) as { detail?: unknown };
+        if (typeof inner.detail === "string") return inner.detail;
+      } catch {
+        /* not nested — the outer detail is the message */
+      }
+      return parsed.detail;
+    }
+  } catch {
+    /* not JSON */
+  }
+  return text;
+}
+
+/**
+ * Thrown when a save collides with a title that already exists ANYWHERE in the
+ * shared library. Carries a distinct type rather than a message match so the
+ * caller can branch on it.
+ *
+ * There is no overwrite branch: titles are permanent, so the only resolution
+ * is a different title. `mine` only changes the wording — "you already have
+ * one called that" reads differently from "Dana does".
  */
 export class PromptTitleConflictError extends Error {
-  constructor(public readonly title: string) {
-    super(`A prompt titled "${title}" already exists.`);
+  constructor(
+    public readonly title: string,
+    public readonly mine: boolean = true,
+    detail?: string,
+  ) {
+    super(detail ?? `A template titled "${title}" already exists.`);
     this.name = "PromptTitleConflictError";
   }
 }
@@ -289,13 +338,13 @@ export async function listSavedPrompts(signal?: AbortSignal): Promise<SavedPromp
 }
 
 /**
- * Save a prompt. Throws PromptTitleConflictError on 409 unless `overwrite` is
- * set — the UI asks the user first and re-calls with overwrite: true.
+ * Save a new template. Always an insert — a template is written once and never
+ * edited, because its votes and use count are ratings of that exact text.
+ * Throws PromptTitleConflictError on 409.
  */
 export async function saveSavedPrompt(params: {
   title: string;
   body: string;
-  overwrite?: boolean;
 }): Promise<SavedPrompt> {
   const res = await fetch("/api/prompts", {
     method: "POST",
@@ -303,32 +352,23 @@ export async function saveSavedPrompt(params: {
     body: JSON.stringify(params),
     cache: "no-store",
   });
-  if (res.status === 409) throw new PromptTitleConflictError(params.title);
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`POST /api/prompts → ${res.status}: ${text}`);
+    if (res.status === 409) {
+      const detail = detailOf(text);
+      // "You already have…" vs "<someone> already has…" — wording only.
+      throw new PromptTitleConflictError(
+        params.title,
+        /^you already have/i.test(detail),
+        detail,
+      );
+    }
+    throw new Error(`POST /api/prompts → ${res.status}: ${detailOf(text)}`);
   }
   return (await res.json()) as SavedPrompt;
 }
 
-export async function renameSavedPrompt(
-  id: string,
-  title: string,
-): Promise<SavedPrompt> {
-  const res = await fetch(`/api/prompts/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ title }),
-    cache: "no-store",
-  });
-  if (res.status === 409) throw new PromptTitleConflictError(title);
-  if (!res.ok) {
-    const text = await res.text().catch(() => res.statusText);
-    throw new Error(`PATCH /api/prompts/${id} → ${res.status}: ${text}`);
-  }
-  return (await res.json()) as SavedPrompt;
-}
-
+/** Admin-only. Removes the template, and its votes, for everyone. */
 export async function deleteSavedPrompt(id: string): Promise<void> {
   const res = await fetch(`/api/prompts/${id}`, {
     method: "DELETE",
@@ -336,8 +376,64 @@ export async function deleteSavedPrompt(id: string): Promise<void> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => res.statusText);
-    throw new Error(`DELETE /api/prompts/${id} → ${res.status}: ${text}`);
+    throw new Error(detailOf(text));
   }
+}
+
+/**
+ * Toggle the signed-in user's upvote. Returns the authoritative count, which
+ * the caller writes over its optimistic guess — two people voting at the same
+ * moment means the local +1 is often not the whole story.
+ */
+export async function voteSavedPrompt(
+  id: string,
+  voted: boolean,
+): Promise<{ voteCount: number; voted: boolean }> {
+  const res = await fetch(`/api/prompts/${id}/vote`, {
+    method: voted ? "POST" : "DELETE",
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    throw new Error(detailOf(text));
+  }
+  return (await res.json()) as { voteCount: number; voted: boolean };
+}
+
+/**
+ * Count one use of a template, for the "most used" sort.
+ *
+ * Fire-and-forget: the insert into the prompt box has already happened
+ * locally, so a failed beacon must not surface as an error for something the
+ * operator would rightly consider done. Callers `void` this.
+ */
+export async function recordSavedPromptUse(id: string): Promise<number | null> {
+  try {
+    const res = await fetch(`/api/prompts/${id}/use`, {
+      method: "POST",
+      cache: "no-store",
+    });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { useCount: number };
+    return data.useCount;
+  } catch {
+    return null;
+  }
+}
+
+/** Order a fetched template list. Ties fall back to recency so the order is
+ *  stable rather than whatever the sort algorithm happened to do. */
+export function sortSavedPrompts(
+  prompts: SavedPrompt[],
+  sort: TemplateSort,
+): SavedPrompt[] {
+  const byRecent = (a: SavedPrompt, b: SavedPrompt) =>
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+  return [...prompts].sort((a, b) => {
+    if (sort === "top")  return b.voteCount - a.voteCount || byRecent(a, b);
+    if (sort === "used") return b.useCount  - a.useCount  || byRecent(a, b);
+    return byRecent(a, b);
+  });
 }
 
 // ─── Asset signed GET URL ─────────────────────────────────────────────────────

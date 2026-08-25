@@ -126,33 +126,65 @@ async def get_user_profile(
 
 async def list_saved_prompts(
     conn: asyncpg.Connection,
-    user_email: str,
+    viewer_email: str,
 ) -> list[dict]:
+    """
+    Every template, newest-first, with its vote count and use count.
+
+    Deliberately UNSCOPED — `viewer_email` filters nothing. Templates are
+    shared: user A's "Sitdown Hyster" is meant to be picked by users B through
+    E. The email is here for exactly one column, `voted`, which is whether
+    THIS viewer has already upvoted each row — the vote control has to render
+    in the right state on first paint, and a second round-trip for it would
+    make every row flicker from un-voted to voted on load.
+
+    The counts come back on the list rather than from separate endpoints
+    because the client sorts on them (recent / top rated / most used) and a
+    sort needs the whole set in hand. The vote count is a grouped subquery,
+    not a correlated count per row.
+
+    full_name comes from a LEFT JOIN and is nullable: a user can save a
+    template before ever opening their profile page, in which case the row
+    doesn't exist yet. The caller falls back to the email.
+    """
     rows = await conn.fetch(
         """
-        SELECT id, user_email, title, body, created_at, updated_at
-        FROM   saved_prompts
-        WHERE  user_email = $1
-        ORDER  BY updated_at DESC
+        SELECT p.id, p.user_email, p.title, p.body,
+               p.use_count, p.created_at, p.updated_at,
+               up.full_name AS author_name,
+               COALESCE(v.vote_count, 0) AS vote_count,
+               (mine.user_email IS NOT NULL) AS voted
+        FROM   saved_prompts p
+        LEFT   JOIN user_profiles up ON up.user_email = p.user_email
+        LEFT   JOIN (
+                   SELECT prompt_id, count(*) AS vote_count
+                   FROM   saved_prompt_votes
+                   GROUP  BY prompt_id
+               ) v ON v.prompt_id = p.id
+        LEFT   JOIN saved_prompt_votes mine
+               ON mine.prompt_id = p.id AND mine.user_email = $1
+        ORDER  BY p.updated_at DESC
         """,
-        user_email.lower(),
+        viewer_email.lower(),
     )
     return [dict(r) for r in rows]
 
 
 async def get_saved_prompt_by_title(
     conn: asyncpg.Connection,
-    user_email: str,
     title: str,
 ) -> dict | None:
-    """Case-insensitive title lookup, matching the unique index."""
+    """
+    Case-insensitive title lookup across ALL templates, matching the unique
+    index. Used to name the author in the collision message — a title is
+    claimed permanently, so the useful thing to tell someone is who claimed it.
+    """
     row = await conn.fetchrow(
         """
         SELECT id, user_email, title, body, created_at, updated_at
         FROM   saved_prompts
-        WHERE  user_email = $1 AND lower(title) = lower($2)
+        WHERE  lower(title) = lower($1)
         """,
-        user_email.lower(),
         title,
     )
     return dict(row) if row else None
@@ -166,15 +198,19 @@ async def create_saved_prompt(
     body: str,
 ) -> dict:
     """
-    Insert a new prompt. Raises asyncpg.UniqueViolationError when the title is
-    already taken for this user — the caller turns that into a 409 so the UI
-    can offer overwrite-or-rename instead of silently creating a duplicate.
+    Insert a new template. This is the ONLY way a title or body ever gets
+    written — there is no rename and no overwrite, because votes and use
+    counts are ratings of a specific text and editing the row under them would
+    leave the reputation attached to something nobody endorsed.
+
+    Raises asyncpg.UniqueViolationError when the title is already taken by
+    ANYONE, which the caller turns into a 409 asking for a different title.
     """
     row = await conn.fetchrow(
         """
         INSERT INTO saved_prompts (user_email, title, body)
         VALUES ($1, $2, $3)
-        RETURNING id, user_email, title, body, created_at, updated_at
+        RETURNING id, user_email, title, body, use_count, created_at, updated_at
         """,
         user_email.lower(), title, body,
     )
@@ -182,46 +218,18 @@ async def create_saved_prompt(
     return dict(row)
 
 
-async def overwrite_saved_prompt_body(
+async def get_saved_prompt(
     conn: asyncpg.Connection,
-    *,
-    user_email: str,
-    title: str,
-    body: str,
-) -> dict | None:
-    """Replace the body of an existing title. The explicit 'overwrite' answer."""
-    row = await conn.fetchrow(
-        """
-        UPDATE saved_prompts
-        SET    body = $3, updated_at = now()
-        WHERE  user_email = $1 AND lower(title) = lower($2)
-        RETURNING id, user_email, title, body, created_at, updated_at
-        """,
-        user_email.lower(), title, body,
-    )
-    return dict(row) if row else None
-
-
-async def rename_saved_prompt(
-    conn: asyncpg.Connection,
-    *,
-    user_email: str,
     prompt_id: uuid.UUID,
-    title: str,
 ) -> dict | None:
-    """
-    Rename one prompt. The user_email in the WHERE clause is what stops a
-    guessed id from renaming someone else's row. Raises
-    asyncpg.UniqueViolationError if the new title collides.
-    """
+    """Unscoped read by id — used to answer 404-vs-403 after a blocked write."""
     row = await conn.fetchrow(
         """
-        UPDATE saved_prompts
-        SET    title = $3, updated_at = now()
-        WHERE  user_email = $1 AND id = $2
-        RETURNING id, user_email, title, body, created_at, updated_at
+        SELECT id, user_email, title, body, use_count, created_at, updated_at
+        FROM   saved_prompts
+        WHERE  id = $1
         """,
-        user_email.lower(), prompt_id, title,
+        prompt_id,
     )
     return dict(row) if row else None
 
@@ -229,18 +237,102 @@ async def rename_saved_prompt(
 async def delete_saved_prompt(
     conn: asyncpg.Connection,
     *,
-    user_email: str,
     prompt_id: uuid.UUID,
 ) -> bool:
-    """Returns True when a row was actually removed (False = not theirs / gone)."""
+    """
+    Remove a template for everybody. ADMIN ONLY — the caller checks that, and
+    it is not expressible here because there is no per-row condition left to
+    write: a creator has no more right to delete a template five other people
+    depend on than anyone else does.
+
+    Its votes go with it via ON DELETE CASCADE. Returns True when a row was
+    actually removed (False = already gone).
+    """
     result = await conn.execute(
-        """
-        DELETE FROM saved_prompts
-        WHERE user_email = $1 AND id = $2
-        """,
-        user_email.lower(), prompt_id,
+        "DELETE FROM saved_prompts WHERE id = $1",
+        prompt_id,
     )
     return result.endswith(" 1")
+
+
+async def vote_saved_prompt(
+    conn: asyncpg.Connection,
+    *,
+    prompt_id: uuid.UUID,
+    user_email: str,
+) -> None:
+    """
+    Upvote, idempotently. ON CONFLICT DO NOTHING against the composite PK is
+    what makes one-vote-per-user true even when two tabs submit at once — a
+    SELECT-then-INSERT would let both through.
+
+    Raises asyncpg.ForeignKeyViolationError if the template was deleted out
+    from under the voter.
+    """
+    await conn.execute(
+        """
+        INSERT INTO saved_prompt_votes (prompt_id, user_email)
+        VALUES ($1, $2)
+        ON CONFLICT (prompt_id, user_email) DO NOTHING
+        """,
+        prompt_id, user_email.lower(),
+    )
+
+
+async def unvote_saved_prompt(
+    conn: asyncpg.Connection,
+    *,
+    prompt_id: uuid.UUID,
+    user_email: str,
+) -> None:
+    """Withdraw an upvote. A no-op when there wasn't one — the control is a
+    toggle and the user's intent ("I don't endorse this") is satisfied either
+    way, so this doesn't distinguish."""
+    await conn.execute(
+        """
+        DELETE FROM saved_prompt_votes
+        WHERE prompt_id = $1 AND user_email = $2
+        """,
+        prompt_id, user_email.lower(),
+    )
+
+
+async def count_saved_prompt_votes(
+    conn: asyncpg.Connection,
+    prompt_id: uuid.UUID,
+) -> int:
+    """Authoritative vote count, read back after a toggle so the UI settles on
+    the server's number rather than trusting its own optimistic increment."""
+    row = await conn.fetchrow(
+        "SELECT count(*) AS c FROM saved_prompt_votes WHERE prompt_id = $1",
+        prompt_id,
+    )
+    return int(row["c"]) if row else 0
+
+
+async def record_saved_prompt_use(
+    conn: asyncpg.Connection,
+    prompt_id: uuid.UUID,
+) -> int | None:
+    """
+    Count one use of a template. Returns the new total, or None if the
+    template is gone.
+
+    Note what this does NOT do: touch updated_at. Popularity and recency are
+    two separate sorts, and letting a use bump the timestamp would make the
+    most-used template permanently the most recent one too, collapsing the two
+    orderings into one.
+    """
+    row = await conn.fetchrow(
+        """
+        UPDATE saved_prompts
+        SET    use_count = use_count + 1
+        WHERE  id = $1
+        RETURNING use_count
+        """,
+        prompt_id,
+    )
+    return int(row["use_count"]) if row else None
 
 
 async def set_user_avatar(

@@ -190,20 +190,30 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
--- saved_prompts: named, reusable enhance prompts belonging to one user.
--- Enhance went prompt-first in July 2026, so operators write their own
--- prompts; the good ones were being retyped from scratch every session.
+-- saved_prompts: named, reusable enhance prompts. SHARED TEMPLATES since
+-- 2026-08-25 — every row is visible to, and usable by, every signed-in user.
+-- Before that each row was private to its author; user_email is now the
+-- CREATOR of the template rather than the only person who can see it.
 --
 -- Keyed on lowercased email, same as user_profiles and for the same reason
 -- (that is the form the BFF forwards in X-User-Email). No FK to
--- user_profiles: a user can save a prompt before ever visiting their
--- profile page, and that row is created lazily.
+-- user_profiles: a user can save a template before ever visiting their
+-- profile page, and that row is created lazily. The author's display name is
+-- resolved with a LEFT JOIN at read time, falling back to the email.
 --
--- The unique index is on lower(title), not title, so "Yard Units" and
--- "yard units" collide. Titles are user-facing labels chosen for a
--- dropdown — two entries differing only in case read as duplicates to the
--- person picking one. Making it a DB constraint rather than a pre-check
--- also closes the two-tabs race that a SELECT-then-INSERT would leave open.
+-- The unique index is on lower(title) with NO user_email component: titles
+-- are the shared vocabulary of one list everybody reads, so two people
+-- cannot both own "Sitdown Hyster". Case-insensitive because two entries
+-- differing only in case read as duplicates to the person picking one.
+-- Making it a DB constraint rather than a pre-check also closes the
+-- two-tabs race that a SELECT-then-INSERT would leave open.
+--
+-- TITLE AND BODY ARE IMMUTABLE after insert. There is no rename and no
+-- overwrite: a template accumulates votes and a use count, and both of those
+-- are ratings OF A PARTICULAR TEXT. Editing the row under them would leave
+-- the reputation attached to something nobody actually endorsed. Customising
+-- is load → edit → save under a new title, which is why the only write paths
+-- on this table after INSERT are use_count and the votes below.
 CREATE TABLE IF NOT EXISTS saved_prompts (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_email  TEXT NOT NULL,
@@ -212,11 +222,87 @@ CREATE TABLE IF NOT EXISTS saved_prompts (
     created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
 );
-CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_prompts_user_title
-    ON saved_prompts(user_email, lower(title));
--- Listing order for the dropdown: most recently touched first.
+
+-- Going global on title can collide with data written under the old per-user
+-- index: two users may each have a "Yard units". Resolve those BEFORE the new
+-- index is built, or it simply fails to create and the migration wedges.
+-- Oldest row keeps the plain title; later ones get a numeric suffix, chosen
+-- by probing so the suffixed name can't collide either. Guarded on the index
+-- not existing yet, so this is a one-time pass and not a re-run every boot.
+DO $$
+DECLARE
+    r          RECORD;
+    candidate  TEXT;
+    n          INT;
+BEGIN
+    IF to_regclass('public.idx_saved_prompts_title') IS NOT NULL THEN
+        RETURN;
+    END IF;
+    FOR r IN
+        SELECT id, title
+        FROM (
+            SELECT id, title,
+                   row_number() OVER (
+                       PARTITION BY lower(title) ORDER BY created_at, id
+                   ) AS rn
+            FROM saved_prompts
+        ) ranked
+        WHERE ranked.rn > 1
+    LOOP
+        n := 2;
+        LOOP
+            candidate := r.title || ' (' || n || ')';
+            EXIT WHEN NOT EXISTS (
+                SELECT 1 FROM saved_prompts WHERE lower(title) = lower(candidate)
+            );
+            n := n + 1;
+        END LOOP;
+        UPDATE saved_prompts SET title = candidate WHERE id = r.id;
+    END LOOP;
+END $$;
+
+-- The old per-user index is not just redundant, it is wrong now: it would
+-- permit the cross-user duplicate titles the shared list must not contain.
+DROP INDEX IF EXISTS idx_saved_prompts_user_title;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_saved_prompts_title
+    ON saved_prompts(lower(title));
+-- Listing order for the template list: most recently touched first, unscoped.
+CREATE INDEX IF NOT EXISTS idx_saved_prompts_updated
+    ON saved_prompts(updated_at DESC);
+-- Retained for per-creator lookups.
 CREATE INDEX IF NOT EXISTS idx_saved_prompts_user
     ON saved_prompts(user_email, updated_at DESC);
+
+-- use_count: how many times a template has been loaded into the prompt box.
+-- Denormalised onto the row rather than derived from usage_events, because
+-- "popular" is sorted on every render and a count(*) over an events table for
+-- every template on every list would be the most expensive query in the tab.
+-- Bumped by POST /prompts/{id}/use, which deliberately does NOT touch
+-- updated_at — recency and popularity are two different sorts and using a
+-- template must not reorder the recency list.
+ALTER TABLE saved_prompts ADD COLUMN IF NOT EXISTS use_count INT NOT NULL DEFAULT 0;
+
+-- saved_prompt_votes: one upvote per user per template, so "top rated" is a
+-- headcount and not a tally someone can run up by clicking.
+--
+-- The composite PRIMARY KEY is the whole enforcement mechanism — a second
+-- vote is a duplicate-key no-op via ON CONFLICT DO NOTHING rather than a
+-- read-then-insert that two tabs could both pass. Un-voting is a DELETE, so
+-- the vote is a toggle and the count is always exactly the number of rows.
+--
+-- ON DELETE CASCADE: deleting a template takes its votes with it. Without it
+-- an admin's delete would either fail on the FK or leave orphan rows that
+-- would silently attach to a future UUID.
+CREATE TABLE IF NOT EXISTS saved_prompt_votes (
+    prompt_id   UUID NOT NULL REFERENCES saved_prompts(id) ON DELETE CASCADE,
+    user_email  TEXT NOT NULL,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    PRIMARY KEY (prompt_id, user_email)
+);
+-- The PK covers prompt_id-first lookups (the vote count per template). This
+-- one covers the other direction: everything one user has voted for.
+CREATE INDEX IF NOT EXISTS idx_saved_prompt_votes_user
+    ON saved_prompt_votes(user_email);
 
 -- support_tickets: feature requests + bug reports submitted from
 -- /profile. Surfaced in /admin's Support tab so the owner sees them

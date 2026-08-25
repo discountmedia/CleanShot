@@ -1,45 +1,99 @@
 "use client";
 // apps/web/components/enhance/SavedPromptsBar.tsx
 //
-// Save / insert / manage the operator's reusable enhance prompts.
+// Save / insert / rate / curate the SHARED prompt templates.
 //
-// SPLIT ACROSS TWO ROWS (2026-08-21 layout pass). The insert dropdown sits up
+// SHARED SINCE 2026-08-25. These used to be private per-user prompts saved
+// "to your profile". They are now one company-wide library: a template one
+// operator writes for a sitdown Hyster is picked straight out of the list by
+// everyone else.
+//
+// FOUR RULES THAT LOOK LIKE MISSING FEATURES AND ARE NOT:
+//
+//  • A template CANNOT BE RENAMED OR EDITED. It is written once. Votes and a
+//    use count accumulate against a specific text, and editing the row under
+//    them would leave that reputation pointing at something nobody endorsed —
+//    the top-rated template would be top-rated for a prompt that no longer
+//    exists. Customising is load → edit → save under a new title.
+//
+//  • DELETE IS ADMIN ONLY, not creator-or-admin. Once other people rely on a
+//    template, its author is not the person with the most at stake in
+//    removing it.
+//
+//  • ONE VOTE PER USER, enforced by a composite primary key in Postgres, not
+//    by anything in this file. The count is a headcount, not a tally.
+//
+//  • The picker is a CUSTOM LISTBOX, not a <select>. A native <option>
+//    renders plain text only — no byline, no vote button, no second line —
+//    and all three are the point of a shared library. Collapsing this back to
+//    a <select> silently deletes the attribution and the rating controls.
+//
+// SPLIT ACROSS TWO ROWS (2026-08-21 layout pass). The template picker sits up
 // beside "Insert recommended prompt" so the two read as a pair, and the save +
-// manage controls sit below the textarea, right-aligned. Because those are two
-// different rows in EnhancePanel's tree, the shared state moved OUT into
+// curate controls sit below the textarea, right-aligned. Because those are two
+// different rows in EnhancePanel's tree, the shared state lives in
 // `useSavedPrompts()` — EnhancePanel calls it once and hands the same state to
 // both pieces. Two independent components would each fetch their own list, and
-// saving would not refresh the dropdown.
+// saving or voting in one would not update the other.
 //
-// Enhance is prompt-first, so a good prompt is real work — and before this it
-// was retyped from scratch every session. This bar sits directly under the
-// prompt box: SAVE PROMPT TO PROFILE on one side, a titled dropdown on the
-// other, and rename / delete behind a Manage disclosure.
-//
-// Two deliberate choices worth knowing:
-//
-//  • The title is collected in an INLINE field, not window.prompt(). A native
-//    prompt is unstyled, ignores the house palette entirely, and is blocked
-//    outright in some browsers — a save that silently does nothing is worse
-//    than one that takes an extra click.
-//
-//  • Overwrite is never assumed. A colliding title comes back from the server
-//    as a 409 and the user picks overwrite or rename. Choosing for them would
-//    either destroy a prompt or quietly create a near-duplicate.
+// One more deliberate choice: the title is collected in an INLINE field, not
+// window.prompt(). A native prompt is unstyled, ignores the house palette
+// entirely, and is blocked outright in some browsers — a save that silently
+// does nothing is worse than one that takes an extra click.
 
-import { useCallback, useEffect, useId, useState } from "react";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 
+import { TipBanner } from "../workspace/TipBanner";
 import {
   PromptTitleConflictError,
   deleteSavedPrompt,
   listSavedPrompts,
-  renameSavedPrompt,
+  recordSavedPromptUse,
   saveSavedPrompt,
+  sortSavedPrompts,
+  voteSavedPrompt,
   type SavedPrompt,
+  type TemplateSort,
 } from "../../lib/api";
 
+/** The three orderings, with the tooltip copy that explains each one. */
+const SORTS: { key: TemplateSort; label: string; hint: string }[] = [
+  {
+    key: "recent",
+    label: "Newest",
+    hint: "Most recently added first. Using or upvoting a template never changes this order.",
+  },
+  {
+    key: "top",
+    label: "Top rated",
+    hint: "Most upvotes first. One vote per person, so this is how many people endorse it — not how often it's been clicked.",
+  },
+  {
+    key: "used",
+    label: "Most used",
+    hint: "Loaded into the prompt box most often. Popular isn't the same as endorsed — a template can be used a lot and rated by nobody.",
+  },
+];
+
 /**
- * The saved-prompt state, owned in ONE place and shared by both halves of the
+ * Short, unambiguous date for a byline: "Aug 25", or "Aug 25, 2025" once the
+ * year stops being obvious. A template's age is a real signal in a shared
+ * list — an old one may predate the current prompt guidance — so the year
+ * has to appear when it matters, without adding noise when it doesn't.
+ */
+function formatByDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const sameYear = d.getFullYear() === new Date().getFullYear();
+  return d.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    ...(sameYear ? {} : { year: "numeric" }),
+  });
+}
+
+/**
+ * The template state, owned in ONE place and shared by both halves of the
  * split UI. EnhancePanel calls this once.
  */
 export function useSavedPrompts() {
@@ -47,6 +101,7 @@ export function useSavedPrompts() {
   const [loading, setLoading] = useState(true);
   const [error,   setError]   = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
+  const [sort, setSort] = useState<TemplateSort>("top");
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -55,7 +110,7 @@ export function useSavedPrompts() {
       setError(null);
     } catch (err: unknown) {
       if (signal?.aborted) return;
-      setError(err instanceof Error ? err.message : "Couldn't load saved prompts");
+      setError(err instanceof Error ? err.message : "Couldn't load shared templates");
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
@@ -71,83 +126,322 @@ export function useSavedPrompts() {
     return () => ac.abort();
   }, [refresh]);
 
+  /**
+   * Toggle this user's upvote. Optimistic, then corrected: the local ±1 is
+   * shown immediately because a vote that lags feels broken, but the server's
+   * count is what the row settles on — two people voting in the same second
+   * means the local guess is often not the whole story. A failure rolls the
+   * row back rather than leaving a vote that isn't really there.
+   */
+  const toggleVote = useCallback(async (target: SavedPrompt) => {
+    const next = !target.votedByMe;
+    setPrompts((rows) => rows.map((r) => (
+      r.id === target.id
+        ? { ...r, votedByMe: next, voteCount: r.voteCount + (next ? 1 : -1) }
+        : r
+    )));
+    try {
+      const truth = await voteSavedPrompt(target.id, next);
+      setPrompts((rows) => rows.map((r) => (
+        r.id === target.id
+          ? { ...r, votedByMe: truth.voted, voteCount: truth.voteCount }
+          : r
+      )));
+    } catch (err: unknown) {
+      setPrompts((rows) => rows.map((r) => (
+        r.id === target.id
+          ? { ...r, votedByMe: target.votedByMe, voteCount: target.voteCount }
+          : r
+      )));
+      setError(err instanceof Error ? err.message : "Couldn't record that vote");
+    }
+  }, []);
+
+  /**
+   * Count one use. Fire-and-forget by design — the template is already in the
+   * operator's prompt box, so a failed counter must not turn into an error
+   * message about something that plainly worked. The local bump is what the
+   * operator sees; the server reconciles on the next load.
+   */
+  const noteUse = useCallback((id: string) => {
+    setPrompts((rows) => rows.map((r) => (
+      r.id === id ? { ...r, useCount: r.useCount + 1 } : r
+    )));
+    void recordSavedPromptUse(id);
+  }, []);
+
   return {
     prompts, loading, error, setError,
     savedNotice, setSavedNotice, refresh,
+    sort, setSort, toggleVote, noteUse,
   };
 }
 
 export type SavedPromptsState = ReturnType<typeof useSavedPrompts>;
 
+/**
+ * The ▲ upvote control. Its own component because it renders in two places,
+ * and because it must never be nested inside the row's main button — a button
+ * inside a button is invalid HTML and the inner click doesn't reliably fire.
+ */
+function VoteButton({
+  prompt, onToggle, compact = false,
+}: {
+  prompt: SavedPrompt;
+  onToggle: (p: SavedPrompt) => void;
+  compact?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={(e) => {
+        // The row behind this is "insert this template". Voting is not that.
+        e.stopPropagation();
+        onToggle(prompt);
+      }}
+      aria-pressed={prompt.votedByMe}
+      aria-label={
+        prompt.votedByMe
+          ? `Remove your upvote from ${prompt.title}`
+          : `Upvote ${prompt.title}`
+      }
+      title={
+        prompt.votedByMe
+          ? `You upvoted this. ${prompt.voteCount} ${prompt.voteCount === 1 ? "person rates" : "people rate"} it. Click to take your vote back.`
+          : `Upvote this template so it rises in "Top rated". One vote per person — ${prompt.voteCount} so far.`
+      }
+      className={`flex shrink-0 items-center gap-1 rounded-md border px-2 ${compact ? "py-1" : "py-1.5"} text-sm font-bold transition-colors ${
+        prompt.votedByMe
+          ? "border-accent bg-accent text-header-bg"
+          : "border-line bg-panel text-ink-soft hover:text-ink hover:border-ink-soft"
+      }`}
+    >
+      <span aria-hidden="true">▲</span>
+      <span>{prompt.voteCount}</span>
+    </button>
+  );
+}
+
 interface SavedPromptSelectProps {
   state: SavedPromptsState;
-  /** Current contents of the prompt field — drives the overwrite confirm. */
+  /** Current contents of the prompt field — drives the replace confirm. */
   currentPrompt: string;
-  /** Insert a saved prompt's text into the field, replacing what's there. */
+  /** Insert a template's text into the field, replacing what's there. */
   onInsert: (body: string) => void;
 }
 
 /**
- * The insert dropdown. Rendered beside "Insert recommended prompt" so the two
+ * The template picker. Rendered beside "Insert recommended prompt" so the two
  * ways of filling the prompt box sit together.
+ *
+ * A custom listbox rather than a <select>, because each row carries a byline,
+ * a vote button and a use count. The cost is that the keyboard and dismiss
+ * behaviour a <select> gives free has to be written: Escape closes, arrows
+ * move, Enter picks, a click outside closes, and focus returns to the trigger
+ * so tab order survives.
  */
 export function SavedPromptSelect({
   state, currentPrompt, onInsert,
 }: SavedPromptSelectProps) {
-  const selectId = useId();
-  const { prompts, loading, setSavedNotice } = state;
+  const listboxId = useId();
+  const { prompts, loading, setSavedNotice, sort, setSort, toggleVote, noteUse } = state;
   const hasPrompt = currentPrompt.trim().length > 0;
 
-  const handleInsert = (id: string) => {
-    const chosen = prompts.find((p) => p.id === id);
-    if (!chosen) return;
+  // The sort is applied here, not on the server: the library is small, the
+  // whole list is already in hand, and re-sorting locally means switching
+  // between Newest / Top rated / Most used is instant instead of a fetch.
+  const ordered = useMemo(() => sortSavedPrompts(prompts, sort), [prompts, sort]);
+
+  const [open, setOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const rootRef    = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const optionRefs = useRef<(HTMLButtonElement | null)[]>([]);
+
+  // Close on click-outside / Escape. Both listeners live on the document
+  // because the click that dismisses is by definition not on this subtree.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setOpen(false);
+        triggerRef.current?.focus();
+      }
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [open]);
+
+  // Move real DOM focus with the highlight. `autoFocus` would only fire on
+  // mount, which leaves the focus ring stuck on the first row while the arrow
+  // keys move the highlight somewhere else — and worse, the <ul> only receives
+  // keydown at all while focus is inside it, so this is what keeps the arrows
+  // working past the first press.
+  useEffect(() => {
+    if (!open) return;
+    optionRefs.current[activeIndex]?.focus();
+  }, [open, activeIndex]);
+
+  const handleInsert = (p: SavedPrompt) => {
+    setOpen(false);
+    triggerRef.current?.focus();
     // Inserting replaces the box. If there's text in there that isn't already
-    // this prompt, the operator is about to lose it, so ask first.
-    if (hasPrompt && currentPrompt.trim() !== chosen.body.trim()) {
+    // this template, the operator is about to lose it, so ask first.
+    if (hasPrompt && currentPrompt.trim() !== p.body.trim()) {
       const ok = window.confirm(
-        `Replace the prompt currently in the box with "${chosen.title}"?\n\n` +
+        `Replace the prompt currently in the box with "${p.title}"?\n\n` +
         `Anything you've typed and not saved will be lost.`,
       );
       if (!ok) return;
     }
     // A copy of the text, not a live link — editing the box never writes back
-    // to the saved row.
-    onInsert(chosen.body);
-    setSavedNotice(`Inserted "${chosen.title}" — edits here won't change the saved copy`);
+    // to the shared template, so trying someone else's out and then reworking
+    // it can't damage theirs. That is also the supported way to customise:
+    // load, edit, save under a new title.
+    onInsert(p.body);
+    noteUse(p.id);
+    setSavedNotice(
+      `Loaded "${p.title}" — edits here won't change the shared template. ` +
+      `To keep your version, save it under a new title.`,
+    );
   };
 
+  const disabled = loading || ordered.length === 0;
+  const label = loading
+    ? "Loading…"
+    : ordered.length === 0
+      ? "No shared templates yet"
+      : "Use a shared template…";
+
   return (
-    <select
-      id={selectId}
-      aria-label="Insert a saved prompt"
-      value=""
-      disabled={loading || prompts.length === 0}
-      onChange={(e) => {
-        if (e.target.value) handleInsert(e.target.value);
-        // Reset to the placeholder so picking the same prompt twice in a row
-        // still fires onChange.
-        e.target.value = "";
-      }}
-      /* py-3 matches the recommended-prompt button's height so the pair sits on
-         one baseline. */
-      /* max-w-full + min-w-0: a select won't shrink below its widest option by
-         default, so a long saved-prompt title would push this row wider than
-         the phone viewport. */
-      className="max-w-full min-w-0 bg-panel border border-line rounded-lg px-3 py-3 text-base text-ink focus:outline-none focus:ring-2 focus:ring-cta disabled:opacity-60"
-    >
-      <option value="">
-        {loading
-          ? "Loading…"
-          : prompts.length === 0
-            ? "No saved prompts yet"
-            : "Insert a saved prompt…"}
-      </option>
-      {prompts.map((p) => (
-        <option key={p.id} value={p.id}>
-          {p.title}
-        </option>
-      ))}
-    </select>
+    /* max-w-full + min-w-0: the trigger must be allowed to shrink below its
+       widest template title, or a long one pushes this row wider than the
+       phone viewport. */
+    <div ref={rootRef} className="relative max-w-full min-w-0">
+      <button
+        ref={triggerRef}
+        type="button"
+        disabled={disabled}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={open ? listboxId : undefined}
+        title={
+          disabled
+            ? "Nobody has saved a shared template yet. Write a prompt and save it to start the library."
+            : "Browse prompt templates saved by everyone on the team. Picking one replaces the prompt box with a copy you can edit freely."
+        }
+        onClick={() => {
+          setActiveIndex(0);
+          setOpen((v) => !v);
+        }}
+        onKeyDown={(e) => {
+          if (disabled) return;
+          if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setActiveIndex(0);
+            setOpen(true);
+          }
+        }}
+        /* py-3 matches the recommended-prompt button's height so the pair sits
+           on one baseline. */
+        className="w-full flex items-center justify-between gap-2 bg-panel border border-line rounded-lg px-3 py-3 text-base text-ink text-left focus:outline-none focus:ring-2 focus:ring-cta disabled:opacity-60"
+      >
+        <span className="truncate">{label}</span>
+        <span aria-hidden="true" className="text-ink-soft shrink-0">▾</span>
+      </button>
+
+      {open && ordered.length > 0 && (
+        /* z-20 clears the prompt textarea below it; max-h + overflow keeps a
+           long library from running off the bottom of the panel. w-80 with
+           min-w-full lets the popover be WIDER than a narrow trigger — the
+           rows carry a byline and two counters and get unreadable if they
+           inherit a squeezed column. */
+        <div className="absolute z-20 mt-1 w-80 min-w-full max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel shadow-lg">
+          {/* Sort strip. Three orderings of the same fetched list, each with a
+              tooltip saying what it actually measures — "top rated" and "most
+              used" sound interchangeable and are not. */}
+          <div className="flex items-center gap-1 border-b border-line px-2 py-2">
+            <span className="px-1 text-sm text-ink-soft font-semibold">Sort</span>
+            {SORTS.map((s) => (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setSort(s.key)}
+                title={s.hint}
+                aria-pressed={sort === s.key}
+                className={`rounded-md px-2 py-1 text-sm font-bold transition-colors ${
+                  sort === s.key
+                    ? "bg-panel-hi border border-accent text-ink"
+                    : "border border-transparent text-ink-soft hover:text-ink"
+                }`}
+              >
+                {s.label}
+              </button>
+            ))}
+          </div>
+
+          <ul
+            id={listboxId}
+            role="listbox"
+            aria-label="Shared prompt templates"
+            tabIndex={-1}
+            className="max-h-72 overflow-y-auto divide-y divide-line"
+            onKeyDown={(e) => {
+              if (e.key === "ArrowDown") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.min(i + 1, ordered.length - 1));
+              } else if (e.key === "ArrowUp") {
+                e.preventDefault();
+                setActiveIndex((i) => Math.max(i - 1, 0));
+              } else if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                const chosen = ordered[activeIndex];
+                if (chosen) handleInsert(chosen);
+              }
+            }}
+          >
+            {ordered.map((p, i) => (
+              <li key={p.id} className="flex items-center gap-2 pr-2">
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  ref={(el) => {
+                    optionRefs.current[i] = el;
+                  }}
+                  onMouseEnter={() => setActiveIndex(i)}
+                  onClick={() => handleInsert(p)}
+                  title={`Load "${p.title}" into the prompt box. You get an editable copy — the shared template never changes.`}
+                  className={`flex-1 min-w-0 text-left px-3 py-2.5 transition-colors focus:outline-none ${
+                    i === activeIndex ? "bg-panel-hi" : "hover:bg-panel-hi"
+                  }`}
+                >
+                  <span className="block text-base font-semibold text-ink truncate">
+                    {p.title}
+                  </span>
+                  {/* The byline plus the use count. Smaller and muted so they
+                      read as metadata rather than part of the name, but
+                      full-contrast enough to actually be read — ink-soft, not
+                      ink-faint. */}
+                  <span className="block text-sm text-ink-soft truncate">
+                    {p.authorName} · {formatByDate(p.createdAt)}
+                    {p.useCount > 0 && ` · used ${p.useCount}×`}
+                  </span>
+                </button>
+                <VoteButton prompt={p} onToggle={toggleVote} />
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -161,36 +455,43 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
   const titleFieldId = useId();
 
   const {
-    prompts, error, setError, savedNotice, setSavedNotice, refresh,
+    prompts, error, setError, savedNotice, setSavedNotice, refresh, sort, toggleVote,
   } = state;
 
-  // Save flow: idle → naming (inline title field) → conflict (overwrite/rename)
+  // Save flow: idle → naming (inline title field) → conflict (title is taken)
   const [saveState, setSaveState] = useState<"idle" | "naming" | "conflict">("idle");
   const [titleDraft, setTitleDraft] = useState("");
   const [isSaving,   setIsSaving]   = useState(false);
+  // Whose title the collision is with — wording only. Either way the answer
+  // is a different title; titles are permanent and there is no overwrite.
+  const [conflictMine, setConflictMine] = useState(true);
 
   const [manageOpen, setManageOpen] = useState(false);
-  const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [renameDraft, setRenameDraft] = useState("");
 
   const hasPrompt = currentPrompt.trim().length > 0;
+  // Delete is admin-only, so Curate is an admin panel. `canDelete` is the same
+  // for every row; reading it off the list avoids threading a separate "am I
+  // an admin" prop all the way down here.
+  const isAdmin = prompts.some((p) => p.canDelete);
+  const ordered = useMemo(() => sortSavedPrompts(prompts, sort), [prompts, sort]);
 
   // ─── Save ────────────────────────────────────────────────────────────────
 
-  const commitSave = async (overwrite: boolean) => {
+  const commitSave = async () => {
     const title = titleDraft.trim();
     if (!title || !hasPrompt) return;
     setIsSaving(true);
     setError(null);
     try {
-      await saveSavedPrompt({ title, body: currentPrompt, overwrite });
+      await saveSavedPrompt({ title, body: currentPrompt });
       setSaveState("idle");
       setTitleDraft("");
-      setSavedNotice(`Saved as "${title}"`);
+      setSavedNotice(`Saved "${title}" to shared templates — everyone can use it now`);
       await refresh();
     } catch (err: unknown) {
       if (err instanceof PromptTitleConflictError) {
         // Not an error state — it's a question. Ask it.
+        setConflictMine(err.mine);
         setSaveState("conflict");
       } else {
         setError(err instanceof Error ? err.message : "Save failed");
@@ -200,28 +501,14 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
     }
   };
 
-  // ─── Manage ──────────────────────────────────────────────────────────────
-
-  const commitRename = async (id: string) => {
-    const title = renameDraft.trim();
-    if (!title) return;
-    try {
-      await renameSavedPrompt(id, title);
-      setRenamingId(null);
-      setRenameDraft("");
-      await refresh();
-    } catch (err: unknown) {
-      setError(
-        err instanceof PromptTitleConflictError
-          ? `You already have a prompt titled "${title}".`
-          : err instanceof Error ? err.message : "Rename failed",
-      );
-    }
-  };
+  // ─── Curate (admin) ──────────────────────────────────────────────────────
 
   const handleDelete = async (p: SavedPrompt) => {
     const ok = window.confirm(
-      `Delete the saved prompt "${p.title}"?\n\nThis can't be undone.`,
+      `Delete the shared template "${p.title}"?\n\n` +
+      `It has ${p.voteCount} upvote${p.voteCount === 1 ? "" : "s"} and has been used ` +
+      `${p.useCount} time${p.useCount === 1 ? "" : "s"}. It will disappear for everyone, ` +
+      `along with its votes, and this can't be undone.`,
     );
     if (!ok) return;
     try {
@@ -236,19 +523,20 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
 
   return (
     <div className="mt-3 space-y-3">
-      {/* Manage on the left, Save on the right. `justify-end` + `mr-auto` on
-          Manage keeps Save hard against the right edge without leaving a hole
-          where the insert dropdown used to sit — that moved up beside "Insert
-          recommended prompt". On a narrow screen `flex-wrap` drops Save onto
-          its own line rather than squeezing the pair. */}
+      {/* Curate on the left, Save on the right. `justify-end` + `mr-auto` on
+          the left control keeps Save hard against the right edge without
+          leaving a hole where the picker used to sit — that moved up beside
+          "Insert recommended prompt". On a narrow screen `flex-wrap` drops
+          Save onto its own line rather than squeezing the pair. */}
       <div className="flex flex-wrap items-center justify-end gap-3">
-        {prompts.length > 0 && (
+        {isAdmin && prompts.length > 0 && (
           <button
             type="button"
             onClick={() => setManageOpen((v) => !v)}
+            title="Admin only: remove templates from the shared library. Nobody else can delete, including the person who wrote it."
             className="mr-auto text-sm font-bold text-ink-soft hover:text-ink transition-colors"
           >
-            {manageOpen ? "Done managing" : "Manage"}
+            {manageOpen ? "Done curating" : "Curate library (admin)"}
           </button>
         )}
 
@@ -265,7 +553,7 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
           disabled={!hasPrompt || saveState !== "idle"}
           title={
             hasPrompt
-              ? "Save the prompt currently in the box to your profile"
+              ? "Save the prompt currently in the box as a template everyone can use. It gets a permanent title — to change a template later, load it, edit it, and save it again under a new title."
               : "Write a prompt first — there's nothing to save yet"
           }
           className={`text-sm uppercase tracking-[0.14em] font-bold px-4 py-2.5 rounded-lg border-2 transition-colors ${
@@ -274,9 +562,48 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
               : "border-line bg-panel text-ink-faint cursor-not-allowed"
           }`}
         >
-          Save prompt to profile
+          Save prompt to shared templates
         </button>
       </div>
+
+      {/* The explainer. These rules are not guessable from the controls —
+          especially that titles are permanent, and that "top rated" and "most
+          used" measure different things — so they get said once, in prose,
+          in a banner that collapses itself for operators who already know. */}
+      <TipBanner title="How shared templates work" steps={[
+        <>
+          <strong>Everyone shares one library.</strong> Anything you save is
+          immediately visible to every other user, credited to you with the date
+          you saved it. There are no private prompts.
+        </>,
+        <>
+          <strong>Titles are permanent.</strong> A template can&apos;t be renamed
+          or edited after it&apos;s saved — not even by the person who wrote it.
+          To make your own version: load a template, change the text in the box,
+          then save it under a new title. The original is untouched.
+        </>,
+        <>
+          <strong>Loading a template gives you a copy.</strong> Editing the
+          prompt box never writes back to the shared template, so you can freely
+          try someone else&apos;s and rework it.
+        </>,
+        <>
+          <strong>▲ upvote what works.</strong> One vote per person, and you can
+          take it back by clicking again. <em>Top rated</em> sorts by how many
+          people endorse a template; <em>Most used</em> sorts by how often
+          it&apos;s been loaded. They are not the same signal — something can be
+          used constantly and rated by nobody.
+        </>,
+        <>
+          <strong>Only an admin can delete.</strong> Removing a template removes
+          it for everybody, so it isn&apos;t something an author does to their
+          own entry. Ask an admin if something needs to go.
+        </>,
+      ]}>
+        A prompt that produces a good result is worth keeping, and worth handing
+        to the next person. Save it here and it becomes part of the team&apos;s
+        library.
+      </TipBanner>
 
       {/* ── Inline title field ── */}
       {saveState === "naming" && (
@@ -285,7 +612,7 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
             htmlFor={titleFieldId}
             className="block text-sm uppercase tracking-[0.14em] font-bold text-ink"
           >
-            Title this prompt
+            Title this template
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <input
@@ -297,17 +624,18 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
               onKeyDown={(e) => {
                 if (e.key === "Enter" && titleDraft.trim()) {
                   e.preventDefault();
-                  void commitSave(false);
+                  void commitSave();
                 }
                 if (e.key === "Escape") setSaveState("idle");
               }}
-              placeholder="e.g. Yard units, heavy rust"
+              placeholder="e.g. Sitdown Hyster, heavy rust"
               maxLength={120}
+              title="Pick carefully — this title is permanent and shared with everyone. Describe the machine and the situation; your name and the date are added automatically."
               className="flex-1 min-w-56 bg-well border border-line rounded-md px-3 py-2 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta"
             />
             <button
               type="button"
-              onClick={() => void commitSave(false)}
+              onClick={() => void commitSave()}
               disabled={!titleDraft.trim() || isSaving}
               className={`text-sm uppercase tracking-[0.14em] font-bold px-4 py-2 rounded-lg border-2 transition-colors ${
                 titleDraft.trim() && !isSaving
@@ -329,35 +657,37 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
             </button>
           </div>
           <p className="text-sm text-ink-soft leading-relaxed">
-            A title is required — it&apos;s how you&apos;ll find this prompt in the dropdown.
+            A title is required, it&apos;s how everyone will find this template,
+            and <strong className="text-ink">it can&apos;t be changed later</strong>.
+            Your name and today&apos;s date are shown beside it automatically.
           </p>
         </div>
       )}
 
-      {/* ── Title collision ── */}
+      {/* ── Title collision ──
+          There is no Overwrite branch. Titles are permanent, so the only
+          resolution is a different one; offering a button that can't work
+          would just produce another 409 on click. */}
       {saveState === "conflict" && (
         <div className="rounded-lg border-2 border-attn bg-panel px-4 py-3 space-y-2">
           <p className="text-base font-bold text-ink leading-snug">
-            You already have a prompt titled &ldquo;{titleDraft.trim()}&rdquo;
+            {conflictMine
+              ? `You already saved a template titled “${titleDraft.trim()}”`
+              : `Someone already saved a template titled “${titleDraft.trim()}”`}
           </p>
           <p className="text-sm text-ink-soft leading-relaxed">
-            Overwrite it with the prompt currently in the box, or pick a different title.
+            Titles are shared across everyone and permanent, so this one is taken
+            for good. Pick a different title — if this is a reworked version of
+            that template, something like &ldquo;{titleDraft.trim()} v2&rdquo;
+            keeps the two next to each other in the list.
           </p>
           <div className="flex flex-wrap items-center gap-2 pt-1">
             <button
               type="button"
-              onClick={() => void commitSave(true)}
-              disabled={isSaving}
+              onClick={() => setSaveState("naming")}
               className="text-sm uppercase tracking-[0.14em] font-bold px-4 py-2 rounded-lg border-2 border-cta bg-cta hover:bg-cta-dark text-white transition-colors"
             >
-              {isSaving ? "Overwriting…" : "Overwrite"}
-            </button>
-            <button
-              type="button"
-              onClick={() => setSaveState("naming")}
-              className="text-sm uppercase tracking-[0.14em] font-bold px-4 py-2 rounded-lg border-2 border-line bg-panel hover:bg-panel-hi text-ink transition-colors"
-            >
-              Rename
+              Pick another title
             </button>
             <button
               type="button"
@@ -373,72 +703,36 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
         </div>
       )}
 
-      {/* ── Manage: rename + delete ── */}
-      {manageOpen && prompts.length > 0 && (
+      {/* ── Curate: admin delete, whole library ── */}
+      {manageOpen && isAdmin && ordered.length > 0 && (
         <ul className="rounded-lg border border-line bg-well/60 divide-y divide-line">
-          {prompts.map((p) => (
+          {ordered.map((p) => (
             <li key={p.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
-              {renamingId === p.id ? (
-                <>
-                  <input
-                    type="text"
-                    autoFocus
-                    value={renameDraft}
-                    onChange={(e) => setRenameDraft(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" && renameDraft.trim()) {
-                        e.preventDefault();
-                        void commitRename(p.id);
-                      }
-                      if (e.key === "Escape") setRenamingId(null);
-                    }}
-                    maxLength={120}
-                    className="flex-1 min-w-48 bg-panel border border-line rounded-md px-3 py-1.5 text-base text-ink focus:outline-none focus:ring-2 focus:ring-cta"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void commitRename(p.id)}
-                    disabled={!renameDraft.trim()}
-                    className="text-sm font-bold text-accent hover:text-accent disabled:text-ink-faint transition-colors"
-                  >
-                    Save
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setRenamingId(null)}
-                    className="text-sm font-bold text-ink-soft hover:text-ink transition-colors"
-                  >
-                    Cancel
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="flex-1 min-w-48 text-base text-ink font-semibold truncate" title={p.title}>
-                    {p.title}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRenamingId(p.id);
-                      setRenameDraft(p.title);
-                    }}
-                    className="text-sm font-bold text-ink-soft hover:text-ink transition-colors"
-                  >
-                    Rename
-                  </button>
-                  {/* Red is reserved for genuinely destructive controls, and
-                      this is one of them. text-danger-ink, NOT text-danger —
-                      --color-danger is 2.7:1 and fails AA as text (see the
-                      palette note in styles/globals.css). */}
-                  <button
-                    type="button"
-                    onClick={() => void handleDelete(p)}
-                    className="text-sm font-bold text-danger-ink hover:text-danger-ink transition-colors"
-                  >
-                    Delete
-                  </button>
-                </>
-              )}
+              <span className="flex-1 min-w-48">
+                <span className="block text-base text-ink font-semibold truncate">
+                  {p.title}
+                  {p.authorIsMe && (
+                    <span className="ml-2 text-sm font-bold text-ink-soft">yours</span>
+                  )}
+                </span>
+                <span className="block text-sm text-ink-soft truncate">
+                  {p.authorName} · {formatByDate(p.createdAt)} · used {p.useCount}×
+                </span>
+              </span>
+              <VoteButton prompt={p} onToggle={toggleVote} compact />
+              {/* Red is reserved for genuinely destructive controls, and this
+                  is one of them — it removes the template, and its votes, for
+                  everybody. text-danger-ink, NOT text-danger — --color-danger
+                  is 2.7:1 and fails AA as text (see the palette note in
+                  styles/globals.css). */}
+              <button
+                type="button"
+                onClick={() => void handleDelete(p)}
+                title={`Delete "${p.title}" for everyone, permanently, along with its ${p.voteCount} upvote${p.voteCount === 1 ? "" : "s"}.`}
+                className="text-sm font-bold text-danger-ink hover:text-danger-ink transition-colors"
+              >
+                Delete
+              </button>
             </li>
           ))}
         </ul>

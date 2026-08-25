@@ -4,7 +4,7 @@ AI-powered forklift image processing platform. Upload raw forklift photos, enhan
 
 > **Current-state note (updated 2026-08-21).** Some of the body below still describes older behaviour. The corrections that matter:
 > - **Enhance providers: 2 live** — Gemini and OpenAI (gpt-5 + image tool). **Grok is dormant** (kept as dead code, gone from the picker). Kontext / Ideogram / Reve were retired as *generators* (Kontext & Ideogram survive only as per-variant edit tools; Flux is the Erase tool). Any "4 providers" / "6 providers" text below is stale.
-> - **Enhance is prompt-first:** the operator writes their own prompt (required), with an equipment-aware "Insert recommended prompt" starter and **saved prompts** they can reuse. Toggles *augment* that prompt; they no longer build it.
+> - **Enhance is prompt-first:** the operator writes their own prompt (required), with an equipment-aware "Insert recommended prompt" starter and a **shared template library** the whole team contributes to and picks from. Toggles *augment* that prompt; they no longer build it.
 > - **Only four toggles are visible** — rental-fleet branding removal, floor cleanup, remove people, shine tires. The rest are hidden, not deleted (`VISIBLE_TOGGLES` in `apps/web/lib/types.ts`).
 > - **Scan is inline on Enhance.** Every generated image is scanned automatically and the verdict renders beside that image. Nothing navigates to the Scan tab.
 > - **Tabs: `Enhance → Scan → Your Photo Library`.** Scan is now a **standalone** tool with its own uploader. There is no Resize or Modify tab, and no bulk adjustment panel.
@@ -399,7 +399,8 @@ CleanShot uses Cloud SQL Postgres 17. The schema is split into two migrations:
 
 - `sessions`, `projects`, `assets`, `jobs`, `scan_results`, `consensus_results`
 - `user_profiles` — per-user editable details + avatar
-- `saved_prompts` — per-user reusable enhance prompts. Unique on `(user_email, lower(title))`, so a duplicate title is refused by the database rather than by a pre-check
+- `saved_prompts` — **shared** reusable enhance prompts, visible to every signed-in user. `user_email` is the CREATOR, not an access scope. Unique on `lower(title)` alone — titles are one company-wide namespace and a duplicate is refused by the database rather than by a pre-check. Title and body are **immutable after insert**; `use_count` is the only column that changes
+- `saved_prompt_votes` — one upvote per user per template, `PRIMARY KEY (prompt_id, user_email)`. The composite key is what enforces one-vote-per-user; deleting a template cascades its votes away
 
 **Auth + approval schema** (`apps/api/src/cleanshot_api/db/migrate_auth.py`):
 
@@ -526,7 +527,11 @@ gcloud run services update-traffic cleanshot-api \
 
 1. Drop images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.
 2. Pick the equipment type (10 types, from forklift to turret truck) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest pre-fills the export form.
-3. **Write the prompt** — required. The starter asks for a respray **in the same colour the unit already wears**, never an "original factory colour" (that phrasing makes the model correct a faded or repainted unit toward a remembered brand colour). Use **Insert recommended prompt** for an equipment-aware starter, or pick one of your **saved prompts** from the dropdown. `SAVE PROMPT TO PROFILE` stores the current text under a title you choose; titles are unique per user, and a collision asks whether to overwrite or rename. Inserted text is a copy — editing it never changes the saved original.
+3. **Write the prompt** — required. The starter asks for a respray **in the same colour the unit already wears**, never an "original factory colour" (that phrasing makes the model correct a faded or repainted unit toward a remembered brand colour). Use **Insert recommended prompt** for an equipment-aware starter, or pick a **shared template** from the picker — the team's library, sortable by Newest, Top rated, or Most used, each entry showing who wrote it and when. `SAVE PROMPT TO SHARED TEMPLATES` publishes the current text under a title you choose, visible to everyone immediately.
+   - **Titles are global and permanent.** A collision means the title is taken for good; there is no rename and no overwrite, because a template's upvotes and use count are ratings of a *specific* text. To customise one: load it, edit the box, save under a new title. The original is untouched.
+   - **Loading a template gives you a copy** — editing the prompt box never writes back to the shared row.
+   - **▲ upvote** what works: one vote per person, reversible. *Top rated* counts endorsements; *Most used* counts loads. They are different signals.
+   - **Only an admin can delete** a template, since deleting removes it for everybody.
 4. Optionally set the four visible toggles. They *append emphasis* to your prompt; they don't replace it.
 5. **Pick one or more providers** (Gemini, OpenAI). Each runs as an independent variant per source image.
 6. Click **Enhance**. Images upload to GCS, jobs enqueue per provider, and one `SourceCompareCard` renders per source image with its variants side by side. Re-running an unchanged batch is allowed — generation is non-deterministic and a second roll is often the point.

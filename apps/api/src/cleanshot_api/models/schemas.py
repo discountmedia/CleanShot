@@ -546,21 +546,46 @@ _PROMPT_BODY_MAX  = 8000
 
 
 class SavedPrompt(BaseModel):
+    """
+    One shared template. `user_email` is the CREATOR, not an access scope —
+    every signed-in user sees every row. `author_name` is their profile
+    full_name when they have filled one in, and None when they haven't; the
+    UI falls back to the email so the byline is never blank.
+
+    Title and body are immutable after creation. `vote_count` / `use_count`
+    are the two sortable reputation signals, and they are only meaningful
+    because the text under them can't change.
+    """
     id: uuid.UUID
     user_email: str
     title: str
     body: str
+    author_name: str | None = None
+    # Upvotes from distinct users. Defaults are for the create response, which
+    # returns a brand-new row before any vote or use can exist.
+    vote_count: int = 0
+    # Whether the CALLER has upvoted it — per-viewer, not a property of the row.
+    voted: bool = False
+    # Times this template has been loaded into the prompt box.
+    use_count: int = 0
     created_at: datetime
     updated_at: datetime
+
+
+class PromptVoteResponse(BaseModel):
+    """Authoritative state after a vote toggle — the UI replaces its optimistic
+    guess with these rather than keeping its own running total."""
+    vote_count: int
+    voted: bool
+
+
+class PromptUseResponse(BaseModel):
+    use_count: int
 
 
 class CreateSavedPromptRequest(BaseModel):
     title: str = Field(min_length=1, max_length=_PROMPT_TITLE_MAX)
     body: str = Field(min_length=1, max_length=_PROMPT_BODY_MAX)
-    # True only when the user has been shown the "that title exists" prompt and
-    # chose Overwrite. Default False so a collision is always surfaced rather
-    # than silently clobbering a prompt the user may have spent effort on.
-    overwrite: bool = False
 
     @field_validator("title", "body")
     @classmethod
@@ -568,18 +593,6 @@ class CreateSavedPromptRequest(BaseModel):
         # min_length=1 accepts "   ". A whitespace title is an empty title as
         # far as the dropdown is concerned, so reject it here rather than
         # storing a row that renders as a blank option.
-        stripped = v.strip()
-        if not stripped:
-            raise ValueError("must not be blank")
-        return stripped
-
-
-class RenameSavedPromptRequest(BaseModel):
-    title: str = Field(min_length=1, max_length=_PROMPT_TITLE_MAX)
-
-    @field_validator("title")
-    @classmethod
-    def _not_blank(cls, v: str) -> str:
         stripped = v.strip()
         if not stripped:
             raise ValueError("must not be blank")

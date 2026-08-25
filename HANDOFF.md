@@ -1,4 +1,4 @@
-# Session handoff — updated 2026-08-21 (second pass)
+# Session handoff — updated 2026-08-25
 
 Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. "Enhance tab — current shape"). This file is the "where we are right now / what's pending" snapshot.
 
@@ -7,48 +7,34 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 ## Repo state
 
 - **Branch:** `main`. Direct-to-main is the norm (no PR review).
-- **The Enhance-tab restructure batch is already pushed** (`ad7f0a6`) and deployed. This second pass carries the layout tweaks, the differential-scan colour fix, and the 2800x2000 sizing standard.
-- **The first push was a large one** — it carries the Enhance-tab restructure, saved prompts, scan-bar colours, and the experimental fork conditionals, all in one commit. If something is off in prod, that is the commit to look at.
-- **The first push shipped a schema change.** `saved_prompts` was added to `db/migrate.py`, which runs on API startup, so the deploy applied it. This second push adds no schema change. No `ALTER TYPE` was needed — `OperationEnum.export` already existed for the export asset rows.
+- **This batch is the shared prompt-template library** — saved prompts stopped being private and became one company-wide, rateable library. It is a schema change plus a behaviour change to data that already exists in prod.
+- **It ships a schema change**, applied by `db/migrate.py` on API startup, so the deploy applies it. Three parts: the unique index moves from `(user_email, lower(title))` to `lower(title)`, a `use_count` column is added, and a `saved_prompt_votes` table is created. **Watch the first API revision** — a guarded one-time `DO` block de-duplicates any cross-user title collisions (suffixing `(2)`, `(3)`) *before* building the new unique index. If that block fails, the index never builds and the migration wedges.
 - **Untracked:** `AGENTS.md` (a Codex-facing pointer to CLAUDE.md) is present but not committed, as found.
+- **Previous batch** (`ad7f0a6` + the 2026-08-21 second pass) carried the Enhance restructure, the original per-user saved prompts, scan-bar colours, the 2800x2000 sizing standard, the differential-scan colour fix, and the fork conditionals. If something unrelated to templates is off in prod, those are the commits to look at.
 
 ---
 
 ## What shipped in this batch
 
-**Enhance tab restructure**
-- Toggles reduced to four visible (`VISIBLE_TOGGLES`); the rest hidden, not deleted.
-- Scan runs inline on Enhance, read from the auto-enqueued backend scans. No navigation to the Scan tab.
-- Scan tab decoupled into a standalone tool with its own uploader.
-- Per-image Retry restored on each variant (it had been deliberately removed in an earlier pass — the operator asked for it back).
-- Per-image contrast/saturation; the bulk `ModifyPanel` is unmounted.
-- Re-enhance dirty-input guard removed.
-- Export writes to the user's project (finished files + originals, one copy each) and is the only save action; Save Project button gone.
+**Saved prompts became shared templates.** Every saved prompt is now visible to, and usable by, every signed-in user. The pre-existing private prompts were **published** by the migration — a deliberate decision, not a side effect. `user_email` on the row is now the CREATOR, not an access scope.
 
-**Saved prompts** — new `saved_prompts` table, `routers/saved_prompts.py`, `/api/prompts` BFF, `SavedPromptsBar.tsx`. Unique per user on `lower(title)`; a collision is a 409 the UI turns into overwrite-or-rename.
+- Reads are unscoped (`list_saved_prompts` has no filtering `WHERE`). The forwarded email resolves exactly one per-viewer field, `voted`.
+- Each row carries **author + date** as a byline, resolved by `LEFT JOIN user_profiles` with a fallback chain of full_name, then email local-part, then email.
+- The picker is a **custom listbox**, not a `<select>` — a native `<option>` is plain text only and cannot carry a byline, a use count, or a vote button.
 
-**Scan provider colours** — `SCAN_PROVIDER_COLOR`, a documented palette exception, applied on both tabs.
+**Titles and bodies are immutable.** `PATCH /api/v1/prompts/{id}`, `rename_saved_prompt`, `overwrite_saved_prompt_body`, `RenameSavedPromptRequest` and the `overwrite` request field were **deleted**, not deprecated. Votes and use counts are ratings *of a specific text*, so editing the row underneath them would leave the reputation pointing at something nobody endorsed. Customising is **load, edit, save under a new title**. A 409 now has exactly one resolution: a different title.
 
-**Fork conditionals** — experimental, OFF by default, session-only master switch above the Enhance button.
+**Delete is admin-only.** Not creator-or-admin — once other people rely on a template, its author is not the person with the most at stake in removing it. Enforced in `routers/saved_prompts.py` off the `X-User-Is-Admin` header, which the BFF sets from `isAdmin()` in `lib/auth.ts` (same trust model as `/api/v1/admin/*`). Manage became **"Curate library (admin)"** and lists the whole library.
 
-**Reverted:** the mandatory disclaimer. It is an optional checkbox again, now defaulting ON.
+**Upvotes.** `saved_prompt_votes`, `PRIMARY KEY (prompt_id, user_email)` plus `ON CONFLICT DO NOTHING` — one-vote-per-user is enforced by Postgres, so two tabs still produce one vote. Un-voting is a DELETE, so the count is always the row count. `ON DELETE CASCADE` takes votes with a deleted template. The UI is optimistic and then overwritten by the server's authoritative count, rolling back on failure.
 
-**Layout pass** — save-prompt button moved right and turned lime, the saved-prompt dropdown moved up beside "Insert recommended prompt", Download ZIP moved to the left of its row, and scan verdict text stepped up the type scale on both tabs. Version label is now `Beta V.2`.
+**Use counts.** `use_count` on `saved_prompts`, bumped by `POST /prompts/{id}/use` when a template loads into the prompt box. It deliberately does **not** touch `updated_at` — otherwise the most-used template would permanently also be the most recent, collapsing two sorts into one. Fire-and-forget from the client, since the insert already succeeded locally.
 
-**Differential scan can report colour again.** It could not: a blanket "a repaint is NEVER a defect" in the rubric, and an `AnomalyItem.type` description that listed `wrong_colour` while forbidding "paint/colour changes" in the same sentence, meant a full grey-to-orange body repaint scanned clean. Now scoped to same-colour-family, with two explicit defects (body panel colour family, non-marking tyres turned black).
+**Sorting** — Newest / Top rated / Most used, applied client-side (`sortSavedPrompts` in `lib/api.ts`) over one fetched payload, so switching is instant. Defaults to **Top rated**.
 
-**"Original factory colour" removed from every prompt in the repo.** It asks
-the model what the colour WAS, which pulls a faded or already-repainted unit
-toward a remembered brand palette. Swept from the recommended prompt, the live
-Scan-tab regen prompt, the enhance spine, and the dormant master-prompt library.
-`prompts.py` had been naming brand colours outright.
+**Tooltips.** A collapsible `TipBanner` inside `SavedPromptsBar` states the five rules that are not guessable from the controls (one shared library, permanent titles, copy-on-load, votes-versus-uses, admin-only delete), plus `title=` on every control: picker, each sort button, the vote button (state-aware, with the live count), the title field, Save, Curate, and each Delete. The delete confirm recites the template's votes and uses first. **If a rule changes, change the banner** — that copy is the spec users actually read.
 
-**Header banner trimmed** to just the `Beta V.2` chip; the testing/support-ticket
-line is gone. `/profile` and support tickets are unchanged.
-
-**Sizing standardised at 2800x2000.** `upscale_to_standard()` runs once at the end of enhancement; `export_pro` no longer resizes or crops. Input resolution is uncapped on both the client and the enhance worker; the scan path keeps its own 2576px cap, set to Anthropic's high-resolution vision tier so nothing is uploaded that the model would only downscale.
-
----
+**New endpoints:** `POST` / `DELETE /api/v1/prompts/{id}/vote`, `POST /api/v1/prompts/{id}/use`, with BFF proxies at `app/api/prompts/[id]/vote` and `app/api/prompts/[id]/use`.
 
 ## The thing still owed: a real end-to-end smoke test
 
@@ -59,7 +45,7 @@ Highest-value checks, in order:
 1. **DIMENSIONS — the one I could not verify at all.** There is no Python environment on the dev machine (no `pyvips`, no `fastapi`) and no GCP credentials, so I could not run a batch or read output files. The crop maths is verified with PIL against six aspect ratios (1.40, 1.50, 4:3, portrait, square, already-standard) and lands exactly 2800x2000 in every case, but that is the ALGORITHM, not the pyvips implementation or the live pipeline. **Please run a batch including at least one non-7:5 source and check actual output dimensions at two points:** the enhanced asset in GCS, and the exported file. Both should read 2800x2000.
 2. **Scan colour fix.** Re-scan the grey-to-orange Toyota pair. Expect two `wrong_colour` anomalies: `battery_compartment` and `tires`. Then run several correctly-enhanced images and confirm it stays quiet — the risk with this change is firing on every image, which is worse than the miss it fixes.
 3. **Export → library.** Run a 2-provider batch, pick winners, export. Confirm the Photo Library shows the exported files AND the originals, exactly once each, and that a re-export updates that set instead of adding a duplicate.
-4. **Saved prompts.** Save a prompt, re-insert it, save a colliding title (expect overwrite/rename, not a silent duplicate), rename, delete. Confirm a second user cannot see the first's prompts once `AUTH_ENABLED=true`.
+4. **Shared templates — the highest-risk item in this batch, because it changes data that already exists.** In order: (a) **watch the migration** on the first API revision and confirm the API comes up at all — if two users had the same title, the de-dup `DO` block has to run before the new unique index builds; (b) confirm previously-private prompts are now visible to a SECOND user, with the right author name and date; (c) save a colliding title and confirm it is refused outright with no overwrite offered; (d) confirm there is no rename control anywhere; (e) upvote from two different accounts and confirm the count reads 2, then un-vote and confirm it reads 1; (f) load a template twice and confirm `use_count` climbs while its position in **Newest** does not move; (g) confirm a non-admin has no Curate control and that a direct `DELETE /api/prompts/{id}` from a non-admin session 403s.
 5. **Inline scan.** Confirm verdicts appear per variant and that a single failed scan marks only its own image.
 6. **Fork conditionals.** Off by default. Turn on, tick both controls on one image, retry, and check the output stops inventing a shank / shortening the forks. Then turn the switch off and confirm the prompt goes back to exactly what it was.
 7. **Default-path prompt drift.** The fork block was split from one paragraph into sentences. The "both visible" case is meant to be semantically identical — worth a side-by-side on a few images before trusting it on a real batch, given this repo's history with prompt changes.
@@ -95,8 +81,9 @@ Highest-value checks, in order:
 
 ## Pending OPERATOR steps (dashboards / gcloud / env — not code)
 
-- **`AUTH_ENABLED=true`** in Vercel (Production) when ready — locks the app behind Microsoft SSO + activates the email allowlist. Confirm the allowlist first; test on Preview. Still inert; the workspace runs as `dev@local`. **Saved prompts are keyed on the signed-in email**, so everything saved while running as `dev@local` belongs to `dev@local`.
-- **Watch the first API revision after this push** — it runs the `saved_prompts` migration on startup.
+- **`AUTH_ENABLED=true`** in Vercel (Production) when ready — locks the app behind Microsoft SSO + activates the email allowlist. Confirm the allowlist first; test on Preview. Still inert; the workspace runs as `dev@local`. **Templates are credited to the signed-in email**, so anything saved while running as `dev@local` shows `dev@local` as its author — and since titles are permanent, those bylines cannot be corrected later.
+- **`ADMIN_EMAILS` now gates template deletion**, not just the admin dashboard. Confirm the allowlist is who you want holding the only delete button for the shared library. (This is CleanShot's own `ADMIN_EMAILS` — a different list from the one in df-headshot-archive.)
+- **Watch the first API revision after this push** — it runs the shared-templates migration (title de-dup, then the new unique index, then `use_count`, then `saved_prompt_votes`) on startup.
 - `cleanshot-xai-key` (Grok) is dormant but the secret stays (one-line re-enable). `cleanshot-recraft-key` is still safe to delete.
 - Domain onboarding is a **4-place checklist** (lesson #26): Vercel + `lib/auth.ts` trustedOrigins + Entra redirect URI + `infra/gcs-cors.json` (re-apply to BOTH buckets).
 
@@ -105,7 +92,7 @@ Highest-value checks, in order:
 ## Docs
 
 - **CLAUDE.md** — rewritten this session. The three per-session log blocks were replaced by one durable "Enhance tab — current shape" section (keeping the findings that still constrain work), and the archived changelog was pruned. Authoritative.
-- **README.md** — current-state note, "What It Does", "The Workflow", and the storage section rewritten to match the app.
+- **README.md** — current-state note, "What It Does", "The Workflow", and the storage section match the app; the prompt-workflow step and the schema list were rewritten this session for shared templates.
 - **AGENTS.md** — a thin pointer to CLAUDE.md. **Left untracked** (as found — `git add AGENTS.md` if you want it in the repo).
 - **STYLE_GUIDE.md / ENTRA_SETUP.md / .instructions.md** — unaffected (evergreen).
 
