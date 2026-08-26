@@ -402,6 +402,8 @@ CleanShot uses Cloud SQL Postgres 17. The schema is split into two migrations:
 - `saved_prompts` — **shared** reusable enhance prompts, visible to every signed-in user. `user_email` is the CREATOR, not an access scope. Unique on `lower(title)` alone — titles are one company-wide namespace and a duplicate is refused by the database rather than by a pre-check. Title and body are **immutable after insert**; `use_count` is the only column that changes
 - `saved_prompt_votes` — one upvote per user per template, `PRIMARY KEY (prompt_id, user_email)`. The composite key is what enforces one-vote-per-user; deleting a template cascades its votes away
 
+Prompt bodies are capped at 32,000 characters. The cap exists only because `GET /prompts` returns every template's full body — the client sorts and inserts locally — so the list payload scales with library size. It is not a model or database limit; `custom_prompt` on the enhance path has no cap at all.
+
 **Auth + approval schema** (`apps/api/src/cleanshot_api/db/migrate_auth.py`):
 
 - `authorization` — domain/email allowlist for runtime additions
@@ -532,6 +534,8 @@ gcloud run services update-traffic cleanshot-api \
    - **Loading a template gives you a copy** — editing the prompt box never writes back to the shared row.
    - **▲ upvote** what works: one vote per person, reversible. *Top rated* counts endorsements; *Most used* counts loads. They are different signals.
    - **Only an admin can delete** a template, since deleting removes it for everybody.
+> **Writing prompts:** see [PROMPT-HYSTER.md](PROMPT-HYSTER.md) for a worked, CleanShot-tuned example and — more importantly — the three rules governing how a typed prompt and the toggles combine. They are not intuitive: a custom prompt *skips* the built-in prompt blocks while toggle fragments still append **after** it, and the differential scanner only treats your **first 1,500 characters** as intended edits. A long prompt silently un-whitelists its own back half. [TEMPLATES-HOWTO.md](TEMPLATES-HOWTO.md) covers the shared template library.
+
 4. Optionally set the five visible toggles. They *append emphasis* to your prompt; they don't replace it — with one exception:
    - **Remove Background Entirely** is not a prompt at all. It runs a matting pass over the finished image and cuts the unit out with a real alpha channel, for the new-equipment site that shows units on no backdrop. Those images **export as transparent PNG with no disclaimer watermark**, since they go into a product-page composite. It overrides Perfect Showroom Floor.
 5. **Pick one or more providers** (Gemini, OpenAI). Each runs as an independent variant per source image.

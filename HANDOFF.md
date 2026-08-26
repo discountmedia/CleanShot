@@ -1,4 +1,4 @@
-# Session handoff — updated 2026-08-25
+# Session handoff — updated 2026-08-26
 
 Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. "Enhance tab — current shape"). This file is the "where we are right now / what's pending" snapshot.
 
@@ -7,6 +7,10 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 ## Repo state
 
 - **Branch:** `main`. Direct-to-main is the norm (no PR review).
+- **Everything below is PUSHED and DEPLOYED.** Head is `44b613d`. The API is on
+  revision `cleanshot-api-00162-gps`; the raised prompt cap was verified live by
+  reading `maxLength` back off the running service's `/openapi.json` rather than
+  trusting the revision number.
 - **This batch is the shared prompt-template library** — saved prompts stopped being private and became one company-wide, rateable library. It is a schema change plus a behaviour change to data that already exists in prod.
 - **It ships a schema change**, applied by `db/migrate.py` on API startup, so the deploy applies it. Three parts: the unique index moves from `(user_email, lower(title))` to `lower(title)`, a `use_count` column is added, and a `saved_prompt_votes` table is created. **Watch the first API revision** — a guarded one-time `DO` block de-duplicates any cross-user title collisions (suffixing `(2)`, `(3)`) *before* building the new unique index. If that block fails, the index never builds and the migration wedges.
 - **Untracked:** `AGENTS.md` (a Codex-facing pointer to CLAUDE.md) is present but not committed, as found.
@@ -70,6 +74,85 @@ new-equipment site.
   pool warm, but each instance now loads a ~170 MB ONNX model on its first
   cutout, and the pass itself is a second or two of CPU per image on top of the
   vendor call.
+
+---
+
+---
+
+## 2026-08-26 session: what shipped, and four findings worth more than the code
+
+### Shipped
+
+- **Total background removal** (`transparentBackground`) — transparent-PNG cutout via in-container matting. The risky part (a Docker image with ~500 MB of new deps plus a baked ONNX model) **built and booted cleanly**, which was most of the risk. The matting itself has still never actually run — the model loads on the first cutout request.
+- **Bright-blue template picker** — a third documented palette exception. Fill is `#0A84FF` with **near-black** text, not white: white measures 3.65:1 and fails AA at body size, near-black is 5.09:1. As *text* on a dark surface the blue is lightened to `#5AB0FF` (the plain blue is 3.83:1 there). Fill and text need different values — the same trap the CTA purples have.
+- **Both providers selected by default** — reverses open item #11, which is now marked as decided-the-other-way with the reasoning attached rather than deleted. Two costs accepted: the best-of-N judge now fires on every batch (unlogged, unlimited), and wall-clock is set by OpenAI at ~75s.
+- **Template body cap 8000 → 32000**, plus readable 422s. See finding 2.
+- **`PROMPT-HYSTER.md`** — the operator's Hyster prompt rebuilt for this environment, ~9,700 chars → ~1,400, in two variants. **`TEMPLATES-HOWTO.md`** — operator how-to for the template library, also published as a shareable page.
+- **Cutout env vars added to the workflow's `--set-env-vars`** list, without which setting `CUTOUT_MODEL` by hand would revert on the next deploy (lesson #1).
+
+### Finding 1 — how a custom prompt and the toggles combine (the important one)
+
+Documented in full in CLAUDE.md under the Enhance section. Three mechanics that
+compound: a custom prompt **skips** the built-in prompt blocks (`if
+spine_override is None:`) while toggle `extras` have no such guard; toggle
+fragments land **after** the operator's text under "apply ON TOP of the spine
+above", so a toggle outranks the prompt on any shared subject; and the
+differential scanner only receives the operator's **first 1,500 characters** as
+intended edits.
+
+Together they produce a defect an operator can create by following the UI
+correctly: a careful non-marking-tyre exception in the prompt, plus a ticked
+**Shine Tires**, yields white tyres painted black — the one thing the rubric
+says nothing can authorise. **This was found by auditing a prompt rewrite, not
+by a bug report, and it had already caused me to give one piece of wrong
+advice.** Anyone touching prompts should read that CLAUDE.md section first.
+
+### Finding 2 — the 8000-char cap was protecting nothing
+
+A real ~9.7k production prompt could not be saved. `EnhanceRequest.custom_prompt`
+has no `max_length` at all, so that prompt already *enhanced* fine — the cap only
+blocked *saving* it, which is the worst possible split. Now 32000, still bounded
+only because `GET /prompts` ships every body.
+
+The same 422 exposed a second bug: FastAPI puts validation `detail` in a **list**
+of objects whose `input` field contains the entire rejected payload, so a
+string-only error renderer dumped the operator's whole prompt into the UI. Now
+hard-won lesson #27.
+
+### Finding 3 — three per-variant tools are dead-but-wired
+
+`VariantThumb` renders only **↻ Retry** and **✎ Tweak (Gemini)**. **Ideogram
+Edit, Flux Erase and Ideogram Inpaint** have intact backends, schemas, workers,
+task routing, usage attribution and mounted dialogs — and no button.
+CLAUDE.md's "five small icons" table described the design, not the app, and has
+been corrected. This is now prioritised open work item #16, because Ideogram Edit
+is specifically the tool for decal typography and model-number restoration, so
+that work currently routes through Gemini, which is weaker at embedded text.
+
+Also corrected: CLAUDE.md claimed `shine_tires` was on by default. It is not —
+`DEFAULT_TOGGLES` and the Pydantic model both default it `false`.
+
+### Finding 4 — CI signals here are actively misleading
+
+Both traps are now hard-won lesson #28.
+
+- **`deploy-web.yml` is manual-only** and has been permanently red since
+  2026-06-05 at a `pnpm audit` step it never gets past. **Web deploys go through
+  Vercel's own Git integration**, so a web change ships with **zero** Actions
+  runs. CLAUDE.md's deploy-pipelines section claimed the opposite (and named a
+  wrapper action that lesson #22 already says was dropped); fixed.
+- **`gh run list` returned stale results** while a run was in flight, showing no
+  runs at all for two consecutive pushes. That produced a confident wrong
+  diagnosis ("Actions is not firing") and nearly a pointless manual dispatch,
+  when the deploy had in fact succeeded. Check the deployed thing, not the CI
+  listing.
+
+### Still unverified from this session
+
+Everything is compile-verified and the deploys are green, but **no real photo has
+gone through any of it**. Highest value first: the cutout on a real unit (see the
+checklist below), then the Hyster prompt A/B against the old one, then the
+template flow with two accounts.
 
 ---
 
@@ -150,6 +233,9 @@ Highest-value checks, in order:
 
 - **CLAUDE.md** — rewritten this session. The three per-session log blocks were replaced by one durable "Enhance tab — current shape" section (keeping the findings that still constrain work), and the archived changelog was pruned. Authoritative.
 - **README.md** — current-state note, "What It Does", "The Workflow", and the storage section match the app; the prompt-workflow step and the schema list were rewritten this session for shared templates.
+- **PROMPT-HYSTER.md** — NEW. The operator-facing Hyster prompt plus the
+  prompt/toggle precedence rules. This is the doc to hand someone who is about to
+  write a prompt for this app.
 - **TEMPLATES-HOWTO.md** — NEW. A short operator-facing how-to for the shared
   template library (use / save / customise / rate / delete, plus a quick-answers
   table). Also published as a shareable Artifact for the team. If a template
