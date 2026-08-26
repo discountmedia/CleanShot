@@ -240,6 +240,24 @@ def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = True) -> ExportResul
 
     This remains the single place the watermark is applied and the single place
     export bytes are produced, so nothing downstream re-applies it.
+
+    TRANSPARENT CUTOUTS EXIT AS PNG, NOT JPEG (2026-08-26). When the stored
+    asset carries an alpha channel — the transparent-background toggle ran a
+    matting pass over it — this emits PNG and SKIPS the disclaimer watermark.
+    Both parts are forced:
+
+      • JPEG has no alpha channel at all. Encoding a cutout as JPEG does not
+        "lose transparency", it composites onto black, which is the single most
+        visible possible failure on a product cutout.
+      • The watermark is skipped because a cutout is destined for a product-page
+        composite where a burnt-in corner caption lands on top of the site's own
+        layout. Decided with the toggle; the `ai_disclaimer` argument is still
+        honoured for every opaque export.
+
+    The branch is driven by the IMAGE, not by a flag threaded down from the
+    request. A flag can disagree with the bytes; `hasalpha()` cannot, and it
+    means there is exactly one export button rather than a preset the operator
+    has to remember to pick.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
 
@@ -247,6 +265,15 @@ def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = True) -> ExportResul
     # is already exactly the standard size and falls straight through.
     if img.width != ENHANCED_WIDTH or img.height != ENHANCED_HEIGHT:
         img = _cover_crop(img, ENHANCED_WIDTH, ENHANCED_HEIGHT)
+
+    if img.hasalpha():
+        # Lossless, alpha preserved, no watermark. compression=6 is libvips'
+        # default balance; a cutout is a hand-off asset, not a page weight
+        # decision, and the site will re-encode it anyway.
+        data = img.write_to_buffer(".png", compression=6)
+        return ExportResult(
+            data=data, content_type="image/png", size_warning=False
+        )
 
     # Optional disclaimer watermark — composited onto the FINAL-SIZE image so
     # it lands at a fixed pixel offset from the corner, and before the encode
@@ -365,12 +392,23 @@ def apply_adjustments(
       3. Brightness + contrast (combined linear op).
       4. Saturation (LCH chroma scaling).
 
-    Bands are forced to 3 (drop alpha) up front so the LCH conversion
-    + final encode stay consistent with the rest of the pipeline.
+    ALPHA IS PRESERVED (2026-08-26). It used to be dropped outright, which
+    meant a contrast tweak on a transparent cutout silently handed back an
+    opaque image. The handling is split deliberately:
+
+      • Through the GEOMETRY steps (rotate, crop) alpha stays ATTACHED, so it
+        is transformed by the identical operation and still lines up with the
+        colour bands afterwards. Detaching first and re-attaching later would
+        misregister the mask the moment a rotation or crop was involved.
+      • For the COLOUR steps it is detached, because `linear()` would scale
+        transparency along with brightness and `colourspace("lch")` is not
+        defined on an alpha band at all. It is re-joined immediately after.
     """
     img = pyvips.Image.new_from_buffer(input_bytes, "")
-    if img.bands == 4:
-        img = img.extract_band(0, n=3)
+    # >4 bands (CMYK+alpha, or a stray extra channel) is not something this
+    # pipeline produces; clamp to RGB(A) so the band arithmetic below holds.
+    if img.bands > 4:
+        img = img.extract_band(0, n=4 if img.hasalpha() else 3)
     img = img.copy(interpretation="srgb")
 
     # ── Step 1: rotation + auto-wedge-crop ────────────────────────────
@@ -379,7 +417,13 @@ def apply_adjustments(
         # pyvips rotate() expands the bounding box and fills the
         # corners with black by default. We rotate then centre-crop
         # to the maximum inscribed rectangle so the wedges disappear.
-        img = img.rotate(rotation_deg, background=[0, 0, 0])
+        # Wedge fill: transparent when the image carries alpha (the crop below
+        # removes the wedges anyway, but a black fill would bleed at the seam
+        # on a cutout), black otherwise, as before.
+        img = img.rotate(
+            rotation_deg,
+            background=[0, 0, 0, 0] if img.hasalpha() else [0, 0, 0],
+        )
         inner_w, inner_h = _inscribed_rect_after_rotation(pre_w, pre_h, rotation_deg)
         # Clamp inner dims to the rotated image's actual dims (rotation
         # can grow the bounding box, but the inscribed rect is always
@@ -412,6 +456,15 @@ def apply_adjustments(
         if target_w < img.width or target_h < img.height:
             img = img.smartcrop(target_w, target_h, interesting="attention")
 
+    # ── Alpha detach — geometry is done, colour work starts ──────────
+    # From here the maths is colour-only, so transparency comes off and goes
+    # back on at the end. It has already been through the same rotate/crop as
+    # the colour bands, so it is still registered to them.
+    alpha = None
+    if img.hasalpha():
+        alpha = img.extract_band(img.bands - 1)
+        img = img.extract_band(0, n=img.bands - 1)
+
     # ── Step 3: brightness + contrast (combined linear op) ───────────
     if brightness != 1.0 or contrast != 1.0:
         scale  = contrast * brightness
@@ -426,6 +479,10 @@ def apply_adjustments(
         h_band = lch.extract_band(2)
         lch = l_band.bandjoin([c_band, h_band]).copy(interpretation="lch")
         img = lch.colourspace("srgb").cast("uchar")
+
+    # ── Alpha re-attach ─────────────────────────────────────────────
+    if alpha is not None:
+        img = img.bandjoin(alpha.cast("uchar"))
 
     return img.write_to_buffer(".png")
 

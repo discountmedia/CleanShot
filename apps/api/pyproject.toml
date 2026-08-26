@@ -32,6 +32,15 @@ dependencies = [
     # Image processing
     "pyvips>=2.2",           # libvips 8.18+ must be present in OS layer
 
+    # Background removal (matting) for the transparent-background toggle.
+    # In-container on purpose: no vendor key, no rate limiter, no per-image
+    # spend on a bulk workflow, nothing to 429 mid-batch. Costs image size and
+    # CPU instead — see services/cutout.py for the full trade.
+    # onnxruntime is pinned to the CPU wheel; Cloud Run has no GPU, and the
+    # default `onnxruntime-gpu` would pull CUDA for nothing.
+    "rembg>=2.0.59",
+    "onnxruntime>=1.19",
+
     # Cache (Valkey 9.0 / Memorystore)
     "valkey>=6.0",           # Valkey-native client (drop-in redis.asyncio API)
 

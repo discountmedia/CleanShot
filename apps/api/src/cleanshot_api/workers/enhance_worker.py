@@ -31,6 +31,7 @@ from cleanshot_api.services.image_processing import (
     apply_adjustments,
     upscale_to_standard,
 )
+from cleanshot_api.services.cutout import has_alpha, remove_background
 from cleanshot_api.services.pricing import estimate_cost_usd
 from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
@@ -645,7 +646,11 @@ def _build_enhance_prompt(
             f"boom / chassis, capacity plates, VIN / serial numbers, "
             f"model badges, safety stickers, and data tags all stay."
         )
-    if toggles.showroom_floor:
+    if toggles.showroom_floor and not toggles.transparent_background:
+        # Skipped under a cutout: the floor is about to be matted away, so
+        # replacing it first is wasted instruction — and a glossy grey sweep
+        # gives the matting model a lower-contrast edge to find under the
+        # tyres than the real ground did.
         extras.append(
             "ADDITIONAL ACTION — SHOWROOM / STUDIO FLOOR. The source "
             "photo was shot inside a studio or showroom. REPLACE the "
@@ -851,7 +856,11 @@ def _build_kontext_prompt(
             "panel underneath with no ghost outline. Keep all OEM "
             "manufacturer decals and do not invent any replacement logos."
         )
-    if toggles.showroom_floor:
+    if toggles.showroom_floor and not toggles.transparent_background:
+        # Skipped under a cutout: the floor is about to be matted away, so
+        # replacing it first is wasted instruction — and a glossy grey sweep
+        # gives the matting model a lower-contrast edge to find under the
+        # tyres than the real ground did.
         lines.append(
             "If the shot is in a studio or showroom, replace the floor with "
             "a clean uniform mid-gray (#808080) lightly-polished seamless "
@@ -2346,6 +2355,19 @@ async def _run_enhance(
         # resamples it again.
         output_bytes = await asyncio.to_thread(upscale_to_standard, output_bytes)
 
+        # TOTAL BACKGROUND REMOVAL. Runs AFTER standardisation and after the
+        # vendor is finished, over the approved pixels — it only computes an
+        # alpha channel and never redraws the machine. Order matters: matting
+        # before the resize would mean resampling a hard alpha edge, which
+        # fringes it.
+        #
+        # A failure here is NOT downgraded to "ship it opaque". The toggle
+        # exists because the destination site needs transparency, so an opaque
+        # file is a wrong answer wearing a success badge — better to fail the
+        # job and let the operator see it.
+        if payload.toggles.transparent_background:
+            output_bytes = await remove_background(output_bytes)
+
         # Write output to GCS derivatives bucket
         output_gcs_uri = await _write_to_gcs(
             output_bytes,
@@ -2501,6 +2523,23 @@ def _describe_intended_edits(
         edits.append("Rental-fleet branding/stickers may have been removed.")
     if toggles.showroom_floor:
         edits.append("The floor may be cleaned to a uniform studio finish.")
+    if toggles.transparent_background:
+        # Without this the differential scan compares a photo in a yard against
+        # a floating cut-out machine and reports the largest change it has ever
+        # seen. Stated in the strongest terms available because it is the one
+        # intended edit that alters literally every background pixel.
+        edits.append(
+            "THE ENTIRE BACKGROUND WAS DELIBERATELY REMOVED. This image is a "
+            "cut-out on a transparent background, requested by the operator for "
+            "a product page. The floor, walls, sky, other vehicles, and every "
+            "other background element are GONE ON PURPOSE — that is not a "
+            "defect and must not be reported as one, in any form (not as a "
+            "removed part, not as a colour change, not as altered geometry). "
+            "Judge ONLY the machine itself: its parts, text, proportions and "
+            "colour. The machine's pixels were not regenerated for this step, "
+            "so anything wrong with the machine was already wrong before the "
+            "background was removed."
+        )
     if custom_prompt and custom_prompt.strip():
         # Enhance went PROMPT-FIRST (2026-07-21): the operator types their
         # intent ("repaint it, forks red with yellow tips") instead of using
@@ -2574,6 +2613,28 @@ async def handle_enhance_task(
 # ─── Erase pipeline (BFL flux-tools/erase-v1) ────────────────────────────────
 
 
+async def _input_was_cutout(gcs_uri: str) -> bool:
+    """
+    Was the variant being edited a transparent-background cutout?
+
+    Answered from the stored pixels, not from a request flag: the per-variant
+    edit tools replace an asset in place, and a flag on the request could
+    disagree with what is actually in the bucket. Costs one GCS read of an
+    image the vendor helpers are about to download anyway, which is noise next
+    to a 20-75s vendor call.
+
+    A read failure returns False rather than raising. Getting this wrong in the
+    False direction means one edit comes back opaque and the operator re-runs
+    it; raising here would fail an edit that would otherwise have succeeded.
+    """
+    try:
+        image_bytes, _ct = await _load_image_bytes(gcs_uri)
+    except Exception:
+        logger.warning("cutout: could not read %s to check for alpha", gcs_uri)
+        return False
+    return has_alpha(image_bytes)
+
+
 async def _run_erase(
     request: Request,
     payload: EraseTaskPayload,
@@ -2631,6 +2692,15 @@ async def _run_erase(
         # without it one erase would drop the image back to vendor resolution
         # and break the "no code path produces another dimension" guarantee.
         output_bytes = await asyncio.to_thread(upscale_to_standard, output_bytes)
+
+        # A cutout that gets erased must come back a cutout. The vendor was
+        # handed an RGBA PNG and returns opaque pixels, so without re-matting
+        # the operator would get a BLACK background — the most visible possible
+        # failure on a product cutout. Detected from the input rather than
+        # threaded through the request schema, because a flag on EraseRequest
+        # could disagree with the actual stored asset; the pixels cannot.
+        if await _input_was_cutout(payload.input_gcs_uri):
+            output_bytes = await remove_background(output_bytes)
 
         output_gcs_uri = await _write_to_gcs(
             output_bytes,
@@ -2769,6 +2839,12 @@ async def _run_tweak(
 
         # Same standard as enhance — see the note on the erase path.
         output_bytes = await asyncio.to_thread(upscale_to_standard, output_bytes)
+
+        # Re-matte if the variant being tweaked was a cutout — same reason as
+        # the erase path: otherwise the vendor's opaque result reads as a black
+        # background.
+        if await _input_was_cutout(payload.input_gcs_uri):
+            output_bytes = await remove_background(output_bytes)
 
         output_gcs_uri = await _write_to_gcs(
             output_bytes,

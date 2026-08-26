@@ -33,6 +33,10 @@ FROM python:3.12-slim AS final
 # fonts-roboto: Roboto for the AI-disclaimer watermark (matches web preview)
 # libcairo2: pango/cairo dependency
 # libwebp-dev: WebP encode/decode
+# libglib2.0-0 + libgomp1: required by opencv-python-headless and onnxruntime,
+#   which arrive via rembg (the background-removal matting pass). Headless
+#   opencv still links glib; omitting it fails at IMPORT time, not at use, so
+#   the whole API would fail to boot rather than just the cutout path.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libvips42 \
         libvips-dev \
@@ -42,6 +46,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         fonts-roboto \
         libcairo2 \
         libwebp-dev \
+        libglib2.0-0 \
+        libgomp1 \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
@@ -51,6 +57,21 @@ COPY --from=builder /install /usr/local
 # Create non-root user (least privilege — never run as root in Cloud Run)
 RUN groupadd --gid 1001 appuser \
  && useradd  --uid 1001 --gid appuser --shell /bin/sh --create-home appuser
+
+# ── Matting model, baked at BUILD time ──────────────────────────────────────
+# rembg caches models under U2NET_HOME and downloads on first use. A runtime
+# download is not acceptable here: the container runs as a non-root user, and a
+# cold start would turn into a multi-hundred-megabyte fetch on the first
+# operator request. So fetch it now, into a world-readable location.
+#
+# The model name MUST match CUTOUT_MODEL in services/cutout.py (default
+# `isnet-general-use`). Changing that env var without changing this line means
+# the first cutout request tries to download and fails.
+ENV U2NET_HOME=/opt/rembg-models \
+    CUTOUT_MODEL=isnet-general-use
+RUN mkdir -p /opt/rembg-models \
+ && python -c "from rembg import new_session; new_session('isnet-general-use')" \
+ && chmod -R a+rX /opt/rembg-models
 
 WORKDIR /app
 

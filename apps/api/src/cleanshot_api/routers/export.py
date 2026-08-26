@@ -80,6 +80,7 @@ def _build_pro_filename(
     index: int,
     total: int,
     provider: str | None = None,
+    ext: str = "jpg",
 ) -> str:
     """
     Deterministic PRO-export filename built from the saved project
@@ -89,6 +90,7 @@ def _build_pro_filename(
       Toyota_8FGU25_2019_01.jpg               (single-provider batch)
       Toyota_8FGU25_2019_01_Gemini.jpg        (multi-provider; Gemini variant)
       Toyota_8FGU25_2019_01_Openai.jpg        (multi-provider; OpenAI variant)
+      Toyota_8FGU25_2019_01.png               (transparent-background cutout)
 
     The padding width grows with the batch size so sequencing sorts
     correctly in any file explorer (1-9 → 1-digit, 10-99 → 2-digit, etc.).
@@ -96,6 +98,12 @@ def _build_pro_filename(
     the ZIP — see ExportProRequest.providers (parallel to asset_ids).
     Falls back to 'forklift_NN[.jpg|_Provider.jpg]' if every meta part
     sanitizes to empty.
+
+    `ext` must match what export_pro actually produced. Cutouts come back as
+    PNG (JPEG has no alpha channel), and a .jpg name on PNG bytes is the kind
+    of mismatch that survives all the way to someone's CMS rejecting the
+    upload — so the caller passes the extension derived from the real
+    content type rather than assuming.
     """
     parts = [
         _sanitize_filename_part(make),
@@ -119,7 +127,20 @@ def _build_pro_filename(
         # explorer than ALL CAPS, and consistent with the brand chips
         # in the Enhance tab UI.
         provider_part = f"_{_sanitize_filename_part(provider).capitalize()}"
-    return f"{base}_{seq}{provider_part}.jpg"
+    return f"{base}_{seq}{provider_part}.{ext.lstrip('.')}"
+
+
+def _ext_for(content_type: str) -> str:
+    """
+    File extension for what export_pro actually encoded.
+
+    export_pro chooses its format from the IMAGE — a stored asset with an alpha
+    channel (the transparent-background toggle ran) exits as PNG, everything
+    else as JPEG. Every filename, GCS content-type, and ZIP entry has to follow
+    that decision rather than restate it, which is why this reads the result's
+    content_type instead of taking a flag.
+    """
+    return {"image/png": "png", "image/jpeg": "jpg"}.get(content_type, "jpg")
 
 
 def _build_zip_filename(*, make: str, model: str, year: int | None) -> str:
@@ -346,21 +367,24 @@ async def export_pro_preset(
         input_bytes = client.bucket(bucket_name).blob(obj).download_as_bytes()
 
         result = export_pro(input_bytes, ai_disclaimer=body.ai_disclaimer)
-        filename = f"{asset_id}_pro.jpg"
-        results.append((filename, result.data, result.size_warning))
+        filename = f"{asset_id}_pro.{_ext_for(result.content_type)}"
+        results.append(
+            (filename, result.data, result.size_warning, result.content_type)
+        )
 
     if len(results) == 1:
-        filename, data, size_warning = results[0]
+        filename, data, size_warning, content_type = results[0]
         headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
         if size_warning:
             headers["X-Warning"] = "target-size-unachievable"
-        return Response(content=data, media_type="image/jpeg", headers=headers)
+        # Follows the encode: a transparent cutout is PNG, not JPEG.
+        return Response(content=data, media_type=content_type, headers=headers)
 
     # Multi-asset: return ZIP
     buf = io.BytesIO()
     any_warning = False
     with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for filename, data, size_warning in results:
+        for filename, data, size_warning, _content_type in results:
             zf.writestr(filename, data)
             if size_warning:
                 any_warning = True
@@ -500,6 +524,7 @@ async def export_pro_preview(
                         index=i,
                         total=total,
                         provider=provider_by_asset_id.get(asset_id),
+                        ext=_ext_for(result.content_type),
                     )
                     # The ONLY copy of this exported image. It goes directly
                     # to the project directory — writing a working copy under
@@ -513,7 +538,10 @@ async def export_pro_preview(
                     await asyncio.to_thread(
                         out_blob.upload_from_string,
                         result.data,
-                        content_type="image/jpeg",
+                        # Not hardcoded: a cutout is PNG. Serving PNG bytes as
+                        # image/jpeg makes the browser preview fail on the very
+                        # images the operator most needs to eyeball.
+                        content_type=result.content_type,
                     )
 
                     # download_filename so the per-image "Download" link

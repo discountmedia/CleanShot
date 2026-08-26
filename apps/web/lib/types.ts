@@ -133,6 +133,26 @@ export interface EnhanceToggles {
    */
   showroomFloor: boolean;
   /**
+   * TOTAL BACKGROUND REMOVAL — a real transparent cutout, for the
+   * new-equipment site that puts units on no backdrop at all.
+   *
+   * NOT a prompt fragment, unlike every other toggle here. It runs a
+   * matting pass (services/cutout.py) over the FINISHED enhance output
+   * and only computes an alpha channel, so the machine's pixels are
+   * exactly what the operator approved. Asking an image model for a
+   * transparent background instead would re-draw the machine and make
+   * it guess where the mast lattice and fork gaps end — the one thing
+   * this repo's findings say it gets wrong most.
+   *
+   * Consequences worth knowing before enabling it:
+   *  - The export comes out as PNG, not JPEG (JPEG has no alpha), and
+   *    carries NO disclaimer watermark — a cutout goes into a product
+   *    page composite where a burnt-in caption lands on the layout.
+   *  - It supersedes showroomFloor: replacing a floor that is about to
+   *    be deleted is wasted work.
+   */
+  transparentBackground: boolean;
+  /**
    * Identity-preservation flag for 3-wheel (single-rear-pivot-wheel)
    * forklifts. When ON, the prompt asserts the unit has ONE rear wheel
    * and tells the generator not to hallucinate a second one. UI only
@@ -164,6 +184,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   improveLighting: false,
   removeRentalBranding: false,
   showroomFloor: false,
+  transparentBackground: false,
   threeWheel: false,
 };
 
@@ -185,6 +206,7 @@ export const VISIBLE_TOGGLES: ReadonlyArray<keyof EnhanceToggles> = [
   "showroomFloor",
   "removePeople",
   "shineTires",
+  "transparentBackground",
 ] as const;
 
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
@@ -198,6 +220,7 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   improveLighting: "Improve Lighting",
   removeRentalBranding: "Remove Rental-Fleet Branding",
   showroomFloor: "Perfect Showroom Floor",
+  transparentBackground: "Remove Background Entirely",
   threeWheel: "3-Wheel",
 };
 
@@ -212,6 +235,7 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
   showroomFloor: "Studio / showroom shots only — replaces the floor with a perfect, shiny, middle-gray polished-concrete finish. Preserves the unit's contact shadow. No-op for outdoor / yard photos",
+  transparentBackground: "Cuts the unit out completely — no floor, no walls, no sky. Exports as a transparent PNG with no watermark, for the new-equipment site. Overrides Perfect Showroom Floor",
   threeWheel: "This is a 3-wheel forklift (single rear pivot/steer wheel under the counterweight) — tells the AI to preserve the single-rear-wheel layout instead of hallucinating a second rear wheel. Forklift only.",
 };
 

@@ -311,6 +311,12 @@ class EnhanceToggles(BaseModel):
     # it on for actual studio shots (it'll over-clean a real yard floor
     # if mis-applied).
     showroom_floor: bool = Field(False, alias="showroomFloor")
+    # Total background removal — a real alpha channel, for the new-equipment
+    # site that wants the unit on no backdrop at all. NOT a prompt fragment:
+    # it is a matting pass over the finished output (services/cutout.py), so
+    # the machine pixels are untouched. Overrides showroom_floor, which is
+    # about replacing a floor that is about to be deleted anyway.
+    transparent_background: bool = Field(False, alias="transparentBackground")
     # Identity-preservation flag for 3-wheel forklifts (single rear
     # pivot/steer wheel under the counterweight). When ON, the prompt
     # adds a guardrail telling the AI to preserve the single-rear-wheel
