@@ -56,6 +56,36 @@ import {
   type TemplateSort,
 } from "../../lib/api";
 
+/**
+ * TEMPLATE-PICKER BLUE — a documented exception to the house palette, added
+ * 2026-08-26 at the operator's request because the picker was disappearing
+ * into the panel and templates are now the main way a prompt gets written.
+ *
+ * The palette rule is that the only blue-dominant colours allowed are the
+ * three house purples (see styles/globals.css). This is the third standing
+ * exception, after SCAN_PROVIDER_COLOR and the Tweak button's #0A84FF — and it
+ * reuses that same #0A84FF rather than inventing a fourth blue.
+ *
+ * Applied as an inline `style`, not a Tailwind class, for the same reason
+ * SCAN_PROVIDER_COLOR is: the offending colour families are deleted from the
+ * theme, so there is no class to write, and an inline value cannot be flattened
+ * to neutral grey by a later restyle pass.
+ *
+ * TEXT ON IT MUST BE THE NEAR-BLACK INK, not white. Measured: white on
+ * #0A84FF is 3.65:1, which fails AA for body-size text; #131313 on it is
+ * 5.09:1, which passes. Same rule the lime `accent` fill already follows.
+ */
+const PICKER_BLUE      = "#0A84FF";
+const PICKER_BLUE_DARK = "#0069D9";  // hover only — 4.4:1 vs white, still ink-on-fill
+const PICKER_INK       = "#131313";
+/**
+ * The same blue lightened for use AS TEXT on a dark surface. #0A84FF on
+ * `bg-panel` is 3.83:1 and fails AA; this is 6.0:1 and passes. Fill and text
+ * need different values — that is the same trap the palette notes flag for the
+ * CTA purples, which are fill-only.
+ */
+const PICKER_BLUE_LABEL = "#5AB0FF";
+
 /** The three orderings, with the tooltip copy that explains each one. */
 const SORTS: { key: TemplateSort; label: string; hint: string }[] = [
   {
@@ -350,11 +380,31 @@ export function SavedPromptSelect({
           }
         }}
         /* py-3 matches the recommended-prompt button's height so the pair sits
-           on one baseline. */
-        className="w-full flex items-center justify-between gap-2 bg-panel border border-line rounded-lg px-3 py-3 text-base text-ink text-left focus:outline-none focus:ring-2 focus:ring-cta disabled:opacity-60"
+           on one baseline. Bright blue fill (see PICKER_BLUE above) so the
+           picker reads as the primary way into the prompt box rather than an
+           inert form control. Disabled — an empty library — drops back to the
+           neutral panel treatment, because there is nothing to draw the eye
+           to yet and a bright button that does nothing is worse than a quiet
+           one. */
+        style={
+          disabled
+            ? undefined
+            : { backgroundColor: PICKER_BLUE, borderColor: PICKER_BLUE, color: PICKER_INK }
+        }
+        onMouseEnter={(e) => {
+          if (!disabled) e.currentTarget.style.backgroundColor = PICKER_BLUE_DARK;
+        }}
+        onMouseLeave={(e) => {
+          if (!disabled) e.currentTarget.style.backgroundColor = PICKER_BLUE;
+        }}
+        className={`w-full flex items-center justify-between gap-2 border-2 rounded-lg px-3 py-3 text-base font-bold text-left focus:outline-none focus:ring-2 focus:ring-cta ${
+          disabled
+            ? "bg-panel border-line text-ink opacity-60"
+            : "transition-colors"
+        }`}
       >
         <span className="truncate">{label}</span>
-        <span aria-hidden="true" className="text-ink-soft shrink-0">▾</span>
+        <span aria-hidden="true" className="shrink-0">▾</span>
       </button>
 
       {open && ordered.length > 0 && (
@@ -376,9 +426,14 @@ export function SavedPromptSelect({
                 onClick={() => setSort(s.key)}
                 title={s.hint}
                 aria-pressed={sort === s.key}
+                style={
+                  sort === s.key
+                    ? { borderColor: PICKER_BLUE, color: PICKER_BLUE_LABEL }
+                    : undefined
+                }
                 className={`rounded-md px-2 py-1 text-sm font-bold transition-colors ${
                   sort === s.key
-                    ? "bg-panel-hi border border-accent text-ink"
+                    ? "bg-panel-hi border"
                     : "border border-transparent text-ink-soft hover:text-ink"
                 }`}
               >

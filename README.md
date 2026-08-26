@@ -532,7 +532,8 @@ gcloud run services update-traffic cleanshot-api \
    - **Loading a template gives you a copy** — editing the prompt box never writes back to the shared row.
    - **▲ upvote** what works: one vote per person, reversible. *Top rated* counts endorsements; *Most used* counts loads. They are different signals.
    - **Only an admin can delete** a template, since deleting removes it for everybody.
-4. Optionally set the four visible toggles. They *append emphasis* to your prompt; they don't replace it.
+4. Optionally set the five visible toggles. They *append emphasis* to your prompt; they don't replace it — with one exception:
+   - **Remove Background Entirely** is not a prompt at all. It runs a matting pass over the finished image and cuts the unit out with a real alpha channel, for the new-equipment site that shows units on no backdrop. Those images **export as transparent PNG with no disclaimer watermark**, since they go into a product-page composite. It overrides Perfect Showroom Floor.
 5. **Pick one or more providers** (Gemini, OpenAI). Each runs as an independent variant per source image.
 6. Click **Enhance**. Images upload to GCS, jobs enqueue per provider, and one `SourceCompareCard` renders per source image with its variants side by side. Re-running an unchanged batch is allowed — generation is non-deterministic and a second roll is often the point.
 7. **Each completed variant carries its own controls**: **Retry** (re-roll this one image with the current prompt and toggles, replacing it in place), **Tweak** (text-instruction edit via Gemini), and a compact **contrast / saturation** section whose Apply re-renders that image and carries through to export.

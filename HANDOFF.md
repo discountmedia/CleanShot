@@ -36,6 +36,43 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 
 **New endpoints:** `POST` / `DELETE /api/v1/prompts/{id}/vote`, `POST /api/v1/prompts/{id}/use`, with BFF proxies at `app/api/prompts/[id]/vote` and `app/api/prompts/[id]/use`.
 
+---
+
+## Also in flight: total background removal (`transparentBackground`)
+
+A fifth Enhance toggle that cuts the unit out to a real transparent PNG for the
+new-equipment site.
+
+- **It is a matting pass, not a prompt.** `services/cutout.py` runs after
+  `upscale_to_standard` over the finished pixels and only computes alpha. Asking
+  an image model for "a transparent background" would re-draw the machine and
+  make it guess where the mast lattice ends — see the durable findings.
+- **The matting engine is IN-CONTAINER**: `rembg` + `onnxruntime`, model
+  `isnet-general-use` prefetched into `/opt/rembg-models` at Docker build time.
+  Chosen over a cutout vendor (remove.bg / Bria / Photoroom) to avoid a new
+  secret, a new rate limiter, per-image spend on a bulk workflow, and one more
+  vendor that can 429 mid-batch.
+- **This is the riskiest part of the change and it is UNVERIFIABLE on the dev
+  machine** — there is no Python env, so `rembg` has never been imported and the
+  Docker build has never run. Two specific failure modes to expect on the first
+  deploy: the image build failing or timing out on the ~500 MB of new deps plus
+  the model fetch, and `opencv-python-headless` failing at IMPORT (which takes
+  the whole API down, not just the cutout path) if `libglib2.0-0` / `libgomp1`
+  turn out not to be enough. Both are build- or boot-time, so a green deploy
+  plus a healthy revision is most of the evidence.
+- **Export changes shape for these images**: PNG, no disclaimer watermark,
+  driven by `img.hasalpha()` in `export_pro` rather than by a request flag.
+  `_ext_for()` keeps filenames, GCS content-types and ZIP entries in step.
+- **Alpha now survives `apply_adjustments`** (it was being dropped outright, so
+  a contrast tweak on a cutout returned an opaque image), and the per-variant
+  erase/tweak tools re-matte when the variant they edit already had alpha.
+- **Cold start and CPU are the operating cost.** `min-instances=5` keeps the
+  pool warm, but each instance now loads a ~170 MB ONNX model on its first
+  cutout, and the pass itself is a second or two of CPU per image on top of the
+  vendor call.
+
+---
+
 ## The thing still owed: a real end-to-end smoke test
 
 Everything is verified by `tsc` / `next build` / lint / py-compile and by exercising the prompt-fragment builders directly. **Nobody has put a real photo through the pipeline in prod for any of this.** The API changes in particular are compile-verified only — there is no Python env on the dev machine, so the test suite has not been run.
@@ -48,12 +85,32 @@ Highest-value checks, in order:
 4. **Shared templates — the highest-risk item in this batch, because it changes data that already exists.** In order: (a) **watch the migration** on the first API revision and confirm the API comes up at all — if two users had the same title, the de-dup `DO` block has to run before the new unique index builds; (b) confirm previously-private prompts are now visible to a SECOND user, with the right author name and date; (c) save a colliding title and confirm it is refused outright with no overwrite offered; (d) confirm there is no rename control anywhere; (e) upvote from two different accounts and confirm the count reads 2, then un-vote and confirm it reads 1; (f) load a template twice and confirm `use_count` climbs while its position in **Newest** does not move; (g) confirm a non-admin has no Curate control and that a direct `DELETE /api/prompts/{id}` from a non-admin session 403s.
 5. **Inline scan.** Confirm verdicts appear per variant and that a single failed scan marks only its own image.
 6. **Fork conditionals.** Off by default. Turn on, tick both controls on one image, retry, and check the output stops inventing a shank / shortening the forks. Then turn the switch off and confirm the prompt goes back to exactly what it was.
-7. **Default-path prompt drift.** The fork block was split from one paragraph into sentences. The "both visible" case is meant to be semantically identical — worth a side-by-side on a few images before trusting it on a real batch, given this repo's history with prompt changes.
+7. **The cutout toggle, end to end.** In order: (a) confirm the **API image
+   builds and the revision comes up at all** — that is most of the risk; (b) run
+   one batch with the toggle on and open the exported file, expecting a `.png`
+   with genuine transparency and **no watermark**; (c) look hard at the mast
+   lattice, fork gaps, and under the overhead guard, which is where matting
+   either earns its place or does not; (d) apply a contrast tweak to a cutout
+   variant and confirm it is still transparent afterwards; (e) run a Tweak or
+   Erase on a cutout and confirm it comes back transparent rather than black;
+   (f) confirm the differential scan does not flag the removed background. If
+   the edges disappoint, the first lever is `CUTOUT_MODEL=birefnet-general`
+   plus the matching Dockerfile prefetch line — not a prompt change.
+8. **Default-path prompt drift.** The fork block was split from one paragraph into sentences. The "both visible" case is meant to be semantically identical — worth a side-by-side on a few images before trusting it on a real batch, given this repo's history with prompt changes.
 
 ---
 
 ## Open questions
 
+- **Do cutout edges hold up on warehouse-electric gear?** Reach trucks and
+  order pickers are mostly thin mast structure, which is the hardest case for
+  matting as much as for generation. Unmeasured. `birefnet-general` is the
+  escalation, at roughly 3x the model size.
+- **Should cutouts be trimmed to the subject?** They are left at 2800x2000 with
+  the unit in its original position, so a product page gets whitespace it has
+  to crop itself. Trimming to the alpha bounding box is a few lines, but it
+  breaks the "every output is exactly 2800x2000" guarantee, which is worth more
+  than the convenience. Not done, deliberately.
 - **How should the disclaimer watermark finally work?** It is a checkbox defaulting ON as a holding position. Until that is decided, expect this to move again. Note the server-side defaults are now `True` (they were `False` before), so an omitted flag watermarks rather than silently skipping.
 - **Do the fork conditionals actually help?** Unmeasured. If they do, the next step is automatic detection — which needs a pre-pass on the SOURCE photo, because the existing scan runs after enhance.
 - **Is `deformed_part` worth suppressing at the display layer?** Raised and deferred. `geometry_altered` is already gone from the differential vocabulary, but the isolated scan (standalone Scan-tab uploads) still reports `deformed_part`, which covers both warped geometry and genuinely melted structure.
@@ -93,6 +150,10 @@ Highest-value checks, in order:
 
 - **CLAUDE.md** — rewritten this session. The three per-session log blocks were replaced by one durable "Enhance tab — current shape" section (keeping the findings that still constrain work), and the archived changelog was pruned. Authoritative.
 - **README.md** — current-state note, "What It Does", "The Workflow", and the storage section match the app; the prompt-workflow step and the schema list were rewritten this session for shared templates.
+- **TEMPLATES-HOWTO.md** — NEW. A short operator-facing how-to for the shared
+  template library (use / save / customise / rate / delete, plus a quick-answers
+  table). Also published as a shareable Artifact for the team. If a template
+  rule changes, this and the in-app `TipBanner` are the two places users read.
 - **AGENTS.md** — a thin pointer to CLAUDE.md. **Left untracked** (as found — `git add AGENTS.md` if you want it in the repo).
 - **STYLE_GUIDE.md / ENTRA_SETUP.md / .instructions.md** — unaffected (evergreen).
 

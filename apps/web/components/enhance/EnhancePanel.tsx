@@ -538,10 +538,23 @@ export function EnhancePanel({
   const [isRunning, setIsRunning] = useState(false);
   const [globalError, setGlobalError] = useState<string | null>(null);
 
-  // Restricted users are locked to exactly one model; everyone else
-  // starts on gemini and can multi-select.
+  // Restricted users are locked to exactly one model; everyone else starts
+  // with BOTH live providers selected (2026-08-26, operator request) and can
+  // deselect either.
+  //
+  // Two consequences of defaulting to two, both intentional but worth knowing:
+  //  • Every batch is now multi-provider, so the best-of-N auto-judge fires on
+  //    every run — one extra Claude vision call per source image. That spend is
+  //    still not logged to usage_events and the judge has no rate limiter
+  //    (open work items in CLAUDE.md).
+  //  • OpenAI is the slow provider (~75s vs ~20s for Gemini) and shares the
+  //    /v1/responses quota with the scan path, so batch wall-clock is now set
+  //    by OpenAI and heavy batches can throttle scans. Deselecting OpenAI is
+  //    one click if that starts to bite.
   const [selectedProviders, setSelectedProviders] = useState<Set<EnhanceProvider>>(
-    () => new Set<EnhanceProvider>([restriction?.model ?? "gemini"]),
+    () => restriction?.model
+      ? new Set<EnhanceProvider>([restriction.model])
+      : new Set<EnhanceProvider>(["gemini", "openai"]),
   );
 
   // The per-provider master-prompt "Prompt:" dropdown was removed — every
