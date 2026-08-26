@@ -548,7 +548,21 @@ class ExportFullsizeResponse(BaseModel):
 # Titles are dropdown labels, bodies are enhance prompts. Both are bounded so a
 # paste accident can't write an unbounded blob into a per-user table.
 _PROMPT_TITLE_MAX = 120
-_PROMPT_BODY_MAX  = 8000
+# Raised 8000 -> 32000 on 2026-08-26. The old value was arbitrary and it
+# rejected a REAL production prompt (a ~9.7k-character Hyster template with
+# conditional fork/tip logic, a text-preservation block, and a verification
+# checklist). Note what it was NOT protecting: `EnhanceRequest.custom_prompt`
+# has no max_length at all, so that same prompt already enhanced fine — the
+# cap only blocked SAVING it, which is the worst possible split. Prompts are
+# the product here and they are long by nature.
+#
+# Not unbounded, for one specific reason: GET /prompts returns every
+# template's full body (the client sorts and inserts locally), so the list
+# payload is roughly template-count x body-size. At this cap a 30-template
+# library is worst-case ~1 MB. If the library grows large, the fix is to drop
+# `body` from the list response and fetch it on selection — not to lower this
+# back and start rejecting real prompts again.
+_PROMPT_BODY_MAX  = 32000
 
 
 class SavedPrompt(BaseModel):

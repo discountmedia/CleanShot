@@ -289,6 +289,20 @@ export interface SavedPrompt {
 export type TemplateSort = "recent" | "top" | "used";
 
 /**
+ * Longest prompt body a template can hold.
+ *
+ * MUST MATCH `_PROMPT_BODY_MAX` in apps/api/src/cleanshot_api/models/schemas.py.
+ * Duplicated deliberately: without a client-side check the operator writes a
+ * long prompt, clicks save, and gets a 422 back — after the fact, and with
+ * their entire prompt echoed inside the error body. Checking here means they
+ * are told before the round trip. The server value is still the authority.
+ */
+export const PROMPT_BODY_MAX = 32000;
+
+/** Longest template title. Matches `_PROMPT_TITLE_MAX` on the server. */
+export const PROMPT_TITLE_MAX = 120;
+
+/**
  * Pull FastAPI's `detail` out of a BFF error body so the UI can show the real
  * reason ("Only an admin can delete…") instead of a JSON blob. Falls back to
  * the raw text when the body isn't the shape we expect.
@@ -296,6 +310,20 @@ export type TemplateSort = "recent" | "top" | "used";
 function detailOf(text: string): string {
   try {
     const parsed = JSON.parse(text) as { detail?: unknown };
+
+    // FastAPI validation errors (422) put `detail` in a LIST of
+    // {type, loc, msg, input, ctx} objects — NOT a string. Without this branch
+    // the whole thing fell through to the raw-text fallback, so the operator
+    // saw a JSON dump with their entire prompt inlined in it. Take the `msg`
+    // fields and drop `input` on the floor; the caller already knows what it
+    // sent, and echoing it back is what made the error unreadable.
+    if (Array.isArray(parsed.detail)) {
+      const msgs = parsed.detail
+        .map((d) => (d && typeof d === "object" ? (d as { msg?: unknown }).msg : null))
+        .filter((m): m is string => typeof m === "string");
+      if (msgs.length) return msgs.join(". ");
+    }
+
     if (typeof parsed.detail === "string") {
       // The BFF wraps FastAPI's body as {detail: "<raw text>"}, so `detail`
       // is sometimes itself a JSON string carrying the real one. Unwrap once.
@@ -346,6 +374,22 @@ export async function saveSavedPrompt(params: {
   title: string;
   body: string;
 }): Promise<SavedPrompt> {
+  // Checked before the request so a long prompt fails fast and legibly,
+  // naming both numbers, rather than coming back as a 422 with the prompt
+  // itself echoed inside the error body.
+  if (params.body.length > PROMPT_BODY_MAX) {
+    throw new Error(
+      `This prompt is ${params.body.length.toLocaleString()} characters and the ` +
+      `limit is ${PROMPT_BODY_MAX.toLocaleString()}. Trim it by ` +
+      `${(params.body.length - PROMPT_BODY_MAX).toLocaleString()} characters, ` +
+      `or split it into two templates.`,
+    );
+  }
+  if (params.title.length > PROMPT_TITLE_MAX) {
+    throw new Error(
+      `That title is ${params.title.length} characters; the limit is ${PROMPT_TITLE_MAX}.`,
+    );
+  }
   const res = await fetch("/api/prompts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
