@@ -122,7 +122,16 @@ The fix is **fragment removal, not counter-instruction** — emphatic "do not dr
   defects: a large body panel changing colour family, and non-marking (white /
   cream / light grey) tyres turned black. **Non-marking tyres are a real priced
   spec** — turning them black misrepresents the machine as surely as a body
-  recolour, and `shine_tires` is on by default, so this is not a hypothetical.
+  recolour. Note `shine_tires` is NOT on by default — `DEFAULT_TOGGLES` and the
+  Pydantic model both default it `false`; an earlier version of this note said
+  otherwise. It is still one of the five visible toggles and one click away, so
+  this is not hypothetical. **Exactly how it bites:** on the prompt-first path the
+  built-in TIRES block is skipped (`if spine_override is None:`) while the
+  toggle's `extras` fragment is not, so ticking `shine_tires` makes it the ONLY
+  source of "glossy black" in the whole assembled prompt — and it lands AFTER the
+  operator's spine, under "ADDITIONAL EMPHASIS — apply ON TOP of the spine above".
+  A non-marking-tyre carve-out written in the operator's own prompt is therefore
+  outranked by position. Leave the toggle OFF on white / cream / light-grey tyres.
   Nothing in the intended-edits whitelist, including the operator's verbatim
   prompt, can authorise either case.
 - **`computeConsensus` returns `"mixed"` if any ONE of three providers fails**, so a single over-eager vote still costs a clean pass badge. Changing it is a verdict-semantics decision, not a bug fix.
@@ -251,7 +260,9 @@ Also note: the OpenAI client is `max_retries=8, timeout=300.0` because the SDK's
 
 ## Per-variant edit tools (Tweak + Erase, dual backends each)
 
-Five small icons on every completed enhance variant (top-left, left to right): **↻ Regenerate** (amber) · **✎ Tweak with Gemini** (blue) · **T Edit with Ideogram** (cyan) · **⌫ Erase with Flux** (purple) · **🖌 Inpaint with Ideogram** (rose). Tweak + Edit are text-only; Erase + Inpaint are mask-based. Each pair shares a dialog component; a `tool` prop drives copy + vendor routing.
+**ONLY TWO of the five per-variant tools are reachable in the UI** (verified 2026-08-26). `VariantThumb` in `SourceCompareCard.tsx` renders **↻ Retry** and **✎ Tweak with Gemini** and nothing else — it still accepts `onErase` / `onIdeogramEdit` / `onIdeogramInpaint`, and `EnhancePanel` still passes them and still owns the dialogs, but there are bare comment placeholders where the buttons used to be ("the operator asked for a pared-back action set on the variant thumb"). So **Ideogram Edit, Flux Erase and Ideogram Inpaint are dead-but-wired**: backend, schemas, workers and dialogs all intact, no way in. This matters because Ideogram Edit is the tool built for decal typography and model-number restoration, so that work currently has to route through Gemini Tweak, which is the weaker option for embedded text. Restoring a button is a few lines in `VariantThumb`.
+
+The five AS DESIGNED (top-left, left to right): **↻ Regenerate** (amber) · **✎ Tweak with Gemini** (blue) · **T Edit with Ideogram** (cyan) · **⌫ Erase with Flux** (purple) · **🖌 Inpaint with Ideogram** (rose). Tweak + Edit are text-only; Erase + Inpaint are mask-based. Each pair shares a dialog component; a `tool` prop drives copy + vendor routing.
 
 ### Tools matrix
 
