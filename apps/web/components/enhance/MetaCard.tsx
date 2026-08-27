@@ -196,7 +196,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
               placeholder="e.g. Toyota"
               aria-required
               aria-invalid={!makeValid || undefined}
-              className={`w-full bg-panel border rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:border-transparent transition ${
+              className={`w-full bg-panel border rounded-md px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:border-transparent transition ${
                 makeValid
                   ? "border-line focus:ring-attn"
                   : "border-attn focus:ring-attn"
@@ -234,7 +234,7 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
                 value={meta[key] ?? ""}
                 onChange={(e) => update(key, e.target.value)}
                 placeholder={placeholder}
-                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
+                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
               />
               <span className="text-base text-accent font-semibold leading-relaxed">
                 {hint}

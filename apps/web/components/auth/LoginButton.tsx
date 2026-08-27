@@ -35,7 +35,7 @@ export function LoginButton({ callbackUrl }: { callbackUrl?: string }) {
           w-full flex items-center justify-center gap-3 py-3 px-4 rounded-xl
           font-medium text-sm transition-all border
           ${loading
-            ? "bg-panel-hi border-line text-ink-faint cursor-not-allowed"
+            ? "bg-panel-hi border-line text-muted cursor-not-allowed"
             : "bg-white border-white text-header-bg hover:bg-white/90 shadow-lg"}
         `}
         aria-busy={loading}

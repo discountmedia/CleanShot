@@ -23,6 +23,8 @@ from cleanshot_api.models.schemas import (
     EraseTaskPayload,
     JobStatusEnum,
     OperationEnum,
+    OptimizePromptRequest,
+    OptimizePromptResponse,
     ScanBatchRequest,
     ScanBatchResponse,
     ScanTaskPayload,
@@ -38,6 +40,7 @@ from cleanshot_api.services.tasks import (
     enqueue_tweak,
 )
 from cleanshot_api.workers.enhance_worker import judge_variants
+from cleanshot_api.workers.prompt_optimizer import optimize_prompt
 
 router = APIRouter(prefix="/api/v1", tags=["operations"])
 
@@ -248,6 +251,57 @@ async def judge_enhance_variants(
         make=body.make,
     )
     return EnhanceJudgeResponse(**result)
+
+
+@router.post(
+    "/prompts/optimize",
+    response_model=OptimizePromptResponse,
+    dependencies=[Depends(require_api_key)],
+)
+async def optimize_saved_prompt(
+    body: OptimizePromptRequest,
+    request: Request,
+) -> OptimizePromptResponse:
+    """
+    Condense a long enhance prompt — SYNCHRONOUS, like the judge, and for the
+    same reason: nothing is written, so there is no job to poll. No pool
+    dependency; this endpoint never touches the database.
+
+    It lives here rather than in routers/saved_prompts.py because every route
+    there is CRUD against the saved_prompts table and this one is not: the
+    operator may optimize a prompt they never save, and saving still goes
+    through the normal create path (a NEW row, a NEW title — templates are
+    immutable, there is no PATCH).
+
+    503s when the Anthropic client isn't configured, so the button can present
+    itself as unavailable instead of erroring. Note the flag that gates the
+    client is SCAN_PROVIDER_ANTHROPIC despite this not being a scan.
+    """
+    anthropic_client = request.app.state.anthropic
+    if anthropic_client is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Prompt optimizer unavailable (Anthropic client not configured)"
+            ),
+        )
+
+    try:
+        result = await optimize_prompt(
+            anthropic_client,
+            body.body,
+            equipment_type=body.equipment_type,
+        )
+    except ValueError as exc:
+        # The optimizer refuses to return a half-result: an empty or truncated
+        # prompt that the operator might paste over a working one is worse than
+        # a visible failure.
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Optimizer returned an unusable result: {exc}",
+        ) from exc
+
+    return OptimizePromptResponse(**result)
 
 
 @router.post(

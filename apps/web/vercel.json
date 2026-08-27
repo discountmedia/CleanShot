@@ -5,6 +5,7 @@
   "outputDirectory": ".next",
   "framework": "nextjs",
   "functions": {
+    "app/api/prompts/optimize/route.ts": { "maxDuration": 120 },
     "app/api/export/zip/route.ts":   { "maxDuration": 60 },
     "app/api/export/**/*.ts":        { "maxDuration": 20 },
     "app/api/sessions/**/*.ts":      { "maxDuration": 15 },

@@ -37,11 +37,11 @@ find .next -name '*.css' -path '*static*' | xargs grep -ohE '#[0-9A-Fa-f]{6}' | 
 | panelHi | `panel-hi` | `#363636` | Raised surface: active tab, selected control, ghost-button hover |
 | well | `well` | `#1A1A1A` | Image letterbox, progress track, recessed areas |
 | line | `line` | `#454545` | Borders, dividers |
-| ink | `ink` | `#CACACA` | Headings + primary text |
-| inkSoft | `ink-soft` | `#9F9F9F` | Sub-headings + secondary text |
-| inkFaint | `ink-faint` | `#8A8A8A` | De-emphasised labels only (~4.0:1 on panel) |
+| ink | `ink` | `#FFFFFF` | Headings + primary text. 13.97:1 on panel |
+| inkSoft | `ink-soft` | `#E3E3E3` | Sub-headings + secondary text. 10.88:1 on panel |
+| inkFaint | `ink-faint` | `#C7C7C7` | De-emphasised labels. 8.26:1 on panel |
 | grey | `grey` | `#9A9A9A` | Secondary tags, neutral pills |
-| muted | `muted` | `#8E8E8E` | Disabled / archived / inactive |
+| muted | `muted` | `#A8A8A8` | Disabled / archived / inactive **and placeholders**. 5.87:1 on panel |
 | accent | `accent` | `#95EA00` | Brand lime — "good" states, progress |
 | attn | `attn` | `#B786C6` | **Attention + error**: text, borders, rules, status dots. 5.35:1 page / 4.81:1 card |
 | cta | `cta` | `#914EA6` | Primary buttons |
@@ -62,6 +62,8 @@ find .next -name '*.css' -path '*static*' | xargs grep -ohE '#[0-9A-Fa-f]{6}' | 
 **Red is not a general accent.** Before this palette, red was the brand accent, so `Approve →`, `Download ZIP`, `Retry`, `Regenerate now` and `Send to admin` were all red despite being ordinary actions. They are purple now. If you find yourself reaching for red, ask whether the control actually destroys something.
 
 **Do not add a fourth accent. Do not reintroduce a second green. Do not use amber for warnings.**
+
+**One standing exception: OPTIMIZE PINK** (2026-08-27, operator request). `OPTIMIZE_PINK` `#FF3EA5` in `components/enhance/PromptOptimizer.tsx`, for the Optimize-prompt control only. It exists because the three accents were all spoken for and none of them can carry this meaning: lime is "good/done", purple is "primary action", red is "destructive". Optimize is a rewrite the operator must then review, and it sits in a row that already contains a lime Save button — the whole job of the hue is to not be mistaken for Save. Red-dominant (R > B > G), so the blue-dominant restriction is untouched. Inline `style`, not a class: `--color-pink-*` is `initial` in `globals.css`, so there is no class to write. **Fill and text need different values** — white on `#FF3EA5` is 3.24:1 and fails AA, so the fill carries near-black `#131313` (5.74:1); hover `#F02E96` (4.90:1); used AS TEXT on a dark surface it lightens to `#FF8AC4` (6.44:1 on panel). Same fill-only trap as the CTA purples and the picker blue.
 
 Consequences worth knowing:
 

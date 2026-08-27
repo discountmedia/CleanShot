@@ -44,12 +44,30 @@
   --color-well:       #1A1A1A;   /* image letterbox, progress track, recessed areas */
   --color-line:       #454545;   /* borders, dividers */
 
-  /* ── Text ─────────────────────────────────────────────────────────── */
-  --color-ink:        #CACACA;   /* headings + primary text */
-  --color-ink-soft:   #9F9F9F;   /* sub-headings + secondary text */
-  --color-ink-faint:  #8A8A8A;   /* de-emphasised labels ONLY (~4.0:1 on panel) */
+  /* ── Text ─────────────────────────────────────────────────────────────
+     Raised across the board 2026-08-27 at the operator's request: body text is
+     white and everything on a grey surface is high-contrast. Text on a FILLED
+     control is unaffected and stays near-black — see --color-header-bg above.
+
+     The old scale leaned on brightness to signal hierarchy and had drifted
+     under AA doing it: ink-faint was 3.50:1 on panel-hi and 4.05:1 on panel,
+     both failing, and it carried the button gate copy ("Write or insert a
+     prompt to continue"), which was the least readable string in the app.
+     Hierarchy now comes from weight, size and spacing; the four steps stay
+     distinguishable but all four clear AA on every surface.
+
+     All values are TRUE neutrals (r == g == b) — hard constraint 1.
+     Ratios below are against --color-panel #2C2C2C / --color-panel-hi #363636. */
+  --color-ink:        #FFFFFF;   /* headings + primary text — 13.97:1 / 12.08:1 */
+  --color-ink-soft:   #E3E3E3;   /* sub-headings + secondary text — 10.88:1 / 9.42:1 */
+  --color-ink-faint:  #C7C7C7;   /* de-emphasised labels — 8.26:1 / 7.15:1 */
   --color-grey:       #9A9A9A;   /* secondary tags, neutral pills */
-  --color-muted:      #8E8E8E;   /* disabled / archived / inactive states */
+  /* Disabled / archived / inactive, and now ALSO placeholders. Deliberately
+     the one step that did NOT go bright: with body text at pure white, an
+     empty field or a dead button has to stay visibly dimmer or it reads as
+     filled in / clickable. 5.87:1 on panel — passes AA, ~2.4x dimmer than
+     white. Do not raise this to match the others; the gap is the point. */
+  --color-muted:      #A8A8A8;
 
   /* ── The three accents ────────────────────────────────────────────── */
   --color-accent:     #95EA00;   /* brand lime — "good", progress. 10.4:1 on bg, safe as text anywhere */
@@ -162,9 +180,12 @@
 
   /* Placeholders are de-emphasised neutral, NOT lime. The old rule tinted
      every placeholder brand-lime at 55% opacity, which read as a filled-in
-     value rather than a prompt and put "good"-state colour on empty inputs. */
+     value rather than a prompt and put "good"-state colour on empty inputs.
+     Repointed from ink-faint to muted 2026-08-27: ink-faint went bright with
+     the rest of the text scale, and an empty field must not read as a filled
+     one. muted is the token that deliberately stayed dim. */
   ::placeholder {
-    color: var(--color-ink-faint);
+    color: var(--color-muted);
     opacity: 1;
   }
 

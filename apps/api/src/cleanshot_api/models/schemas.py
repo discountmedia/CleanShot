@@ -619,6 +619,54 @@ class CreateSavedPromptRequest(BaseModel):
         return stripped
 
 
+class OptimizePromptRequest(BaseModel):
+    """Condense a long prompt. Reads and writes nothing — the result comes back
+    inline for the operator to review before it goes anywhere near the box or
+    the shared library.
+
+    Same body ceiling as saving, deliberately: the whole point is that an
+    already-saved 9.7k template can be fed straight back in. A tighter cap here
+    would reject exactly the prompts this endpoint exists for.
+    """
+    body: str = Field(min_length=1, max_length=_PROMPT_BODY_MAX)
+    equipment_type: str | None = None
+
+    @field_validator("body")
+    @classmethod
+    def _not_blank(cls, v: str) -> str:
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
+
+
+class OptimizePromptChange(BaseModel):
+    """One line of the diff: what changed, and why it was allowed to."""
+    text: str
+    reason: str
+
+
+class OptimizePromptResponse(BaseModel):
+    """The condensed prompt plus a full account of the edit.
+
+    `removed` and `kept` are not decoration — nothing is written anywhere
+    without the operator reading them. The failure mode this guards against is
+    the optimizer quietly dropping one of the six blocks the pipeline does NOT
+    append on the prompt-first path (see workers/prompt_optimizer.py), which
+    would degrade every future image made from the saved template while looking
+    like a clean result.
+    """
+    optimized_prompt: str
+    original_chars: int
+    optimized_chars: int
+    # The scanner's intended-edit whitelist window, echoed so the UI can show
+    # the target it was aiming at without duplicating the constant.
+    target_chars: int
+    removed: list[OptimizePromptChange] = []
+    kept: list[OptimizePromptChange] = []
+    warnings: list[str] = []
+
+
 class ExportProRequest(BaseModel):
     """PRO preset: 1024px, 7×5 crop, JPEG ≤100 kb."""
     session_id: uuid.UUID
@@ -979,7 +1027,7 @@ class ScanTaskPayload(BaseModel):
     session_id: uuid.UUID
     input_asset_id: uuid.UUID
     input_gcs_uri: str
-    scan_difficulty: str = "standard"  # "standard" | "hard" — routes claude-opus-4-7
+    scan_difficulty: str = "standard"  # "standard" | "hard" — see SCAN_MODEL_ANTHROPIC_*
     # Optional equipment context carried through to the scan prompt builder.
     equipment_type: str | None = None
     make: str | None = None

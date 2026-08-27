@@ -270,7 +270,7 @@ export function TweakDialog({
                 disabled={submitting}
                 placeholder={examplePlaceholder}
                 rows={3}
-                className="w-full bg-panel border border-line focus:border-line focus:outline-none rounded-lg px-3 py-2.5 text-base text-ink placeholder:text-ink-soft disabled:opacity-40 resize-y min-h-16"
+                className="w-full bg-panel border border-line focus:border-line focus:outline-none rounded-lg px-3 py-2.5 text-base text-ink placeholder:text-muted disabled:opacity-40 resize-y min-h-16"
               />
               <div className="flex items-center justify-between mt-1.5">
                 <span className="text-sm text-ink-soft italic leading-snug">
@@ -300,7 +300,7 @@ export function TweakDialog({
               className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors
                 ${!submitting && instruction.trim().length >= 3
                   ? "bg-panel hover:bg-panel-hi text-ink"
-                  : "bg-panel-hi text-ink-faint cursor-not-allowed"}`}
+                  : "bg-panel-hi text-muted cursor-not-allowed"}`}
             >
               {submitting ? "Working…" : toolMeta.action}
             </button>

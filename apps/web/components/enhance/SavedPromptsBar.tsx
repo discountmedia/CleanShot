@@ -132,6 +132,16 @@ export function useSavedPrompts() {
   const [error,   setError]   = useState<string | null>(null);
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [sort, setSort] = useState<TemplateSort>("top");
+  /**
+   * A body to save that is NOT what is in the prompt box.
+   *
+   * Set by the Optimize flow, which produces a short version the operator may
+   * want to save as its own template while the long one stays in the box —
+   * that is the whole point of optimizing, so routing it through the box first
+   * would destroy the thing being preserved. Null means "save the box", which
+   * is every other caller.
+   */
+  const [pendingSaveBody, setPendingSaveBody] = useState<string | null>(null);
 
   const refresh = useCallback(async (signal?: AbortSignal) => {
     try {
@@ -204,6 +214,7 @@ export function useSavedPrompts() {
     prompts, loading, error, setError,
     savedNotice, setSavedNotice, refresh,
     sort, setSort, toggleVote, noteUse,
+    pendingSaveBody, setPendingSaveBody,
   };
 }
 
@@ -511,6 +522,7 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
 
   const {
     prompts, error, setError, savedNotice, setSavedNotice, refresh, sort, toggleVote,
+    pendingSaveBody, setPendingSaveBody,
   } = state;
 
   // Save flow: idle → naming (inline title field) → conflict (title is taken)
@@ -523,7 +535,23 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
 
   const [manageOpen, setManageOpen] = useState(false);
 
-  const hasPrompt = currentPrompt.trim().length > 0;
+  // What Save actually writes. `pendingSaveBody` wins when the Optimize flow
+  // handed us a short version to save directly; otherwise it is the box.
+  // Routing the short version through the box first would overwrite the long
+  // prompt, which is the exact thing optimizing is meant to preserve.
+  const bodyToSave = pendingSaveBody ?? currentPrompt;
+  const hasPrompt = bodyToSave.trim().length > 0;
+  // Optimize opens the title field by setting a pending body, so the panel is
+  // driven by either signal. Derived rather than an effect — mirroring the
+  // pending body into `saveState` would be two sources of truth for one panel.
+  const naming = saveState === "naming" || pendingSaveBody !== null;
+
+  /** Leave the naming panel and drop any optimize hand-off along with it. */
+  const cancelNaming = () => {
+    setSaveState("idle");
+    setTitleDraft("");
+    setPendingSaveBody(null);
+  };
   // Delete is admin-only, so Curate is an admin panel. `canDelete` is the same
   // for every row; reading it off the list avoids threading a separate "am I
   // an admin" prop all the way down here.
@@ -538,9 +566,10 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
     setIsSaving(true);
     setError(null);
     try {
-      await saveSavedPrompt({ title, body: currentPrompt });
+      await saveSavedPrompt({ title, body: bodyToSave });
       setSaveState("idle");
       setTitleDraft("");
+      setPendingSaveBody(null);
       setSavedNotice(`Saved "${title}" to shared templates — everyone can use it now`);
       await refresh();
     } catch (err: unknown) {
@@ -605,16 +634,16 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
             setSaveState("naming");
             setSavedNotice(null);
           }}
-          disabled={!hasPrompt || saveState !== "idle"}
+          disabled={!hasPrompt || naming || saveState !== "idle"}
           title={
             hasPrompt
               ? "Save the prompt currently in the box as a template everyone can use. It gets a permanent title — to change a template later, load it, edit it, and save it again under a new title."
               : "Write a prompt first — there's nothing to save yet"
           }
           className={`text-sm uppercase tracking-[0.14em] font-bold px-4 py-2.5 rounded-lg border-2 transition-colors ${
-            hasPrompt && saveState === "idle"
+            hasPrompt && !naming && saveState === "idle"
               ? "border-accent bg-accent hover:bg-accent/85 text-header-bg"
-              : "border-line bg-panel text-ink-faint cursor-not-allowed"
+              : "border-line bg-panel text-muted cursor-not-allowed"
           }`}
         >
           Save prompt to shared templates
@@ -661,7 +690,7 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
       </TipBanner>
 
       {/* ── Inline title field ── */}
-      {saveState === "naming" && (
+      {naming && (
         <div className="rounded-lg border-2 border-cta bg-panel px-4 py-3 space-y-2">
           <label
             htmlFor={titleFieldId}
@@ -681,12 +710,12 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
                   e.preventDefault();
                   void commitSave();
                 }
-                if (e.key === "Escape") setSaveState("idle");
+                if (e.key === "Escape") cancelNaming();
               }}
               placeholder="e.g. Sitdown Hyster, heavy rust"
               maxLength={120}
               title="Pick carefully — this title is permanent and shared with everyone. Describe the machine and the situation; your name and the date are added automatically."
-              className="flex-1 min-w-56 bg-well border border-line rounded-md px-3 py-2 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta"
+              className="flex-1 min-w-56 bg-well border border-line rounded-md px-3 py-2 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-cta"
             />
             <button
               type="button"
@@ -695,17 +724,14 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
               className={`text-sm uppercase tracking-[0.14em] font-bold px-4 py-2 rounded-lg border-2 transition-colors ${
                 titleDraft.trim() && !isSaving
                   ? "border-cta bg-cta hover:bg-cta-dark text-white"
-                  : "border-line bg-panel text-ink-faint cursor-not-allowed"
+                  : "border-line bg-panel text-muted cursor-not-allowed"
               }`}
             >
               {isSaving ? "Saving…" : "Save"}
             </button>
             <button
               type="button"
-              onClick={() => {
-                setSaveState("idle");
-                setTitleDraft("");
-              }}
+              onClick={cancelNaming}
               className="text-sm font-bold text-ink-soft hover:text-ink transition-colors"
             >
               Cancel

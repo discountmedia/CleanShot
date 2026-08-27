@@ -127,7 +127,7 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition disabled:opacity-50"
+        className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition disabled:opacity-50"
       />
       {hint && <span className="text-base text-accent font-semibold leading-relaxed">{hint}</span>}
     </label>
@@ -498,7 +498,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             inline-flex py-3 px-6 rounded-lg font-semibold text-sm uppercase tracking-[0.12em] border-2 transition-all
             ${canExport
               ? "border-cta bg-cta hover:bg-cta-dark text-white"
-              : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
+              : "border-line bg-panel-hi text-muted cursor-not-allowed"}
           `}
         >
           {isExporting

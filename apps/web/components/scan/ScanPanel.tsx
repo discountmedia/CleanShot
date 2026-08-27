@@ -585,7 +585,7 @@ export function ScanPanel({
               className={`inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-colors ${
                 canSkip
                   ? "border-line bg-panel hover:bg-panel-hi text-ink"
-                  : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"
+                  : "border-line bg-panel-hi text-muted cursor-not-allowed"
               }`}
             >
               Skip scanning — queue all for export ↓
@@ -827,7 +827,7 @@ export function ScanPanel({
               px-8 py-3 rounded-xl font-semibold text-sm transition-all
               ${allAssets.length > 0 && !anyUploadInFlight
                 ? "bg-panel hover:bg-panel-hi text-ink shadow-lg"
-                : "bg-panel-hi text-ink-faint cursor-not-allowed"}
+                : "bg-panel-hi text-muted cursor-not-allowed"}
             `}
           >
             {anyUploadInFlight

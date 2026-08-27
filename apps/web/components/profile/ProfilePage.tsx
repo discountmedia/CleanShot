@@ -290,7 +290,7 @@ export function ProfilePage({ userEmail }: { userEmail: string }) {
               disabled={saving}
               className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors ${
                 saving
-                  ? "bg-panel-hi text-ink-faint cursor-not-allowed"
+                  ? "bg-panel-hi text-muted cursor-not-allowed"
                   : "bg-panel hover:bg-panel-hi text-ink"
               }`}
             >
@@ -501,7 +501,7 @@ function SupportTicketForm() {
           disabled={sending || !subject.trim() || !body.trim()}
           className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors ${
             sending || !subject.trim() || !body.trim()
-              ? "bg-panel-hi text-ink-faint cursor-not-allowed"
+              ? "bg-panel-hi text-muted cursor-not-allowed"
               : "bg-cta hover:bg-cta-dark text-white"
           }`}
         >

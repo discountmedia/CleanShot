@@ -8,7 +8,7 @@ Two rate styles:
     they charge per generated image instead.
   • PER_TOKEN_USD — (input_per_million, output_per_million) tuples used
     for the text/vision LLMs (scan worker's gemini-2.5-flash, gpt-5.4,
-    claude-sonnet-4-6, claude-opus-4-7). The worker needs to capture
+    claude-opus-5). The worker needs to capture
     `usage_metadata` / `usage` from each provider's response and pass
     the counts here.
 
@@ -91,8 +91,11 @@ PER_TOKEN_USD: dict[str, tuple[float, float]] = {
     # provider branch).
     "gpt-5.4":           (5.00, 15.00),
 
-    # Anthropic — scan uses sonnet 4.6 by default and falls back to opus
-    # 4.7 for "hard cases" via tool_choice forcing.
+    # Anthropic. Every Claude call in the app (scan, variant judge, prompt
+    # optimizer) runs on opus-5 as of 2026-08-27. The older ids are retained
+    # because usage_events rows written before that date name them and a
+    # missing key would break cost reporting on historical data.
+    "claude-opus-5":     (5.00, 25.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-opus-4-7":   (15.00, 75.00),
 }

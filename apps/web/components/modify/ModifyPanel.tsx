@@ -989,7 +989,7 @@ export function ModifyPanel({
                 className={`inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all ${
                   !isAllNeutral && !isApplying && allAssets.length > 0 && !anyUploadInFlight
                     ? "border-cta bg-cta hover:bg-cta-dark text-white shadow-lg"
-                    : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"
+                    : "border-line bg-panel-hi text-muted cursor-not-allowed"
                 }`}
               >
                 {isApplying

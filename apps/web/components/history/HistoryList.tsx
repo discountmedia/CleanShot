@@ -129,7 +129,7 @@ function FilterBar({
             value={filters.query}
             onChange={(e) => onChange({ ...filters, query: e.target.value })}
             placeholder="Make, model, filename, or folder…"
-            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
+            className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
           />
         </label>
 

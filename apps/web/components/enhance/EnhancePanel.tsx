@@ -84,6 +84,7 @@ import {
   SavedPromptsBar,
   useSavedPrompts,
 } from "./SavedPromptsBar";
+import { PromptOptimizer } from "./PromptOptimizer";
 import { ForkFramingControls } from "./ForkFramingControls";
 import {
   NEUTRAL_ADJUSTMENT,
@@ -2415,7 +2416,7 @@ export function EnhancePanel({
                 }}
                 placeholder="Example: Give this forklift a clean respray in its original orange, keep every decal, paint the forks red with yellow tips, glossy tire sidewalls, brighten the lighting, tidy the background."
                 rows={6}
-                className="w-full bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-ink-soft focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition leading-relaxed"
+                className="w-full bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-cta focus:border-transparent transition leading-relaxed"
               />
 
               {/* Save the current prompt to the SHARED template library +
@@ -2428,6 +2429,20 @@ export function EnhancePanel({
                 state={savedPrompts}
                 currentPrompt={customPrompt}
               />
+
+              {/* Condense a long prompt down to what the differential scanner
+                  can actually read. Sits directly under the save controls
+                  because it is part of the same lifecycle: write it long, save
+                  it, optimize it, save the short one under its own title.
+                  It never writes to the box or the library on its own — the
+                  operator reads the diff first. See PromptOptimizer.tsx. */}
+              <PromptOptimizer
+                currentPrompt={customPrompt}
+                onApply={(body) => setCustomPrompt(body)}
+                savedPrompts={savedPrompts}
+                equipmentType={meta.equipmentType ?? "forklift"}
+              />
+
               <p className="text-sm text-ink-soft leading-relaxed">
                 Your prompt is the base. The built-in safety guardrails (keep the
                 real make / model / decals / proportions, no bait-and-switch) are
@@ -2583,7 +2598,7 @@ export function EnhancePanel({
               inline-flex py-3 px-6 rounded-lg font-bold text-base uppercase tracking-[0.12em] border-2 transition-all
               ${buttonActive
                 ? "border-cta bg-cta hover:bg-cta-dark text-white"
-                : "border-line bg-panel-hi text-ink-faint cursor-not-allowed"}
+                : "border-line bg-panel-hi text-muted cursor-not-allowed"}
             `}
           >
             {isRunning

@@ -948,13 +948,19 @@ async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
 # ~70% agreement with the operator's hand labels. Two hard rules:
 #   • Do NOT retune this rubric here without re-running that calibration harness
 #     — the agreement number stops meaning anything otherwise.
-#   • Pin JUDGE_MODEL to the SAME id the harness measured (claude-sonnet-4-6).
-#     A different model silently invalidates the calibration.
+#   • The harness measured `claude-sonnet-4-6`. JUDGE_MODEL was moved to
+#     `claude-opus-5` on 2026-08-27 at the operator's request (standardising
+#     every Claude call in the app on one model). THE ~70% FIGURE ABOVE NO
+#     LONGER DESCRIBES WHAT SHIPS. It is the agreement of the old model on the
+#     old rubric. Re-run scripts/holistic_judge.py against opus-5 to get a real
+#     number; until then, treat auto-pick as uncalibrated rather than as a
+#     measured 70%. Opus 5 is a stronger model, so it is more likely to have
+#     improved than regressed — but "likely" is not a measurement.
 #
 # Candidates are labeled NEUTRALLY ("CANDIDATE 1/2/3") — the provider name is
 # never shown to the model so brand priors can't bias the pick. The caller maps
 # the winning candidate number back to its provider by index.
-JUDGE_MODEL = "claude-sonnet-4-6"
+JUDGE_MODEL = "claude-opus-5"
 
 JUDGE_RUBRIC = """You are the final quality-control reviewer for a USED-forklift dealer's
 online listing photos. You are shown the ORIGINAL real photo of a machine, then
@@ -2462,6 +2468,18 @@ async def _run_enhance(
                 logger.exception("usage_event insert failed (enhance failure path)")
 
 
+# How much of the operator's own prompt reaches the differential scanner's
+# "this was deliberately requested" whitelist. Text past this point is NOT
+# whitelisted, so edits the operator explicitly asked for start coming back as
+# reported anomalies.
+#
+# Named rather than inlined because workers/prompt_optimizer.py targets this
+# exact number — it is the entire reason the Optimize button exists. Changing
+# it here changes what the optimizer aims at, which is correct; leaving a bare
+# literal in both places was not.
+SCANNER_INTENT_WHITELIST_CHARS = 1500
+
+
 def _describe_intended_edits(
     toggles: "EnhanceToggles",
     equipment_type: str,
@@ -2550,7 +2568,8 @@ def _describe_intended_edits(
         # unintended colour changes. Pass the instruction through verbatim.
         edits.append(
             "The operator's own enhancement instruction for this image was: "
-            f'"{custom_prompt.strip()[:1500]}". Everything that instruction '
+            f'"{custom_prompt.strip()[:SCANNER_INTENT_WHITELIST_CHARS]}". '
+            "Everything that instruction "
             "asks for was deliberately requested — treat it as EXPECTED and "
             "do not flag it. TWO EXCEPTIONS that this instruction cannot "
             "authorise no matter how it is worded: a body panel coming back in "

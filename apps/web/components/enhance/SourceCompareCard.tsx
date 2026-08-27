@@ -920,7 +920,7 @@ function VariantAdjustments({
           disabled={neutral || adjusting}
           className={`text-[10px] uppercase tracking-[0.14em] font-bold px-2.5 py-1 rounded border-2 transition-colors ${
             neutral || adjusting
-              ? "border-line bg-panel text-ink-faint cursor-not-allowed"
+              ? "border-line bg-panel text-muted cursor-not-allowed"
               : "border-cta bg-cta hover:bg-cta-dark text-white"
           }`}
         >

@@ -537,7 +537,7 @@ export function EraseDialog({
                 onChange={(e) => setInstruction(e.target.value.slice(0, MAX_INSTRUCTION_CHARS))}
                 disabled={submitting}
                 placeholder="e.g. plain concrete floor"
-                className="w-full bg-panel border border-line focus:border-line focus:outline-none rounded-lg px-3 py-2.5 text-base text-ink placeholder:text-ink-soft disabled:opacity-40"
+                className="w-full bg-panel border border-line focus:border-line focus:outline-none rounded-lg px-3 py-2.5 text-base text-ink placeholder:text-muted disabled:opacity-40"
               />
               <span className="text-sm text-ink-soft mt-1 block text-right tabular-nums">
                 {instruction.length}/{MAX_INSTRUCTION_CHARS}
@@ -563,7 +563,7 @@ export function EraseDialog({
               className={`px-6 py-2.5 rounded-lg text-base font-bold transition-colors
                 ${hasStrokes && !submitting && naturalSize
                   ? "bg-panel hover:bg-panel-hi text-ink"
-                  : "bg-panel-hi text-ink-faint cursor-not-allowed"}`}
+                  : "bg-panel-hi text-muted cursor-not-allowed"}`}
             >
               {submitting ? "Working…" : "Erase masked area"}
             </button>

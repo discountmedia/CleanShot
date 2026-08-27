@@ -412,6 +412,70 @@ export async function saveSavedPrompt(params: {
   return (await res.json()) as SavedPrompt;
 }
 
+/** One entry in an optimize diff: what changed, and why that was allowed. */
+export interface PromptOptimizeChange {
+  text: string;
+  reason: string;
+}
+
+export interface PromptOptimizeResult {
+  optimizedPrompt: string;
+  originalChars: number;
+  optimizedChars: number;
+  /** The scanner's intended-edit window the optimizer was aiming at. */
+  targetChars: number;
+  removed: PromptOptimizeChange[];
+  /** The protected blocks that survived, and the phrasing they survive as. */
+  kept: PromptOptimizeChange[];
+  warnings: string[];
+}
+
+/**
+ * Condense a long prompt toward the review window the enhance pipeline can
+ * actually see.
+ *
+ * Writes NOTHING — not the prompt box, not the library. The caller shows the
+ * result and the operator decides. That is deliberate: the optimizer's one
+ * real failure mode is dropping something the pipeline does not append for
+ * itself, and a silent overwrite would hide exactly that.
+ */
+export async function optimizeSavedPrompt(params: {
+  body: string;
+  equipmentType?: string;
+  signal?: AbortSignal;
+}): Promise<PromptOptimizeResult> {
+  // Same ceiling as saving. An already-saved template must be feedable
+  // straight back in — those are the prompts this exists for.
+  if (params.body.length > PROMPT_BODY_MAX) {
+    throw new Error(
+      `This prompt is ${params.body.length.toLocaleString()} characters and the ` +
+      `limit is ${PROMPT_BODY_MAX.toLocaleString()}.`,
+    );
+  }
+  const res = await fetch("/api/prompts/optimize", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      body: params.body,
+      ...(params.equipmentType ? { equipmentType: params.equipmentType } : {}),
+    }),
+    cache: "no-store",
+    signal: params.signal,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => res.statusText);
+    if (res.status === 503) {
+      // Feature-flagged off rather than broken. Say which.
+      throw new Error(
+        "The optimizer is switched off for this deployment. Ask an admin to " +
+        "enable the Anthropic provider.",
+      );
+    }
+    throw new Error(detailOf(text));
+  }
+  return (await res.json()) as PromptOptimizeResult;
+}
+
 /** Admin-only. Removes the template, and its votes, for everyone. */
 export async function deleteSavedPrompt(id: string): Promise<void> {
   const res = await fetch(`/api/prompts/${id}`, {

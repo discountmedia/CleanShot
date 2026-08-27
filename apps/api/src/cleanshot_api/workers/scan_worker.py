@@ -4,8 +4,8 @@ Scan worker — multi-model fan-out with asyncio.TaskGroup.
 Provider routing (Phase 2 v2.5):
   Primary:           gemini-2.5-flash  (always active)
   Optional OpenAI:   gpt-5.4                         (SCAN_PROVIDER_OPENAI=true)
-  Optional Anthropic: claude-sonnet-4-6              (SCAN_PROVIDER_ANTHROPIC=true)
-                    → claude-opus-4-7 for hard scans
+  Optional Anthropic: claude-opus-5                  (SCAN_PROVIDER_ANTHROPIC=true)
+                    → same model for hard scans (tiers merged 2026-08-27)
 
 Image input format differences:
   Gemini:    GCS URI via file_data.file_uri (no base64 needed)
@@ -46,8 +46,14 @@ logger = logging.getLogger(__name__)
 
 SCAN_MODEL_GEMINI = "gemini-2.5-flash"
 SCAN_MODEL_OPENAI = "gpt-5.4"
-SCAN_MODEL_ANTHROPIC_STD = "claude-sonnet-4-6"
-SCAN_MODEL_ANTHROPIC_HARD = "claude-opus-4-7"  # 3× vision resolution
+# Both tiers point at the same model as of 2026-08-27 (operator request:
+# standardise every Claude call on opus-5). The std/hard split is therefore a
+# NO-OP at the model level right now — `difficulty` still routes, it just
+# routes to the same place. The two constants are kept rather than collapsed so
+# re-splitting later is a one-line change, and so the call sites keep saying
+# which tier they meant.
+SCAN_MODEL_ANTHROPIC_STD = "claude-opus-5"
+SCAN_MODEL_ANTHROPIC_HARD = "claude-opus-5"
 
 SCAN_SYSTEM_PROMPT_BASE = """You are the FINAL quality-control gate for AI-ENHANCED equipment listing photos. Each image was produced by an image-editing AI from a real photo of a used machine (forklift, telehandler, scissor lift, etc.). You exist as a cover-your-ass check against SERIOUS, OBVIOUS AI failures that would embarrass the company or mislead a buyer if the photo went live. You are NOT a photo critic and NOT a perfectionist.
 
@@ -273,11 +279,14 @@ async def _scan_gemini(
 #
 #   Anthropic (direct Claude API, which is what we use):
 #     - Server-side vision downscale is the binding limit, not bytes.
-#       `claude-sonnet-4-6` (SCAN_MODEL_ANTHROPIC_STD) is standard tier and is
-#       downscaled to a 1568px long edge. `claude-opus-4-7`
-#       (SCAN_MODEL_ANTHROPIC_HARD) is high-resolution tier: 2576px long edge,
-#       4784 visual tokens. 2576 therefore serves the hard-scan path at full
-#       fidelity and wastes nothing on the standard path.
+#       This was measured when the two tiers were `claude-sonnet-4-6`
+#       (standard tier, downscaled to a 1568px long edge) and `claude-opus-4-7`
+#       (high-resolution tier: 2576px long edge, 4784 visual tokens). 2576 was
+#       chosen to serve the hard path at full fidelity while wasting nothing on
+#       the standard one. Both tiers are now `claude-opus-5` and ITS server-side
+#       downscale has NOT been re-checked against the vendor docs — 2576 is
+#       retained as a safe ceiling (it is well inside every hard limit below),
+#       not as a re-verified optimum. Re-check before treating it as tuned.
 #     - Hard limits we stay well inside: 10 MB per image base64 (NOTE: 5 MB is
 #       the Bedrock / Vertex figure and does NOT apply to us), 8000x8000 px,
 #       32 MB total request.
@@ -397,7 +406,8 @@ async def _scan_anthropic(
 ) -> tuple[ScanResult, int]:
     """
     Anthropic scan — tool-forced JSON via tool_choice. Raw base64 WITHOUT prefix.
-    Routes to claude-opus-4-7 for hard scans (3× vision resolution).
+    Hard scans route through SCAN_MODEL_ANTHROPIC_HARD, which currently names
+    the same model as the standard tier (see the constants).
 
     When original_gcs_uri is set, runs DIFFERENTIAL: both images are added as
     image blocks with text labels between them (Anthropic's documented
