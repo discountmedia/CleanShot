@@ -97,7 +97,7 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 
 **Re-enhance has no dirty-input guard.** An identical batch can be re-run at will — generation is non-deterministic and a second roll is often the point.
 
-**Best-of-N auto-pick.** A multi-provider (≥2) batch is auto-judged by a single Claude vision call and the winner auto-selected. Model pinned to `claude-sonnet-4-6` — **do not swap it; that invalidates the ~70% operator-agreement calibration.** Candidates are labelled neutrally ("CANDIDATE 1/2/3") so brand can't bias the pick. There is a `judgeEpochRef` + `judgeStartedRef` guard because a re-enhance during an in-flight judge could otherwise write the OLD batch's winner onto a reused file id and silently drop an image from export.
+**Best-of-N auto-pick.** A multi-provider (≥2) batch is auto-judged by a single Claude vision call and the winner auto-selected. Model is `claude-opus-5` as of 2026-08-27 (operator request: one model for every Claude call). It was pinned to `claude-sonnet-4-6` because that is the id `scripts/holistic_judge.py` measured at ~70% agreement with hand labels — **so that figure no longer describes what ships. Auto-pick is currently uncalibrated, not measured-at-70%.** Re-run the harness against opus-5 to get a real number. Candidates are labelled neutrally ("CANDIDATE 1/2/3") so brand can't bias the pick. There is a `judgeEpochRef` + `judgeStartedRef` guard because a re-enhance during an in-flight judge could otherwise write the OLD batch's winner onto a reused file id and silently drop an image from export.
 
 ### Fork conditionals (experimental, OFF by default)
 
@@ -195,9 +195,11 @@ frame. Watch for the thing that originally justified the cap: OpenAI
   best-effort and no longer throws when it can't hit the target.
 - **The scan path has its OWN cap (`SCAN_MAX_LONG_EDGE_PX = 2576`) and that is
   deliberate, not an oversight.** The binding constraint is Anthropic's
-  SERVER-SIDE VISION DOWNSCALE, not bytes: `claude-sonnet-4-6` is standard tier
-  and gets downscaled to a 1568px long edge; `claude-opus-4-7` (the hard-scan
-  route) is high-resolution tier at 2576px / 4784 visual tokens. 2576 serves the
+  SERVER-SIDE VISION DOWNSCALE, not bytes. Measured when the tiers were
+  `claude-sonnet-4-6` (standard, 1568px long edge) and `claude-opus-4-7`
+  (high-resolution, 2576px / 4784 visual tokens). **Both tiers are
+  `claude-opus-5` since 2026-08-27 and ITS downscale has not been re-checked**
+  — 2576 is retained as a safe ceiling, not a re-verified optimum. It serves the
   hard path at full fidelity and wastes nothing on the standard path — anything
   larger is bytes and latency for pixels the model never sees. Byte limits are
   not close: 10 MB per image base64 on the direct Claude API (**the 5 MB figure
@@ -240,7 +242,7 @@ Multi-vendor consensus, all in [scan_worker.py](apps/api/src/cleanshot_api/worke
 
 - **Gemini (Vertex)** — `gemini-2.5-flash`. Vision model with `response_mime_type="application/json"` + `response_schema=ScanResult`.
 - **OpenAI** — `gpt-5.4` via `client.responses.parse(..., text_format=ScanResult)`. SDK handles the strict-mode schema conversion internally. Don't hand-roll `text={"format": ...}` — Pydantic's default `.model_json_schema()` omits `additionalProperties: false` and OpenAI 400s.
-- **Anthropic** — `claude-sonnet-4-6` (std) / `claude-opus-4-7` (hard). **Tool-forced JSON pattern**: `tools=[{name, input_schema}]` + `tool_choice={"type":"tool", "name":...}`, with prompt in top-level `system=`. `output_config={"format": ...}` is NOT a valid Messages API param — it 400s. Result lives in the tool_use block's `.input` dict.
+- **Anthropic** — `claude-opus-5` (scan both tiers, variant judge, prompt optimizer; the std/hard split is a no-op at the model level since 2026-08-27). **Tool-forced JSON pattern**: `tools=[{name, input_schema}]` + `tool_choice={"type":"tool", "name":...}`, with prompt in top-level `system=`. `output_config={"format": ...}` is NOT a valid Messages API param — it 400s. Result lives in the tool_use block's `.input` dict.
 
 **Per-provider isolation** (commit `0747d14`, 2026-05-20). Fan-out uses `asyncio.gather(return_exceptions=True)` with each provider wrapped in its own try/except — **never `asyncio.TaskGroup`** for this kind of work, because TaskGroup cancels every sibling on the first exception. The original TaskGroup version meant a single OpenAI 429 cascaded into "Gemini: fail/0%/0ms, OpenAI + Anthropic stuck pending" because the in-flight Gemini and Anthropic scans were cancelled mid-call. With the gather pattern, partial results are persisted, fail-stubs are written for the providers that errored (so the UI shows "OpenAI — failed: <reason>" instead of "pending" forever), and consensus is computed over whatever subset did respond. The job only goes to `failed` status when EVERY provider errors.
 
@@ -555,7 +557,7 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
     **Original:** `gpt-5 + image_generation` is the slowest provider (~75s vs ~20s Gemini) AND it shares `/v1/responses` quota with scan (see item #3). The "Select all providers" checkbox we shipped in `f004606` makes the cost visible, but consider also un-checking OpenAI on initial mount if the operator hasn't manually selected it. Default-on for a 75s provider penalises every batch.
 12. **Considered + declined (do not re-litigate without new evidence):**
     - **Runway Gen-4** — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the per-image cost, slower API. Note in CLAUDE.md to prevent re-evaluation.
-13. **Judge spend is not logged to `usage_events`.** Needs `OperationEnum.judge` + an `ALTER TYPE` (lesson #12). There is also no rate limiter on the judge's Anthropic calls — it shares scan's `claude-sonnet-4-6` tier.
+13. **Judge spend is not logged to `usage_events`.** Needs `OperationEnum.judge` + an `ALTER TYPE` (lesson #12). There is also no rate limiter on the judge's Anthropic calls — it shares scan's `claude-opus-5` tier. **The prompt optimizer added 2026-08-27 is a second unlogged, unrate-limited Anthropic call on exactly the same footing**, and would need `OperationEnum.optimize` + its own `ALTER TYPE` to log.
 14. **Fork conditionals are experimental and off by default.** Whether they help is unmeasured. If they prove out, the next step is automatic detection via a pre-pass on the source photo (see the Enhance tab section for why the existing scan can't do it).
 15. **The disclaimer watermark's final form is undecided.** It is an optional checkbox defaulting ON, pending a decision on how the watermark gets applied. Expect it to move.
 16. **Restore the dead-but-wired per-variant tools (or delete them).** `VariantThumb` in `SourceCompareCard.tsx` renders only **↻ Retry** and **✎ Tweak (Gemini)**; **Ideogram Edit, Flux Erase and Ideogram Inpaint** have intact backends, schemas, workers, Cloud Tasks routing, usage-event attribution and mounted dialogs, and no button. `EnhancePanel` still passes `onIdeogramEdit` / `onErase` / `onIdeogramInpaint`; `VariantThumb` has bare comment placeholders where the buttons were. The cost is not cosmetic: **Ideogram Edit is the tool built for decal typography and model-number restoration**, so that work currently routes through Gemini Tweak, which is measurably weaker at embedded text — and a legibly-wrong model number is a straight FAIL by the operator's own bar. Restoring one is a few lines. Decide per tool: restore Ideogram Edit (recommended), and either restore or genuinely delete the two mask-based ones.

@@ -203,8 +203,10 @@ The Enhance tab offers **4 generation providers** (operator picks any subset per
 | Cleanup / Regen | `gemini-3.1-flash-image-preview` | Google AI Studio | Same model as enhance |
 | Scan — primary | `gemini-2.5-flash` | Vertex AI (ADC) | Always active |
 | Scan — optional | `gpt-5.4` | OpenAI Responses API | Enable: `SCAN_PROVIDER_OPENAI=true` |
-| Scan — optional | `claude-sonnet-4-6` | Anthropic Messages API | Enable: `SCAN_PROVIDER_ANTHROPIC=true` |
-| Scan — hard cases | `claude-opus-4-7` | Anthropic | Auto-routed when confidence < 0.6 |
+| Scan — optional | `claude-opus-5` | Anthropic Messages API | Enable: `SCAN_PROVIDER_ANTHROPIC=true` |
+| Scan — hard cases | `claude-opus-5` | Anthropic | Same model since 2026-08-27; the std/hard split is a no-op at the model level |
+| Variant judge | `claude-opus-5` | Anthropic | Auto-pick "best of N". **Uncalibrated** — the ~70% agreement figure was measured on the old model |
+| Prompt optimizer | `claude-opus-5` | Anthropic | Condenses a long enhance prompt; gated by the same `SCAN_PROVIDER_ANTHROPIC` flag |
 
 **Why two Gemini clients?** Scan uses the Vertex backend (`app.state.genai` — IAM auth, can read GCS URIs directly). Enhance + Cleanup use the AI Studio backend (`app.state.genai_aistudio` — static API key, image input must be inlined via `Part.from_bytes`). Preview image-gen models like `gemini-3.1-flash-image-preview` ship to AI Studio first; the dual-client setup is the workaround.
 
@@ -534,7 +536,7 @@ gcloud run services update-traffic cleanshot-api \
    - **Loading a template gives you a copy** — editing the prompt box never writes back to the shared row.
    - **▲ upvote** what works: one vote per person, reversible. *Top rated* counts endorsements; *Most used* counts loads. They are different signals.
    - **Only an admin can delete** a template, since deleting removes it for everybody.
-> **Writing prompts:** see [PROMPT-HYSTER.md](PROMPT-HYSTER.md) for a worked, CleanShot-tuned example and — more importantly — the three rules governing how a typed prompt and the toggles combine. They are not intuitive: a custom prompt *skips* the built-in prompt blocks while toggle fragments still append **after** it, and the differential scanner only treats your **first 1,500 characters** as intended edits. A long prompt silently un-whitelists its own back half. [TEMPLATES-HOWTO.md](TEMPLATES-HOWTO.md) covers the shared template library.
+> **Writing prompts:** see [PROMPT-HYSTER.md](PROMPT-HYSTER.md) for a worked, CleanShot-tuned example and — more importantly — the three rules governing how a typed prompt and the toggles combine. They are not intuitive: a custom prompt *skips* the built-in prompt blocks while toggle fragments still append **after** it and therefore outrank it. (The old 1,500-character scanner cap is gone as of 2026-08-27 — the whole prompt is passed now, so length is a quality question, not a coverage one — and decal preservation became a guardrail on the same date.) [TEMPLATES-HOWTO.md](TEMPLATES-HOWTO.md) covers the shared template library.
 
 4. Optionally set the five visible toggles. They *append emphasis* to your prompt; they don't replace it — with one exception:
    - **Remove Background Entirely** is not a prompt at all. It runs a matting pass over the finished image and cuts the unit out with a real alpha channel, for the new-equipment site that shows units on no backdrop. Those images **export as transparent PNG with no disclaimer watermark**, since they go into a product-page composite. It overrides Perfect Showroom Floor.
@@ -685,8 +687,7 @@ CleanShot is sized for a small in-house team — Discount Forklift's listing ope
 | `flux-erase-v1` (per-variant erase tool) | per use | $0.040 |
 | `gemini-2.5-flash` (scan, primary) | per token | $0.075 in / $0.30 out per M |
 | `gpt-5.4` (scan, optional) | per token | $5.00 in / $15.00 out per M |
-| `claude-sonnet-4-6` (scan, optional) | per token | $3.00 in / $15.00 out per M |
-| `claude-opus-4-7` (scan, hard cases) | per token | $15.00 in / $75.00 out per M |
+| `claude-opus-5` (scan, judge, prompt optimizer) | per token | $5.00 in / $25.00 out per M |
 
 **Fixed monthly infrastructure floor** (incurred regardless of usage — this is the bigger lever at small user counts):
 

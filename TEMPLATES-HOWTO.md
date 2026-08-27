@@ -40,6 +40,35 @@ To make your own version:
 
 The original stays exactly as it was.
 
+## Shorten a long one
+
+Some prompts worth saving run to several pages. Nothing gets cut off — long
+prompts work — but shorter ones usually produce a better photo.
+
+Two reasons. First, much of the length is already free: the safety guardrails
+(the real make and model, every decal exactly as it is, no added beacons or
+mirrors, no invented damage, never a white studio backdrop) are appended to
+*every* job. Restating them makes a prompt longer, not stronger. Second, the
+automatic quality check is handed your prompt as its list of expected changes —
+the more sprawling that list, the more it lets through.
+
+1. With the long prompt in the box, click **Optimize prompt**.
+2. Read the result. It shows the rewrite, what it **Removed**, and what it
+   **Kept**.
+3. Choose **Save as a new template** or **Use it in the box**. Nothing changes
+   until you do.
+
+**Read the Kept list.** Those are the five things CleanShot does *not* add for
+you: tyre tread-vs-sidewall, camera angle and lighting and background, the
+cheap-respray honesty line, what the paint doesn't cover, and paint-job quality.
+They only work because they're in your words. If one is missing, don't save the
+short version — every photo made from it would quietly get worse and still look
+fine on screen.
+
+**Save as a new template** leaves the long prompt in the box and files the short
+one under its own title. You keep both. Title it so — "Sitdown Hyster, heavy
+rust (short)" — because titles still can't be renamed.
+
 ## Rate one
 
 Click **▲** on any template. One vote per person, and clicking again takes it

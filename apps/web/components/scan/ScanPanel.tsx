@@ -23,7 +23,7 @@
 //  OpenAI:    client.responses.parse(model='gpt-5.4', input=[image, system_prompt],
 //             text_format=ScanResult)
 //
-//  Anthropic: client.messages.create(model='claude-sonnet-4-6',
+//  Anthropic: client.messages.create(model='claude-opus-5',
 //             system=SCAN_SYSTEM_PROMPT, tools=[{name, input_schema}],
 //             tool_choice={'type':'tool', 'name':...}, messages=[image only])
 //             # result lands in content[0].input as a dict
@@ -809,7 +809,7 @@ export function ScanPanel({
               {" "}· OpenAI{" "}
               <code className="font-mono">gpt-5.4</code>
               {" "}· Anthropic{" "}
-              <code className="font-mono">claude-sonnet-4-6</code>
+              <code className="font-mono">claude-opus-5</code>
             </p>
           </div>
 

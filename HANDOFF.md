@@ -96,9 +96,13 @@ Documented in full in CLAUDE.md under the Enhance section. Three mechanics that
 compound: a custom prompt **skips** the built-in prompt blocks (`if
 spine_override is None:`) while toggle `extras` have no such guard; toggle
 fragments land **after** the operator's text under "apply ON TOP of the spine
-above", so a toggle outranks the prompt on any shared subject; and the
-differential scanner only receives the operator's **first 1,500 characters** as
-intended edits.
+above", so a toggle outranks the prompt on any shared subject.
+
+A third mechanic used to compound this — the differential scanner received
+only the operator's first 1,500 characters as intended edits — but that cap
+was **removed 2026-08-27** and the full prompt is now passed. Decal preservation,
+the other standing example of the prompt-first trap, became a GUARDRAILS bullet
+on the same date and is now appended on every path.
 
 Together they produce a defect an operator can create by following the UI
 correctly: a careful non-marking-tyre exception in the prompt, plus a ticked
@@ -211,7 +215,8 @@ Highest-value checks, in order:
 
 ## Pending CODE work (parked, prioritised)
 
-1. **Judge follow-ups:** log the judge's Claude spend to `usage_events` (needs `OperationEnum.judge` + `ALTER TYPE`, lesson #12); add an `AsyncRateLimiter` on the judge's Anthropic calls (shares scan's `claude-sonnet-4-6` tier).
+1. **Judge follow-ups:** log the judge's Claude spend to `usage_events` (needs `OperationEnum.judge` + `ALTER TYPE`, lesson #12); add an `AsyncRateLimiter` on the judge's Anthropic calls (shares scan's `claude-opus-5` tier; the prompt optimizer added 2026-08-27 is a
+second unlogged, unlimited Anthropic call on the same footing).
 2. **Prompt-first Phase 2 — iterative refinement.** "Change it more without starting over." The per-variant **Tweak** tool already does text-guided refinement — surface/rename it rather than building new.
 3. **Model-routing for hard equipment types.** Prompt wording is a DEAD lever for warehouse-electric gear (reach / order-picker / walkie / pallet) — Gemini drifts regardless. The real levers are best-of-N (shipped, extend it) or routing those types elsewhere.
 4. **Per-user access control — Phase 2 (admin audit logging).** Still unbuilt. NOTE: `access-control.ts` is currently **defanged** (`USER_RESTRICTIONS = {}`); rebuild it if per-user gating is wanted again.

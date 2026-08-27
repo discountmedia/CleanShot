@@ -374,12 +374,13 @@ img { max-width: 100%; height: auto; border-radius: 6px; }
 <li><a href="#deploying-to-production">Deploying to Production</a></li>
 <li><a href="#the-workflow">The Workflow</a><ul>
 <li><a href="#enhance-tab">Enhance tab</a></li>
+<li><a href="#fork-conditionals-experimental-off-by-default">Fork conditionals (experimental, off by default)</a></li>
 <li><a href="#erase-tool-per-variant">Erase tool (per-variant)</a></li>
-<li><a href="#scan-tab">Scan tab</a></li>
-<li><a href="#resize-tab">Resize tab</a></li>
+<li><a href="#scan-tab-standalone">Scan tab (standalone)</a></li>
+<li><a href="#export">Export</a></li>
 </ul>
 </li>
-<li><a href="#image-history-30-day-storage">Image History &amp; 30-Day Storage</a></li>
+<li><a href="#image-history-storage">Image History &amp; Storage</a></li>
 <li><a href="#adding-authorized-users">Adding Authorized Users</a></li>
 <li><a href="#troubleshooting">Troubleshooting</a></li>
 <li><a href="#cost-reference-510-internal-users">Cost Reference (5–10 internal users)</a><ul>
@@ -402,15 +403,18 @@ img { max-width: 100%; height: auto; border-radius: 6px; }
         This is the standalone HTML snapshot of <code>README.md</code> from the CleanShot repository. Generated for sharing; the canonical source lives in the private GitHub repo.
       </div>
       <h1 id="cleanshot">CleanShot</h1>
-<p>AI-powered forklift image processing platform. Upload raw forklift photos, enhance them with Gemini, scan for quality issues across three AI providers, resize to marketplace specs, and export — all in a single workflow.</p>
+<p>AI-powered forklift image processing platform. Upload raw forklift photos, enhance them with a prompt you write, see an automatic quality scan beside each result, adjust and retry per image, then export to marketplace specs — all on one tab.</p>
 <blockquote>
-<p><strong>Current-state note (updated 2026-07-13).</strong> Some sections below have drifted from the live app. The corrections that matter:
-- <strong>Enhance providers: 3 live</strong> — Gemini, OpenAI (gpt-5 + image tool), Grok. Kontext / Ideogram / Reve were retired as <em>generators</em> (Kontext &amp; Ideogram survive only as per-variant edit tools; Flux is the Erase tool). References to &ldquo;4 providers&rdquo; below are stale.
-- <strong>Tabs: <code>Enhance → Scan → Your Photo Library</code></strong> — there is no standalone Resize or Modify tab anymore. Modify is embedded in Enhance; resize/export is the embedded <code>ExportControls</code>.
-- <strong>Scan is now differential (before/after):</strong> it compares the enhanced output against the original and flags <em>unintended</em> changes (shrunk forks, added parts, altered text) — not just isolated defects.
-- <strong>10 equipment types</strong> — added Turret Truck (VNA) + Articulated (Bendi) alongside forklift / rough-terrain / reach truck / order picker / walkie stacker / pallet jack / telehandler / scissor lift.
-- <strong>Photo-library storage is indefinite</strong>, not 30 days (GCS lifecycle rule removed 2026-05-26).
-- <strong>Auto-advance removed;</strong> the per-provider prompt dropdown removed (2026-07-13) — one built-in prompt now.
+<p><strong>Current-state note (updated 2026-08-21).</strong> Some of the body below still describes older behaviour. The corrections that matter:
+- <strong>Enhance providers: 2 live</strong> — Gemini and OpenAI (gpt-5 + image tool). <strong>Grok is dormant</strong> (kept as dead code, gone from the picker). Kontext / Ideogram / Reve were retired as <em>generators</em> (Kontext &amp; Ideogram survive only as per-variant edit tools; Flux is the Erase tool). Any &ldquo;4 providers&rdquo; / &ldquo;6 providers&rdquo; text below is stale.
+- <strong>Enhance is prompt-first:</strong> the operator writes their own prompt (required), with an equipment-aware &ldquo;Insert recommended prompt&rdquo; starter and a <strong>shared template library</strong> the whole team contributes to and picks from. Toggles <em>augment</em> that prompt; they no longer build it.
+- <strong>Only four toggles are visible</strong> — rental-fleet branding removal, floor cleanup, remove people, shine tires. The rest are hidden, not deleted (<code>VISIBLE_TOGGLES</code> in <code>apps/web/lib/types.ts</code>).
+- <strong>Scan is inline on Enhance.</strong> Every generated image is scanned automatically and the verdict renders beside that image. Nothing navigates to the Scan tab.
+- <strong>Tabs: <code>Enhance → Scan → Your Photo Library</code>.</strong> Scan is now a <strong>standalone</strong> tool with its own uploader. There is no Resize or Modify tab, and no bulk adjustment panel.
+- <strong>Export is the only save action.</strong> It writes the finished files and their pre-enhance originals into the user&rsquo;s Photo Library. The Save Project button is gone.
+- <strong>Enhanced images are standardised at 2800x2000 (7:5)</strong> at the end of enhancement. Export writes that file out unchanged.
+- <strong>Upload resolution is no longer capped.</strong> File size is still compressed; the pixels are not downscaled.
+- <strong>Photo-library storage is indefinite</strong>, not 30 or 60 days (GCS lifecycle rule removed 2026-05-26).
 - Live bucket names are <code>cleanshot-originals-prod</code> / <code>cleanshot-derivatives-prod</code> (the <code>-493512</code> names below are illustrative).</p>
 <p><strong><code>CLAUDE.md</code> is the canonical, continuously-updated project briefing — trust it over this README where they disagree.</strong></p>
 </blockquote>
@@ -418,13 +422,19 @@ img { max-width: 100%; height: auto; border-radius: 6px; }
 
 <hr>
 <h2 id="what-it-does">What It Does</h2>
-<p>CleanShot takes raw forklift photos and runs them through a four-step pipeline:</p>
+<p>The whole job happens on the <strong>Enhance</strong> tab:</p>
 <ol>
-<li><strong>Enhance</strong> — Operator picks any subset of <strong>4 image-edit providers</strong> (Google Gemini Nano Banana, OpenAI gpt-5 + image_generation tool, xAI Grok Imagine, BFL Flux Kontext Max via RunComfy) and gets side-by-side variants per source image. A toggle row drives the curated treatment (paint refresh, rust removal, decal restoration, rental-branding strip, etc.). A per-variant <strong>Erase tool</strong> opens a mask-drawing canvas for surgical removal of stickers, scratches, or background clutter via BFL&rsquo;s <code>flux-tools/erase-v1</code>.</li>
-<li><strong>Scan</strong> — Up to three AI providers (Gemini Flash, GPT-5.4, Claude Sonnet/Opus) each give a pass/fail verdict with confidence scores and an anomaly list. Per-provider failures are isolated — one vendor&rsquo;s 429 no longer cancels the others. Failed images can be regenerated in-place without starting over.</li>
-<li><strong>Resize</strong> — Auto-crops to 1024×731 (7:5), zoom-to-fill, JPEG compressed to ≤99 KB. Ready for auction platforms and dealer inventory systems.</li>
-<li><strong>Export</strong> — Individual downloads, ZIP batch, or PRO preset exports. Approved sets are saved to each user&rsquo;s GCS library for 60 days.</li>
+<li><strong>Write a prompt.</strong> The operator&rsquo;s own words drive the result. &ldquo;Insert recommended prompt&rdquo; drops an equipment-aware starter to edit, and any prompt can be <strong>saved to your profile under a title</strong> and re-inserted later in one click. Four toggles (rental-branding removal, floor cleanup, remove people, shine tires) append emphasis on top.</li>
+<li><strong>Generate.</strong> Pick Gemini, OpenAI, or both; each runs as an independent variant per source image. A multi-provider batch is auto-judged by a Claude vision call and the winner pre-selected — manual override is one click.</li>
+<li><strong>Read the scan inline.</strong> Every generated image is scanned automatically against its original, and the verdict plus anomaly list renders on that image&rsquo;s card. Results arrive per image; one slow or failed scan never blocks the others.</li>
+<li><strong>Fix per image.</strong> Each result carries its own <strong>Retry</strong> (re-roll that one variant with the current prompt) and its own <strong>contrast / saturation</strong> adjustment, applied to that image only and persisted through export.</li>
+<li><strong>Export.</strong> <code>7x5 EXPORT</code> writes the finished 2800x2000 files — plus the pre-enhance originals — straight into your Photo Library. That is the save; there is no separate Save Project step. Only selected images are persisted.</li>
 </ol>
+<p>Two side tools:</p>
+<ul>
+<li><strong>Scan tab</strong> — the same three-provider consensus scan (Gemini Flash, GPT-5.4, Claude Sonnet/Opus) as a <strong>standalone</strong> tool with its own uploader, for images that didn&rsquo;t come from Enhance. Note that a standalone upload has no &ldquo;before&rdquo; to compare against, so it gets the isolated scan rather than the differential one.</li>
+<li><strong>Per-variant Erase / Tweak</strong> — a mask-drawing canvas (BFL <code>flux-tools/erase-v1</code>) and a text-instruction edit (Gemini) on any completed variant.</li>
+</ul>
 <hr>
 <h2 id="architecture-overview">Architecture Overview</h2>
 <div class="codehilite"><pre><span></span><code>Browser
@@ -692,15 +702,27 @@ Cloud Infrastructure (GCP — cleanshot-493512, us-central1)
 </tr>
 <tr>
 <td>Scan — optional</td>
-<td><code>claude-sonnet-4-6</code></td>
+<td><code>claude-opus-5</code></td>
 <td>Anthropic Messages API</td>
 <td>Enable: <code>SCAN_PROVIDER_ANTHROPIC=true</code></td>
 </tr>
 <tr>
 <td>Scan — hard cases</td>
-<td><code>claude-opus-4-7</code></td>
+<td><code>claude-opus-5</code></td>
 <td>Anthropic</td>
-<td>Auto-routed when confidence &lt; 0.6</td>
+<td>Same model since 2026-08-27; the std/hard split is a no-op at the model level</td>
+</tr>
+<tr>
+<td>Variant judge</td>
+<td><code>claude-opus-5</code></td>
+<td>Anthropic</td>
+<td>Auto-pick &ldquo;best of N&rdquo;. <strong>Uncalibrated</strong> — the ~70% agreement figure was measured on the old model</td>
+</tr>
+<tr>
+<td>Prompt optimizer</td>
+<td><code>claude-opus-5</code></td>
+<td>Anthropic</td>
+<td>Condenses a long enhance prompt; gated by the same <code>SCAN_PROVIDER_ANTHROPIC</code> flag</td>
 </tr>
 </tbody>
 </table>
@@ -989,11 +1011,15 @@ ALLOWED_EMAILS     contractor@outlook.com,freelancer@gmail.com
 <p><strong>Core schema</strong> (<code>apps/api/src/cleanshot_api/db/migrate.py</code>) — runs automatically when <code>ENVIRONMENT=local</code>:</p>
 <ul>
 <li><code>sessions</code>, <code>projects</code>, <code>assets</code>, <code>jobs</code>, <code>scan_results</code>, <code>consensus_results</code></li>
+<li><code>user_profiles</code> — per-user editable details + avatar</li>
+<li><code>saved_prompts</code> — <strong>shared</strong> reusable enhance prompts, visible to every signed-in user. <code>user_email</code> is the CREATOR, not an access scope. Unique on <code>lower(title)</code> alone — titles are one company-wide namespace and a duplicate is refused by the database rather than by a pre-check. Title and body are <strong>immutable after insert</strong>; <code>use_count</code> is the only column that changes</li>
+<li><code>saved_prompt_votes</code> — one upvote per user per template, <code>PRIMARY KEY (prompt_id, user_email)</code>. The composite key is what enforces one-vote-per-user; deleting a template cascades its votes away</li>
 </ul>
+<p>Prompt bodies are capped at 32,000 characters. The cap exists only because <code>GET /prompts</code> returns every template&rsquo;s full body — the client sorts and inserts locally — so the list payload scales with library size. It is not a model or database limit; <code>custom_prompt</code> on the enhance path has no cap at all.</p>
 <p><strong>Auth + approval schema</strong> (<code>apps/api/src/cleanshot_api/db/migrate_auth.py</code>):</p>
 <ul>
 <li><code>authorization</code> — domain/email allowlist for runtime additions</li>
-<li><code>approval_sets</code> — one row per &ldquo;Approve All&rdquo; click, with 30-day expiry</li>
+<li><code>approval_sets</code> — one row per exported set. <code>expires_at</code> is nullable and NULL means stored indefinitely; only legacy rows carry an expiry</li>
 <li><code>approval_set_assets</code> — images in each approval set</li>
 </ul>
 <p><strong>Better Auth tables</strong> — run once via CLI:</p>
@@ -1095,33 +1121,54 @@ gcloud<span class="w"> </span>run<span class="w"> </span>services<span class="w"
 <h2 id="the-workflow">The Workflow</h2>
 <h3 id="enhance-tab">Enhance tab</h3>
 <ol>
-<li>Drop up to 10 images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.</li>
-<li>Pick the equipment type (forklift / scissor lift / telehandler) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest also pre-fills the Resize tab&rsquo;s Save Project form.</li>
-<li><strong>Pick one or more AI providers</strong> from the provider chips: Gemini, OpenAI (gpt-5), Grok, Kontext. Each selected provider runs as an independent variant per source image.</li>
-<li>Open the <strong>Advanced</strong> section to toggle curated treatment emphasis (paint refresh, rust removal, decal restoration, fork colours, lighting, rental-branding strip), or open the <strong>Custom prompt</strong> field for full prompt override (bypasses all toggles).</li>
-<li>Click <strong>Enhance</strong> — images upload to GCS, enhance jobs enqueue per provider, the SourceCompareCard grid renders with one card per source image and a column for each variant.</li>
-<li><strong>Pick a winner</strong> from each card&rsquo;s variants and either let auto-advance ship them to Scan or hit <strong>Send N to Scan →</strong> manually.</li>
-<li><strong>Per-variant tools</strong> sit on each completed thumbnail: ↻ to regenerate with a different roll of the same provider, or the eraser icon to open the <strong>Erase dialog</strong> for mask-based surgical removal of stickers, scratches, or background objects.</li>
+<li>Drop images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.</li>
+<li>Pick the equipment type (10 types, from forklift to turret truck) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest pre-fills the export form.</li>
+<li>
+<p><strong>Write the prompt</strong> — required. The starter asks for a respray <strong>in the same colour the unit already wears</strong>, never an &ldquo;original factory colour&rdquo; (that phrasing makes the model correct a faded or repainted unit toward a remembered brand colour). Use <strong>Insert recommended prompt</strong> for an equipment-aware starter, or pick a <strong>shared template</strong> from the picker — the team&rsquo;s library, sortable by Newest, Top rated, or Most used, each entry showing who wrote it and when. <code>SAVE PROMPT TO SHARED TEMPLATES</code> publishes the current text under a title you choose, visible to everyone immediately.
+   - <strong>Titles are global and permanent.</strong> A collision means the title is taken for good; there is no rename and no overwrite, because a template&rsquo;s upvotes and use count are ratings of a <em>specific</em> text. To customise one: load it, edit the box, save under a new title. The original is untouched.
+   - <strong>Loading a template gives you a copy</strong> — editing the prompt box never writes back to the shared row.
+   - <strong>▲ upvote</strong> what works: one vote per person, reversible. <em>Top rated</em> counts endorsements; <em>Most used</em> counts loads. They are different signals.
+   - <strong>Only an admin can delete</strong> a template, since deleting removes it for everybody.</p>
+<blockquote>
+<p><strong>Writing prompts:</strong> see <a href="PROMPT-HYSTER.md">PROMPT-HYSTER.md</a> for a worked, CleanShot-tuned example and — more importantly — the three rules governing how a typed prompt and the toggles combine. They are not intuitive: a custom prompt <em>skips</em> the built-in prompt blocks while toggle fragments still append <strong>after</strong> it and therefore outrank it. (The old 1,500-character scanner cap is gone as of 2026-08-27 — the whole prompt is passed now, so length is a quality question, not a coverage one — and decal preservation became a guardrail on the same date.) <a href="TEMPLATES-HOWTO.md">TEMPLATES-HOWTO.md</a> covers the shared template library.</p>
+</blockquote>
+</li>
+<li>
+<p>Optionally set the five visible toggles. They <em>append emphasis</em> to your prompt; they don&rsquo;t replace it — with one exception:
+   - <strong>Remove Background Entirely</strong> is not a prompt at all. It runs a matting pass over the finished image and cuts the unit out with a real alpha channel, for the new-equipment site that shows units on no backdrop. Those images <strong>export as transparent PNG with no disclaimer watermark</strong>, since they go into a product-page composite. It overrides Perfect Showroom Floor.</p>
+</li>
+<li><strong>Pick one or more providers</strong> (Gemini, OpenAI). Each runs as an independent variant per source image.</li>
+<li>Click <strong>Enhance</strong>. Images upload to GCS, jobs enqueue per provider, and one <code>SourceCompareCard</code> renders per source image with its variants side by side. Re-running an unchanged batch is allowed — generation is non-deterministic and a second roll is often the point.</li>
+<li><strong>Each completed variant carries its own controls</strong>: <strong>Retry</strong> (re-roll this one image with the current prompt and toggles, replacing it in place), <strong>Tweak</strong> (text-instruction edit via Gemini), and a compact <strong>contrast / saturation</strong> section whose Apply re-renders that image and carries through to export.</li>
+<li><strong>The scan appears inline</strong> under each variant as it lands — a consensus verdict with the per-provider breakdown and anomaly list. Nothing navigates away.</li>
+<li><strong>Export.</strong> Fill Make + Model, then <code>7x5 EXPORT</code>.</li>
 </ol>
+<h3 id="fork-conditionals-experimental-off-by-default">Fork conditionals (experimental, off by default)</h3>
+<p>Conditional fork instructions inside the prompt don&rsquo;t hold when the fork isn&rsquo;t fully in frame: with the upright section out of shot the model paints part of the carriage or overhead guard into a shank, and with the tips cropped it shortens the forks to bring tips into view so it has something to paint yellow.</p>
+<p>The <strong>Fork conditionals</strong> switch sits directly above the Enhance button and is <strong>off by default</strong>, session-only, and never enabled as a side effect of anything else. Turning it on reveals two per-image controls — <em>vertical fork section not visible</em> and <em>fork tips not visible</em>. These <strong>remove</strong> the offending prompt fragment (and, for tips, substitute a red-only instruction) rather than piling on more instructions, because emphatic &ldquo;do not draw X&rdquo; phrasing backfires on Gemini.</p>
+<p>Turning the switch off restores the previous prompt exactly, with no residual effect, and takes effect on the next run — images already generated are untouched. If you&rsquo;ve rewritten the prompt yourself there&rsquo;s no fragment of ours left to remove, so the constraint is appended as an explicit instruction instead and the UI says so.</p>
 <h3 id="erase-tool-per-variant">Erase tool (per-variant)</h3>
-<p>Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), optionally type a one-line hint for what should fill the cleaned area, and submit. Routes through BFL&rsquo;s <code>flux-tools/erase-v1</code>. On accept, the cleaned image replaces the variant in-place — the winner-pick + sent-to-Scan state stays coherent.</p>
-<h3 id="scan-tab">Scan tab</h3>
+<p>Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), optionally type a one-line hint for what should fill the cleaned area, and submit. Routes through BFL&rsquo;s <code>flux-tools/erase-v1</code>. On accept, the cleaned image replaces the variant in-place.</p>
+<h3 id="scan-tab-standalone">Scan tab (standalone)</h3>
+<p>Decoupled from the Enhance pipeline. Nothing on Enhance sends images here.</p>
 <ol>
-<li>Images arrive automatically after enhancement completes (or operator can use the Skip-Scan→Resize shortcut to bypass).</li>
-<li>Each image shows results from up to three AI providers with verdict chips, confidence bars, and anomaly lists. Per-provider failures are isolated and surfaced as &ldquo;provider — failed&rdquo; instead of hanging on &ldquo;pending&rdquo; forever.</li>
-<li>Failed images show a <strong>Regenerate</strong> button with an auto-generated prompt built from the detected anomalies — edit the prompt or use it as-is, pick which provider runs the regen.</li>
-<li><strong>Bulk-approve undecided</strong> advances every image without an explicit reject; or hit Save Project from the Resize tab once you&rsquo;re done curating.</li>
+<li>Upload images with the tab&rsquo;s own uploader.</li>
+<li>Each image shows results from up to three AI providers with verdict chips, per-provider progress bars in that provider&rsquo;s own colour, and anomaly lists. Per-provider failures are isolated and surfaced as &ldquo;provider — failed&rdquo; instead of hanging on &ldquo;pending&rdquo;.</li>
+<li>Failed images show a <strong>Regenerate</strong> button with an auto-generated prompt built from the detected anomalies — edit it or use it as-is, and pick which provider runs the regen.</li>
 </ol>
-<h3 id="resize-tab">Resize tab</h3>
+<p>Because a standalone upload has no pre-enhance original to compare against, it gets the <strong>isolated</strong> scan. The <strong>differential</strong> (before/after) scan still runs — inline on the Enhance tab, where the original is known.</p>
+<h3 id="export">Export</h3>
 <ol>
-<li>Images are automatically cropped to 1024×731 (7:5 aspect ratio)</li>
-<li>Zoom-to-fill — no letterboxing, forklift centred and maximised in frame</li>
-<li>Each image compressed to ≤99 KB JPEG</li>
-<li>Download individually or as a ZIP</li>
+<li><strong>2800x2000, exactly.</strong> Every enhanced image is brought to that size once, at the end of enhancement; export writes it out without resizing, resampling, or re-cropping. Single image, batch, and ZIP all produce the same dimensions, and the copies saved to your project are those same files.</li>
+<li><strong>Crop to fill, never pad or stretch.</strong> A source that isn&rsquo;t 7:5 is scaled to cover 2800x2000 and the overflow is cropped from the centre. Stretching would distort the machine and make the photo inaccurate, so it never happens; a portrait source loses roughly 30% of its height.</li>
+<li>Exported images are <strong>upscaled</strong>, so they must go through the image optimizer in PRO after upload — the button says so.</li>
+<li>An optional <strong>AI disclaimer watermark</strong> checkbox, <strong>on by default</strong>. This was briefly mandatory and is back to a checkbox pending a final decision on how the watermark gets applied; the rendering code is unchanged either way.</li>
+<li>Clicking export saves the project, writes the finished files and their originals to your Photo Library, and gives you per-image downloads plus a ZIP.</li>
 </ol>
 <hr>
-<h2 id="image-history-30-day-storage">Image History &amp; 30-Day Storage</h2>
-<p>Every time a user clicks <strong>Approve All</strong>, the approved images are copied to:</p>
+<h2 id="image-history-storage">Image History &amp; Storage</h2>
+<p>Exporting is what writes to the library. The stored copy <strong>is the exported file</strong> — cropped, upscaled, and watermarked if the disclaimer box was ticked — alongside the pre-enhance originals, one copy of each, in one place. Unselected variants are never persisted. Re-exporting the same session updates that set rather than stacking a duplicate.</p>
+<p>Files land under:</p>
 <div class="codehilite"><pre><span></span><code>gs://cleanshot-derivatives-493512/approved/{email}/{YYYY-MM-DD}_{make}_{model}/{filename}
 </code></pre></div>
 
@@ -1227,14 +1274,9 @@ approved/sarah_partner_org/2026-05-15_hyster_h50ft/unit_front.jpg
 <td>$5.00 in / $15.00 out per M</td>
 </tr>
 <tr>
-<td><code>claude-sonnet-4-6</code> (scan, optional)</td>
+<td><code>claude-opus-5</code> (scan, judge, prompt optimizer)</td>
 <td>per token</td>
-<td>$3.00 in / $15.00 out per M</td>
-</tr>
-<tr>
-<td><code>claude-opus-4-7</code> (scan, hard cases)</td>
-<td>per token</td>
-<td>$15.00 in / $75.00 out per M</td>
+<td>$5.00 in / $25.00 out per M</td>
 </tr>
 </tbody>
 </table>
