@@ -1,28 +1,32 @@
 "use client";
 
 /**
- * Optimize prompt — condense a long template down to what the pipeline can
- * actually see, and show the operator exactly what changed before anything is
- * written anywhere.
+ * Optimize prompt — condense a long template to what actually earns its place,
+ * and show the operator exactly what changed before anything is written.
  *
  * WHY IT EXISTS
  * -------------
- * Enhance passes the operator's prompt into the differential scanner's
- * "deliberately requested" whitelist, sliced at the first 1,500 characters
- * (SCANNER_INTENT_WHITELIST_CHARS on the API side). A 9,700-character template
- * is ~84% invisible to that whitelist, so edits the operator explicitly asked
- * for come back reported as defects. Meanwhile the safety guardrails are
- * appended to every prompt automatically, so a long prompt is usually spending
- * its budget restating text it gets for free.
+ * NOT because anything is truncated. Nothing is: the full prompt reaches the
+ * image model, and since 2026-08-27 the full prompt also reaches the quality
+ * checker's whitelist of intended edits. This is an optimisation, not a
+ * workaround. A tighter prompt wins because the GUARDRAILS block is appended
+ * to every job regardless, because image models respond better to focused
+ * scene prose than to long instructional documents, and because the checker
+ * treats the whole prompt as "expected" — the more sprawling it is, the less
+ * the check can catch.
+ *
+ * Keep the copy in this file ADVISORY. An earlier version told operators only
+ * the first 1,500 characters were read, which overstated a real but narrower
+ * effect and read as though prompts were being cut off. They are not.
  *
  * WHY IT NEVER WRITES ON ITS OWN
  * ------------------------------
- * Six blocks of the built-in prompt are NOT appended when the operator supplies
- * their own text (decal preservation is the one that looks redundant and is
- * not). If the optimizer drops one, every future image made from that template
- * quietly degrades — and the result still looks clean. So the diff is the
- * product here, not the button: `removed` and `kept` are rendered in full, and
- * nothing reaches the prompt box or the shared library without a second click.
+ * Five blocks of the built-in prompt are NOT appended when the operator
+ * supplies their own text. If the optimizer drops one, every future image made
+ * from that template quietly degrades — and the result still looks clean. So
+ * the diff is the product here, not the button: `removed` and `kept` are
+ * rendered in full, and nothing reaches the prompt box or the shared library
+ * without a second click.
  *
  * This is also why "Save as a new template" saves the SHORT text while leaving
  * the long prompt sitting in the box. Templates are immutable and permanent —
@@ -133,9 +137,10 @@ export function PromptOptimizer({
   const chars = currentPrompt.length;
   const hasPrompt = currentPrompt.trim().length > 0;
 
-  // The threshold the button's own copy is about. Matches the API's
-  // SCANNER_INTENT_WHITELIST_CHARS; the response echoes the authoritative
-  // value back as `targetChars`, which is what the result panel shows.
+  // A rule of thumb, NOT a limit. Nothing truncates a prompt — not the image
+  // model, not the quality checker, not the save path. Matches
+  // PROMPT_TARGET_CHARS on the API, which echoes the authoritative value back
+  // as `targetChars`. Keep the copy below advisory to match.
   const TARGET = 1500;
   const isLong = chars > TARGET;
 
@@ -173,7 +178,7 @@ export function PromptOptimizer({
           disabled={!hasPrompt || isOptimizing}
           title={
             hasPrompt
-              ? "Rewrite this prompt shorter, keeping everything the pipeline doesn't add for you. Shows you what it cut before anything changes."
+              ? "Rewrite this prompt tighter, keeping everything the pipeline doesn't add for you. Shows you what it cut before anything changes. Nothing is truncated either way — this is about a better result, not a length limit."
               : "Write a prompt first — there's nothing to optimize yet"
           }
           style={
@@ -214,13 +219,12 @@ export function PromptOptimizer({
             characters.{" "}
             {isLong ? (
               <>
-                Only the first{" "}
-                <span className="tabular-nums">{TARGET.toLocaleString()}</span>{" "}
-                are read when deciding which edits you asked for on purpose —
-                the rest can come back flagged as faults.
+                Nothing is cut off — long prompts work. But shorter ones tend to
+                land better: the guardrails are added for you anyway, and the
+                quality check reads whatever you wrote.
               </>
             ) : (
-              <>Comfortably inside the review window. Nothing needs cutting.</>
+              <>That&apos;s a tight prompt already. Nothing needs cutting.</>
             )}
           </p>
         )}
@@ -249,7 +253,7 @@ export function PromptOptimizer({
               <span className="font-bold text-ink">
                 {result.optimizedChars.toLocaleString()}
               </span>{" "}
-              characters (target {result.targetChars.toLocaleString()})
+              characters (aiming for ~{result.targetChars.toLocaleString()})
             </p>
           </div>
 

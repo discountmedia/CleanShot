@@ -7,35 +7,41 @@ WHY THIS EXISTS
 Enhance is prompt-first: whatever the operator types becomes the *spine*, and
 `_build_enhance_prompt` appends the toggle extras and the GUARDRAILS block on
 top of it. Everything the built-in spine would normally contribute is SKIPPED
-(`if spine_override is None:` — enhance_worker.py:561).
+(`if spine_override is None:` in enhance_worker).
 
-Two consequences drive this whole module:
+Nothing truncates a prompt. The full text reaches the image model, and since
+2026-08-27 the full text also reaches the differential scanner's "deliberately
+requested" whitelist. This is an OPTIMISATION, not a workaround for a cliff.
+Three reasons a shorter prompt tends to produce a better image:
 
-  1. Long prompts get silently half-ignored by the differential scanner. The
-     operator's instruction is passed into the scanner's "intended edits"
-     whitelist sliced at SCANNER_INTENT_WHITELIST_CHARS
-     (enhance_worker.py `_describe_intended_edits`). Past that cut, the
-     operator's OWN requested edits stop being whitelisted and start coming
-     back as reported anomalies. A 9,700-character template is ~84% invisible
-     to that whitelist.
+  1. Most of the length is already free. The GUARDRAILS block lands on every
+     job regardless, so a prompt that re-states "keep the same make and model,
+     don't add beacons, keep the decals, don't put it on a white background"
+     is paying for text the pipeline appends anyway — and diluting its own
+     signal to do it.
 
-  2. Much of what makes those prompts long is already appended for free. The
-     GUARDRAILS block always lands on the prompt-first path, so a prompt that
-     re-states "keep the same make and model, don't add beacons, don't put it
-     on a white background" is paying characters for text the pipeline adds
-     anyway — and spending them out of the 1500 the scanner can see.
+  2. Image models respond better to focused declarative scene prose than to
+     long multi-section instructional documents. Much of what makes these
+     prompts long — placeholder syntax, self-review checklists, the same rule
+     phrased three ways — does nothing at all.
 
-So the optimizer's objective is NOT "shorter". It is "fit inside the scanner
-whitelist while still carrying everything the pipeline will not add for you".
+  3. The scanner is handed the whole prompt as its whitelist of intended
+     edits. The longer and more sprawling that instruction is, the more the
+     scanner is told to expect, and the less discriminating the quality check
+     becomes. A tight prompt keeps the check sharp.
 
 WHAT IT MUST NOT DO
 -------------------
-Six blocks live inside `if spine_override is None:` and are therefore NOT
+Five blocks live inside `if spine_override is None:` and are therefore NOT
 appended when the operator supplies a prompt. Cutting any of them silently
-removes it from the model's input entirely. Decal preservation is the one that
-looks most redundant and is not — PROMPT-HYSTER.md:95-99 records exactly that
-mistake being made and caught. The rubric below carries all six as a protected
-list, and the response reports `kept` so the operator can see they survived.
+removes it from the model's input. The rubric below carries them as a
+protected list, and the response reports `kept` so the operator can see they
+survived.
+
+Decal preservation used to be the sixth and most dangerous of these. It became
+a GUARDRAIL bullet on 2026-08-27, so it is now appended on every path and a
+generic decal sentence in the operator's own text is genuinely redundant. A
+SPECIFIC decal instruction is not — see the rubric.
 
 DRIFT-WARNING
 -------------
@@ -51,15 +57,12 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from cleanshot_api.workers.enhance_worker import SCANNER_INTENT_WHITELIST_CHARS
-
 logger = logging.getLogger(__name__)
 
-# Not pinned to JUDGE_MODEL. That pin exists because the judge rubric was
-# calibrated against hand labels by scripts/holistic_judge.py and a different
-# model invalidates the ~70% agreement figure. There is no calibration harness
-# for this task, so there is nothing to invalidate — this uses the current
-# default model rather than inheriting a pin whose reason does not apply.
+# Not pinned to JUDGE_MODEL. That pin existed because the judge rubric was
+# calibrated against hand labels and a different model invalidated the
+# agreement figure. There is no calibration harness for this task, so there is
+# nothing to invalidate.
 OPTIMIZER_MODEL = "claude-opus-5"
 
 # Generous. The output carries the rewritten prompt PLUS a line-by-line account
@@ -68,17 +71,26 @@ OPTIMIZER_MODEL = "claude-opus-5"
 OPTIMIZER_MAX_TOKENS = 8000
 
 # Bounded well under the BFF's maxDuration so a slow call surfaces as a clean
-# 504 from FastAPI rather than the edge function being killed mid-flight.
+# error from FastAPI rather than the edge function being killed mid-flight.
 OPTIMIZER_TIMEOUT_S = 100.0
+
+# ADVISORY ONLY. Nothing anywhere enforces this — not the save path, not the
+# enhance path, not the scanner. It is a rule of thumb for how long a focused
+# prompt tends to be once the auto-appended material is taken out, and it gives
+# the optimizer something concrete to aim at. Going over is not a failure and
+# is never truncated; the operator is told, and decides.
+PROMPT_TARGET_CHARS = 1500
 
 
 # Transcribed verbatim from enhance_worker._build_enhance_prompt. See
 # DRIFT-WARNING in the module docstring.
 GUARDRAILS_VERBATIM = """\
 GUARDRAILS — hard constraints:
-• Make, model, year, trim level. <equipment anatomy: same wheel count, fork
-  count, fork length, mast stage count, counterweight shape, cab/overhead-guard
-  structure>
+• Make, model, year, trim level. <equipment anatomy: same mast configuration,
+  fork count, fork length, overhead guard shape, counterweight shape, tire type>
+• Every OEM make, model, capacity and safety decal stays exactly as it is: same
+  position, same size, same existing wear, still legible. Mask them off during
+  the respray rather than painting over them or redrawing the text.
 • Do NOT add lamps, beacons, mirrors, antennas, attachments, or any bolt-on
   hardware that is not already in the source.
 • Do not introduce damage, dents, broken parts, or wear that was not in the
@@ -92,31 +104,36 @@ You condense enhancement prompts for a used-forklift dealer's photo pipeline.
 The operator writes a prompt; your job is to return a shorter prompt that
 produces the SAME image, and to account for every change you made.
 
-## The one number that matters
+## What you are optimising for
 
-The pipeline passes the operator's prompt into an automated review step that
-whitelists "things the operator deliberately asked for", and it reads only the
-first {SCANNER_INTENT_WHITELIST_CHARS} characters. Past that cut, the
-operator's own requested edits get reported back as defects.
+Nothing truncates the operator's prompt — long prompts work. You are making it
+BETTER, not making it fit. A tighter prompt wins for three reasons: the
+guardrails below are appended to every job anyway, image models respond better
+to focused scene prose than to long instructional documents, and the automatic
+quality checker is given this prompt as its list of expected changes — the more
+sprawling it is, the less the check can catch.
 
-TARGET: {SCANNER_INTENT_WHITELIST_CHARS} characters or fewer. Going a little
-over is better than dropping something from the PROTECTED list. Never pad to
-reach the target — if a prompt is already short, return it nearly unchanged and
-say so.
+Aim for around {PROMPT_TARGET_CHARS} characters. That is a rule of thumb, not a
+limit. Going over is fine and is never truncated. Never pad to reach it, and
+never drop something from the PROTECTED list to hit it — if the prompt is
+already tight, return it nearly unchanged and say so.
 
 ## ALWAYS CUT — the pipeline appends this itself, after the operator's text
-
-This block is appended to EVERY enhancement, on top of whatever the operator
-wrote. Any sentence in the operator's prompt that only restates part of it is
-pure cost:
 
 {GUARDRAILS_VERBATIM}
 
 So cut: keeping the make/model/year/trim; preserving wheel count, fork count,
-fork length, mast stages, counterweight or cab structure; "don't add lights /
+fork length, mast stages, counterweight or cab structure; generic "keep all the
+decals" / "preserve all badges and text" instructions; "don't add lights /
 beacons / mirrors / antennas / attachments / bolt-ons"; "don't add damage or
 dents that weren't there"; "don't put it on a white / studio / gradient
 background"; "don't zoom / crop / rotate / straighten / re-pose".
+
+**The decal exception.** A GENERIC decal-preservation sentence is now covered by
+the guardrail and should go. A SPECIFIC one must stay — anything that names a
+particular plate, asks for a model number to READ differently, describes a
+decal that is damaged or missing, or gives a text change to make. The guardrail
+says "keep every decal as it is"; it cannot express "change the 50 to an 80".
 
 ## ALSO CUT — these do nothing at all
 
@@ -125,36 +142,30 @@ background"; "don't zoom / crop / rotate / straighten / re-pose".
   braces reach the image model exactly as typed.
 - Self-review instructions: "check your output", "verify each item", numbered
   QA checklists, "re-roll if wrong". An image model does not review its own
-  output. These are among the largest sections in long prompts and they buy
-  nothing.
-- Meta-commentary addressed to a human: section headers that only organise the
-  document, restatements of the same rule in three phrasings, and preambles
-  about what the prompt is for.
+  output. These are among the largest sections in long prompts and buy nothing.
+- Meta-commentary addressed to a human: headers that only organise the
+  document, the same rule restated in three phrasings, and preambles about
+  what the prompt is for.
 
 ## PROTECTED — never cut, never weaken. The pipeline does NOT add these.
 
 When the operator supplies their own prompt, the built-in scene description is
-skipped entirely. These six are only present if the operator's text carries
+skipped entirely. These five are only present if the operator's text carries
 them. Losing one silently degrades every image made from this prompt:
 
-1. DECAL / TEXT PRESERVATION — masking off OEM make, model, capacity and
-   safety decals in their exact positions with their existing wear. This is the
-   single most-often wrongly-cut item. It LOOKS covered by the guardrail about
-   make and model. It is not: that guardrail governs the machine's identity,
-   not the legibility of the printed decals.
-2. TIRE TREATMENT — the tread-versus-sidewall distinction (shine the sidewalls,
+1. TIRE TREATMENT — the tread-versus-sidewall distinction (shine the sidewalls,
    leave the tread dry and matte), and any non-marking / white / light-grey
    tyre carve-out.
-3. SCENE AND COMPOSITION — same camera angle, perspective, framing, LIGHTING
-   DIRECTION and BACKGROUND ENVIRONMENT. Note the guardrail covers crop, rotate
-   and backdrop-swap only; lighting direction and background environment are
-   not covered anywhere else.
-4. THE HONESTY BOOKEND — that this is a cheap shop respray, explicitly not a
+2. SCENE AND COMPOSITION — same camera angle, perspective, framing, LIGHTING
+   DIRECTION and BACKGROUND ENVIRONMENT. The guardrail covers crop, rotate and
+   backdrop-swap only; lighting direction and background environment are not
+   covered anywhere else.
+3. THE HONESTY BOOKEND — that this is a cheap shop respray, explicitly not a
    restoration and not factory-fresh. This is what stops the result being a
    bait-and-switch listing photo.
-5. WHAT THE PAINT DOES NOT COVER — dents, deep gouges, missing or broken parts,
+4. WHAT THE PAINT DOES NOT COVER — dents, deep gouges, missing or broken parts,
    rust-through and pitting stay visible.
-6. PAINT-JOB QUALITY — budget shop finish: slight orange-peel, minor overspray,
+5. PAINT-JOB QUALITY — budget shop finish: slight orange-peel, minor overspray,
    subtle edge buildup.
 
 You may COMPRESS a protected item's wording. You may not remove its meaning.
@@ -192,7 +203,7 @@ Account for your work honestly. `removed` lists what you cut with the reason
 (name which rule above licensed it). `kept` lists each PROTECTED item you
 carried through, with the phrasing you used, so the operator can confirm none
 were lost. If you were forced to cut something you were unsure about, or the
-prompt is already at target, say so in `warnings` — an accurate warning is more
+prompt is already tight, say so in `warnings` — an accurate warning is more
 useful than a clean-looking result."""
 
 
@@ -331,17 +342,6 @@ async def optimize_prompt(
         if str(w).strip()
     ][:20]
 
-    # Advisory only — never enforced by truncation. Cutting the model's output
-    # to fit would defeat the entire point: the operator would be shown, and
-    # could save, a prompt whose tail had been silently amputated.
-    if len(optimized) > SCANNER_INTENT_WHITELIST_CHARS:
-        warnings.append(
-            f"Still {len(optimized):,} characters — over the "
-            f"{SCANNER_INTENT_WHITELIST_CHARS:,}-character review window by "
-            f"{len(optimized) - SCANNER_INTENT_WHITELIST_CHARS:,}. Everything "
-            f"past that point won't be recognised as deliberately requested."
-        )
-
     logger.info(
         "prompt_optimize model=%s in=%d out=%d removed=%d kept=%d",
         OPTIMIZER_MODEL,
@@ -355,7 +355,7 @@ async def optimize_prompt(
         "optimized_prompt": optimized,
         "original_chars": len(body),
         "optimized_chars": len(optimized),
-        "target_chars": SCANNER_INTENT_WHITELIST_CHARS,
+        "target_chars": PROMPT_TARGET_CHARS,
         "removed": _as_pairs(result.get("removed")),
         "kept": _as_pairs(result.get("kept")),
         "warnings": warnings,

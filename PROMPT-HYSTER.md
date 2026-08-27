@@ -87,11 +87,6 @@ embedded text.
 | **Prompt assembly variables** preamble | No substitution engine exists. |
 | **"Do NOT change the background"** | Conflicts with three of your own toggles. |
 | **"Do NOT re-crop / change aspect ratio"** | Every output is cover-cropped to 2800x2000 regardless. |
-| **~9,700 chars → ~1,400** | `_describe_intended_edits` hands the scanner your prompt **sliced at 1,500 characters** as the list of *expected* edits. At 9,700 the scanner saw only your preamble — the fork repaint, tyres, floor and paint all fell outside the whitelist and were eligible to be flagged as unintended. Prompt A fits inside that window whole. |
+| **~9,700 chars → ~1,400** | Written when `_describe_intended_edits` sliced the prompt at 1,500 characters, so at 9,700 the scanner saw only the preamble and the fork repaint, tyres, floor and paint were all eligible to be flagged as unintended. **That cap was removed 2026-08-27** — the whole prompt now reaches the scanner, so this is no longer a correctness fix. The shortening still stands on its own: the guardrails are appended anyway, and a sprawling prompt makes the quality check less discriminating. |
 
-**Kept, against my first instinct:** the decal-preservation sentence. I had cut
-it on the assumption that the automatic guardrail covers decals. It does not on
-the prompt-first path — nothing reaching the model asks for text preservation
-when you supply your own prompt. Same for the wear-honesty line: "no
-bait-and-switch" is not appended on this path either, and the rest of this
-prompt pushes toward an over-restored unit without it.
+**Superseded 2026-08-27 — decals are a guardrail now.** The original note here read: *"Kept, against my first instinct: the decal-preservation sentence. I had cut it on the assumption that the automatic guardrail covers decals. It does not on the prompt-first path."* That was correct at the time and is the reason decal preservation was promoted into the GUARDRAILS block, where it is now appended on every path. A GENERIC "keep all the decals" sentence in an operator prompt is therefore redundant today. A SPECIFIC one is not — the guardrail can say "keep every decal as it is", but it cannot say "change the 50 to an 80".

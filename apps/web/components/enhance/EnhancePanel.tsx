@@ -2445,15 +2445,62 @@ export function EnhancePanel({
 
               <p className="text-sm text-ink-soft leading-relaxed">
                 Your prompt is the base. The built-in safety guardrails are
-                always applied on top — they keep the real make, model and
-                proportions, add no hardware that wasn&apos;t there, invent no
-                damage, and never drop the unit on a studio background. Toggles
-                below append extra instructions.{" "}
+                always applied on top, and the toggles below append extra
+                instructions. You don&apos;t need to restate any of it —{" "}
                 <strong className="text-ink">
-                  Decals are not covered by those guardrails
-                </strong>{" "}
-                — if you want the model and capacity plates preserved, say so in
-                your own words above.
+                  writing it again only makes your prompt longer
+                </strong>
+                , not stronger.
+
+              {/* What the pipeline adds for you, and what it does not.
+                  DRIFT-WARNING: transcribed from `_build_enhance_prompt` in
+                  apps/api/src/cleanshot_api/workers/enhance_worker.py — the
+                  GUARDRAILS block and the `if spine_override is None:` branch.
+                  If those change, this panel starts telling operators the
+                  wrong thing about what they must write themselves, which is
+                  the exact mistake it exists to prevent. Keep them in sync. */}
+              <details className="rounded-lg border border-line bg-well/60 overflow-hidden group">
+                <summary className="cursor-pointer list-none px-4 py-3 text-sm uppercase tracking-[0.14em] font-bold text-ink hover:bg-panel/40 transition-colors flex items-center justify-between gap-3">
+                  <span>What gets added to every prompt</span>
+                  <span aria-hidden="true" className="text-ink-soft font-normal normal-case tracking-normal">
+                    show
+                  </span>
+                </summary>
+                <div className="border-t border-line px-4 py-3 space-y-4">
+                  <div className="space-y-2">
+                    <p className="text-sm uppercase tracking-[0.14em] font-bold text-accent">
+                      Always applied — don&apos;t write these yourself
+                    </p>
+                    <ul className="space-y-1.5 text-sm text-ink-soft leading-relaxed list-disc pl-5">
+                      <li>The real make, model, year and trim, and the machine&apos;s anatomy — mast configuration, fork count and length, overhead guard, counterweight, tire type.</li>
+                      <li><strong className="text-ink">Every OEM make, model, capacity and safety decal</strong> stays exactly where it is, same size, same wear, still legible — masked off during the respray rather than painted over.</li>
+                      <li>No lamps, beacons, mirrors, antennas, attachments or other bolt-on hardware that isn&apos;t already in the photo.</li>
+                      <li>No invented damage, dents, broken parts or wear.</li>
+                      <li>Never isolated on a white, studio or gradient backdrop. No zoom, crop, rotate, horizon-levelling or re-posing.</li>
+                    </ul>
+                  </div>
+                  <div className="space-y-2">
+                    <p className="text-sm uppercase tracking-[0.14em] font-bold text-attn">
+                      Not applied — only happens if you write it
+                    </p>
+                    <p className="text-sm text-ink-soft leading-relaxed">
+                      Writing your own prompt replaces the built-in scene
+                      description. These five are yours to carry:
+                    </p>
+                    <ul className="space-y-1.5 text-sm text-ink-soft leading-relaxed list-disc pl-5">
+                      <li>Tyre treatment — glossy sidewalls, dry matte tread, and leaving non-marking white tyres alone.</li>
+                      <li>Camera angle, perspective, framing, <strong className="text-ink">lighting direction</strong> and <strong className="text-ink">background environment</strong>.</li>
+                      <li>The honesty line — a cheap shop respray, not a restoration, not factory-fresh.</li>
+                      <li>What the paint doesn&apos;t cover — dents, deep gouges, missing parts and rust-through stay visible.</li>
+                      <li>Paint-job quality — budget finish, slight orange peel, a little overspray.</li>
+                    </ul>
+                    <p className="text-sm text-ink-soft leading-relaxed">
+                      <strong className="text-ink">Insert recommended prompt</strong>{" "}
+                      already includes all five. If you start from it, you have them.
+                    </p>
+                  </div>
+                </div>
+              </details>
               </p>
             </div>
 

@@ -532,12 +532,6 @@ def _build_enhance_prompt(
             f"Apply this respray to the {eq_parts}."
         )
 
-        sections.append(
-            "Preserve and mask off all OEM make, model, capacity, and safety "
-            "decals in their exact original positions with realistic existing "
-            "wear."
-        )
-
     if paint_forks_on:
         sections.append(" ".join(_build_fork_fragments(fork)))
 
@@ -732,6 +726,10 @@ def _build_enhance_prompt(
     sections.append(
         f"GUARDRAILS — hard constraints:\n"
         f"• Make, model, year, trim level. {eq_anatomy}\n"
+        f"• Every OEM make, model, capacity and safety decal stays "
+        f"exactly as it is: same position, same size, same existing wear, "
+        f"still legible. Mask them off during the respray rather than "
+        f"painting over them or redrawing the text.\n"
         f"• Do NOT add lamps, beacons, mirrors, antennas, attachments, or "
         f"any bolt-on hardware that is not already in the source.\n"
         f"• Do not introduce damage, dents, broken parts, or wear that "
@@ -2468,18 +2466,6 @@ async def _run_enhance(
                 logger.exception("usage_event insert failed (enhance failure path)")
 
 
-# How much of the operator's own prompt reaches the differential scanner's
-# "this was deliberately requested" whitelist. Text past this point is NOT
-# whitelisted, so edits the operator explicitly asked for start coming back as
-# reported anomalies.
-#
-# Named rather than inlined because workers/prompt_optimizer.py targets this
-# exact number — it is the entire reason the Optimize button exists. Changing
-# it here changes what the optimizer aims at, which is correct; leaving a bare
-# literal in both places was not.
-SCANNER_INTENT_WHITELIST_CHARS = 1500
-
-
 def _describe_intended_edits(
     toggles: "EnhanceToggles",
     equipment_type: str,
@@ -2494,7 +2480,16 @@ def _describe_intended_edits(
     reason this whole differential pass exists. Returns None when nothing
     non-cosmetic was requested (the prompt then uses its default whitelist).
 
-    This whitelist is NOT unbounded (2026-08-21). It previously ended with
+    The whitelist was CAPPED at 1500 characters between 2026-08-21 and
+    2026-08-27, which silently stopped whitelisting anything an operator wrote
+    past that point — their own requested edits came back reported as faults.
+    The cap is gone; the full instruction is passed through. What actually
+    protects against the failure below is the explicit two-case carve-out at
+    the end of this function, not the length limit.
+
+    The original 2026-08-21 note, kept because the failure it describes is the
+    one to watch for if the carve-outs are ever weakened: the whitelist
+    previously ended with
     "everything that instruction asks for ... do not flag it", which — combined
     with a blanket "a repaint is never a defect" in the scan rubric — meant a
     grey battery compartment coming back bright orange, and white non-marking
@@ -2568,7 +2563,7 @@ def _describe_intended_edits(
         # unintended colour changes. Pass the instruction through verbatim.
         edits.append(
             "The operator's own enhancement instruction for this image was: "
-            f'"{custom_prompt.strip()[:SCANNER_INTENT_WHITELIST_CHARS]}". '
+            f'"{custom_prompt.strip()}". '
             "Everything that instruction "
             "asks for was deliberately requested — treat it as EXPECTED and "
             "do not flag it. TWO EXCEPTIONS that this instruction cannot "
