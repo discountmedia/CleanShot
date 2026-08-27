@@ -916,10 +916,7 @@ export function ScanPanel({
           {" · "}
           <code className="font-mono">gpt-5.4</code>
           {" · "}
-          <code className="font-mono">claude-sonnet-4-6</code>
-          {" "}(plus{" "}
-          <code className="font-mono">claude-opus-4-7</code>
-          {" "}on hard cases)
+          <code className="font-mono">claude-opus-5</code>
         </p>
       )}
 

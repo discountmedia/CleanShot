@@ -2066,12 +2066,12 @@ export function EnhancePanel({
       <TipBanner
         title="Enhance tab — what this does"
         steps={[
-          <>Drop the photos of one forklift in the upload zone below (up to 10 at once).</>,
+          <>Drop the photos of one forklift in the upload zone below (up to {MAX_UPLOADS} at once — anything beyond that is dropped without a warning).</>,
           <>Fill in the equipment details (Make is required) so the AI uses the right brand colours and rules.</>,
           <>Pick one or more AI models to compare results side-by-side. Each model produces its own version of every photo.</>,
           <>Click <span className="font-semibold text-ink">Enhance</span> and wait for the variants to come back.</>,
-          <>For each photo, pick the winner variant. Use ↻ to retry, ✎ to tweak with words, or ⌫ to erase part of an image.</>,
-          <>When you&apos;re happy with every photo, click <span className="font-semibold text-ink">Send to Scan →</span> to move them forward.</>,
+          <>For each photo, pick the winner variant. Use ↻ to retry it, or ✎ to tweak it with words.</>,
+          <>Every winner is quality-checked automatically as it arrives. When you&apos;re happy with them all, <span className="font-semibold text-ink">export</span> — that is the only thing that saves your work.</>,
         ]}
       >
         <p>
@@ -2444,10 +2444,16 @@ export function EnhancePanel({
               />
 
               <p className="text-sm text-ink-soft leading-relaxed">
-                Your prompt is the base. The built-in safety guardrails (keep the
-                real make / model / decals / proportions, no bait-and-switch) are
-                always applied on top, and any toggles below append extra
-                instructions.
+                Your prompt is the base. The built-in safety guardrails are
+                always applied on top — they keep the real make, model and
+                proportions, add no hardware that wasn&apos;t there, invent no
+                damage, and never drop the unit on a studio background. Toggles
+                below append extra instructions.{" "}
+                <strong className="text-ink">
+                  Decals are not covered by those guardrails
+                </strong>{" "}
+                — if you want the model and capacity plates preserved, say so in
+                your own words above.
               </p>
             </div>
 
