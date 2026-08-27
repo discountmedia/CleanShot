@@ -651,7 +651,7 @@ class OptimizePromptResponse(BaseModel):
 
     `removed` and `kept` are not decoration — nothing is written anywhere
     without the operator reading them. The failure mode this guards against is
-    the optimizer quietly dropping one of the six blocks the pipeline does NOT
+    the optimizer quietly dropping one of the five blocks the pipeline does NOT
     append on the prompt-first path (see workers/prompt_optimizer.py), which
     would degrade every future image made from the saved template while looking
     like a clean result.

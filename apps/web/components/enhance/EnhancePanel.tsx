@@ -2207,7 +2207,7 @@ export function EnhancePanel({
               : `Drop images here or click to browse`}
           </p>
           <p className="text-sm text-ink-soft mt-1">
-            Up to {MAX_UPLOADS} images · Files over 4.5 MB auto-compressed
+            Up to {MAX_UPLOADS} images · All files re-encoded to JPEG on upload
             · {files.length}/{MAX_UPLOADS} loaded
           </p>
         </div>

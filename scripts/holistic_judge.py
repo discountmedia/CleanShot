@@ -33,7 +33,12 @@ from urllib.parse import urlparse
 GCLOUD = r"C:\Program Files (x86)\Google\Cloud SDK\google-cloud-sdk\bin\gcloud.cmd"
 PROJECT = "cleanshot-493512"
 ANTHROPIC_KEY_SECRET = "cleanshot-anthropic-key"
-JUDGE_MODEL = "claude-sonnet-4-6"
+# Must match JUDGE_MODEL in apps/api/.../workers/enhance_worker.py, or the
+# agreement figure this harness produces describes a model that is not in
+# production. Moved sonnet-4-6 -> opus-5 on 2026-08-27 when the app did.
+# The ~70% previously quoted was measured on claude-sonnet-4-6 and does NOT
+# carry over — this harness has not been re-run since the switch.
+JUDGE_MODEL = "claude-opus-5"
 BASELINE_RESULTS = ("C:/Users/skc/AppData/Local/Temp/claude/c--dev-CleanShot/"
                     "2c1e24d7-db4f-45ae-9e73-07e7150f9f44/scratchpad/eval_baseline/results.json")
 

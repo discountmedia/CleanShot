@@ -193,7 +193,7 @@ export function ScanCard({
 
           {approved && (
             <span className="text-[10px] uppercase tracking-[0.18em] font-semibold text-accent px-3 py-2">
-              ✓ Approved → Resize
+              ✓ Approved
             </span>
           )}
           {rejected && (

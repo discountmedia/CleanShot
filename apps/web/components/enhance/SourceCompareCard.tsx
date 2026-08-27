@@ -260,7 +260,7 @@ export function SourceCompareCard({
             title={
               held
                 ? "Held — excluded from the bulk Send to Scan"
-                : "Hold this image (exclude it from the bulk Send to Scan)"
+                : "Hold this image (leave it out of the export)"
             }
             aria-pressed={held}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded border-2 text-sm font-bold uppercase tracking-[0.14em] transition-colors ${
