@@ -37,9 +37,11 @@ import { EnhancePanel } from "@/components/enhance/EnhancePanel";
 // and panel-mount that the dynamic-import added.
 const loadScanPanel    = () => import("@/components/scan/ScanPanel").then(m => ({ default: m.ScanPanel }));
 const loadHistoryList  = () => import("@/components/history/HistoryList").then(m => ({ default: m.HistoryList }));
+const loadGuidesPanel  = () => import("@/components/guides/GuidesPanel").then(m => ({ default: m.GuidesPanel }));
 
 const ScanPanel    = dynamic(loadScanPanel,   { ssr: false });
 const HistoryList  = dynamic(loadHistoryList, { ssr: false });
+const GuidesPanel  = dynamic(loadGuidesPanel, { ssr: false });
 
 // TabBar hands tab id → prefetch loader. Enhance is intentionally
 // missing (it's eagerly imported, no chunk to prefetch). Calling
@@ -51,6 +53,7 @@ const HistoryList  = dynamic(loadHistoryList, { ssr: false });
 const TAB_PREFETCH: Partial<Record<TabId, () => Promise<unknown>>> = {
   scan:    loadScanPanel,
   history: loadHistoryList,
+  guides:  loadGuidesPanel,
 };
 
 import { createSession, exchangeHandoffToken, getSessionState } from "@/lib/api";
@@ -352,16 +355,25 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
     { id: "enhance" as const, label: "Enhance" },
     { id: "scan"    as const, label: "Scan" },
     { id: "history" as const, label: "Your Photo Library" },
+    { id: "guides"  as const, label: "Guides" },
   ];
-  // Restricted users see only the Enhance tab.
+  // Restricted users see only the Enhance tab — plus Guides, which is
+  // read-only documentation and grants no capability. Withholding the
+  // instructions from the people most likely to need them would be a
+  // strange reading of a restriction that exists to limit which MODEL
+  // they use.
   const tabs = restriction?.enhanceOnly
-    ? allTabs.filter((t) => t.id === "enhance")
+    ? allTabs.filter((t) => t.id === "enhance" || t.id === "guides")
     : allTabs;
 
   // Safety net: if a restricted user somehow lands on a non-Enhance tab
   // (stale state, deep link), force them back to Enhance.
   useEffect(() => {
-    if (restriction?.enhanceOnly && activeTab !== "enhance") {
+    if (
+      restriction?.enhanceOnly &&
+      activeTab !== "enhance" &&
+      activeTab !== "guides"
+    ) {
       setActiveTab("enhance");
     }
   }, [restriction?.enhanceOnly, activeTab]);
@@ -478,6 +490,14 @@ export function Workspace({ userEmail, bypassed = false, isAdmin = false }: Work
             {visitedTabs.has("history") && (
               <HistoryList userEmail={userEmail} active={activeTab === "history"} />
             )}
+          </PanelSlot>
+
+          {/* Operator documentation. Iframed from public/guides/, which is
+              generated from docs/guides/ by scripts/build_guides.py — one copy
+              of the prose, two renderings. Needs no session, so it sits
+              outside the sessionId guard below. */}
+          <PanelSlot active={activeTab === "guides"}>
+            <GuidesPanel />
           </PanelSlot>
 
           {!sessionId && !sessionError && activeTab !== "history" && (
