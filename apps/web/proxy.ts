@@ -41,11 +41,18 @@ export function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Allow static assets
+  // Allow static assets. `.html` is here for /guides/*.html, the operator
+  // documentation served out of public/ and framed by the GUIDES tab. Without
+  // it those requests fell through to the session check below, and a signed-out
+  // (or cookie-less) load put the LOGIN PAGE inside the guide iframe.
+  //
+  // Widening this to .html is safe because nothing in public/ is sensitive —
+  // it is a directory of static files that ship in the client bundle anyway.
   if (
     pathname.startsWith("/_next") ||
     pathname.startsWith("/favicon") ||
-    pathname.match(/\.(ico|png|jpg|jpeg|gif|svg|webp|avif|css|js|woff2?)$/)
+    pathname.startsWith("/guides/") ||
+    pathname.match(/\.(ico|png|jpg|jpeg|gif|svg|webp|avif|css|js|html|woff2?)$/)
   ) {
     return NextResponse.next();
   }
