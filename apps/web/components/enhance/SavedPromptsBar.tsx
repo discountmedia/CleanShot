@@ -420,11 +420,16 @@ export function SavedPromptSelect({
 
       {open && ordered.length > 0 && (
         /* z-20 clears the prompt textarea below it; max-h + overflow keeps a
-           long library from running off the bottom of the panel. w-80 with
-           min-w-full lets the popover be WIDER than a narrow trigger — the
-           rows carry a byline and two counters and get unreadable if they
-           inherit a squeezed column. */
-        <div className="absolute z-20 mt-1 w-80 min-w-full max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel shadow-lg">
+           long library from running off the bottom of the panel. min-w-full
+           lets the popover be WIDER than a narrow trigger — the rows carry a
+           byline and two counters and get unreadable if they inherit a
+           squeezed column.
+
+           Widened 20rem -> 26rem on 2026-08-27 when titles stopped being
+           truncated. Titles are the whole point of the list and some are
+           long; the extra width is what keeps a wrapped one at two or three
+           lines rather than five. */
+        <div className="absolute z-20 mt-1 w-[26rem] min-w-full max-w-[calc(100vw-2rem)] rounded-lg border border-line bg-panel shadow-lg">
           {/* Sort strip. Three orderings of the same fetched list, each with a
               tooltip saying what it actually measures — "top rated" and "most
               used" sound interchangeable and are not. */}
@@ -474,7 +479,7 @@ export function SavedPromptSelect({
             }}
           >
             {ordered.map((p, i) => (
-              <li key={p.id} className="flex items-center gap-2 pr-2">
+              <li key={p.id} className="flex items-start gap-2 pr-2">
                 <button
                   type="button"
                   role="option"
@@ -489,14 +494,24 @@ export function SavedPromptSelect({
                     i === activeIndex ? "bg-panel-hi" : "hover:bg-panel-hi"
                   }`}
                 >
-                  <span className="block text-base font-semibold text-ink truncate">
+                  {/* NOT truncated. A template's title is the only thing
+                      distinguishing it from every other one, and operators
+                      title them descriptively — "Sitdown Hyster, heavy rust"
+                      and longer. Clipping at one line hid exactly the part
+                      that tells them apart, and titles are permanent so
+                      nobody can shorten one after the fact.
+
+                      break-words is the guard: without it a single long
+                      unbroken token (a pasted filename, a URL) pushes past
+                      the popover edge instead of wrapping. */}
+                  <span className="block text-base font-semibold text-ink break-words">
                     {p.title}
                   </span>
                   {/* The byline plus the use count. Smaller and muted so they
                       read as metadata rather than part of the name, but
                       full-contrast enough to actually be read — ink-soft, not
                       ink-faint. */}
-                  <span className="block text-sm text-ink-soft truncate">
+                  <span className="block text-sm text-ink-soft break-words">
                     {p.authorName} · {formatByDate(p.createdAt)}
                     {p.useCount > 0 && ` · used ${p.useCount}×`}
                   </span>
@@ -788,15 +803,15 @@ export function SavedPromptsBar({ state, currentPrompt }: SavedPromptsBarProps) 
       {manageOpen && isAdmin && ordered.length > 0 && (
         <ul className="rounded-lg border border-line bg-well/60 divide-y divide-line">
           {ordered.map((p) => (
-            <li key={p.id} className="flex flex-wrap items-center gap-2 px-4 py-2.5">
+            <li key={p.id} className="flex flex-wrap items-start gap-2 px-4 py-2.5">
               <span className="flex-1 min-w-48">
-                <span className="block text-base text-ink font-semibold truncate">
+                <span className="block text-base text-ink font-semibold break-words">
                   {p.title}
                   {p.authorIsMe && (
                     <span className="ml-2 text-sm font-bold text-ink-soft">yours</span>
                   )}
                 </span>
-                <span className="block text-sm text-ink-soft truncate">
+                <span className="block text-sm text-ink-soft break-words">
                   {p.authorName} · {formatByDate(p.createdAt)} · used {p.useCount}×
                 </span>
               </span>
