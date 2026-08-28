@@ -33,10 +33,13 @@ FROM python:3.12-slim AS final
 # fonts-roboto: Roboto for the AI-disclaimer watermark (matches web preview)
 # libcairo2: pango/cairo dependency
 # libwebp-dev: WebP encode/decode
-# libglib2.0-0 + libgomp1: required by opencv-python-headless and onnxruntime,
-#   which arrive via rembg (the background-removal matting pass). Headless
-#   opencv still links glib; omitting it fails at IMPORT time, not at use, so
-#   the whole API would fail to boot rather than just the cutout path.
+# libglib2.0-0 + libgomp1: STILL REQUIRED after rembg/onnxruntime were removed
+#   on 2026-08-28. The old comment here credited them to opencv + onnxruntime
+#   arriving via rembg, which would now read as licence to drop them. Do not:
+#   libvips itself is built on GLib, and pyvips is the whole image pipeline.
+#   Omitting libglib fails at IMPORT time, not at use, so the entire API fails
+#   to boot rather than just one path. libgomp1 is the OpenMP runtime libvips
+#   parallelises with.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libvips42 \
         libvips-dev \
@@ -58,20 +61,17 @@ COPY --from=builder /install /usr/local
 RUN groupadd --gid 1001 appuser \
  && useradd  --uid 1001 --gid appuser --shell /bin/sh --create-home appuser
 
-# ── Matting model, baked at BUILD time ──────────────────────────────────────
-# rembg caches models under U2NET_HOME and downloads on first use. A runtime
-# download is not acceptable here: the container runs as a non-root user, and a
-# cold start would turn into a multi-hundred-megabyte fetch on the first
-# operator request. So fetch it now, into a world-readable location.
+# NO MATTING MODEL IS BAKED IN ANY MORE (2026-08-28).
+# A ~170MB isnet-general-use model used to be prefetched here into
+# U2NET_HOME, because rembg downloads on first use and this container runs
+# as a non-root user -- a runtime download would have turned a cold start
+# into a multi-hundred-megabyte fetch. Matting now runs on fal.ai
+# (fal-ai/birefnet/v2, see services/cutout.py), so the model, rembg and
+# onnxruntime are all gone, and they were most of this image's weight.
 #
-# The model name MUST match CUTOUT_MODEL in services/cutout.py (default
-# `isnet-general-use`). Changing that env var without changing this line means
-# the first cutout request tries to download and fails.
-ENV U2NET_HOME=/opt/rembg-models \
-    CUTOUT_MODEL=isnet-general-use
-RUN mkdir -p /opt/rembg-models \
- && python -c "from rembg import new_session; new_session('isnet-general-use')" \
- && chmod -R a+rX /opt/rembg-models
+# If matting ever moves back in-container, the prefetch RUN and the
+# rembg/onnxruntime deps in pyproject.toml must return TOGETHER. Either one
+# without the other reproduces exactly the failure this block prevented.
 
 WORKDIR /app
 

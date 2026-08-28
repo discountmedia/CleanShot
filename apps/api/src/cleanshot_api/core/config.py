@@ -99,6 +99,13 @@ class Settings(BaseSettings):
     # AI-Studio-backed genai client built in main.py's lifespan.
     # Mounted from GCP Secret Manager (cleanshot-gemini-key) on Cloud Run.
     gemini_api_key: str = Field("", alias="GEMINI_API_KEY")
+    # fal.ai (https://fal.ai) — model-endpoint host. Currently backs the
+    # background-removal matting pass (fal-ai/birefnet/v2, see
+    # services/cutout.py); the client in services/fal.py is generic so
+    # further fal models can share the key. Auth is the literal header
+    # `Authorization: Key <FAL_KEY>` — NOT Bearer. Mounted from GCP Secret
+    # Manager (cleanshot-fal-key) on Cloud Run.
+    fal_key: str = Field("", alias="FAL_KEY")
     # Ideogram (https://api.ideogram.ai) — used for the per-variant
     # Edit-with-prompt tool (POST /v1/edit, text-only sibling to Gemini
     # Tweak) and the Inpaint-with-prompt tool (POST /v1/ideogram-v3/inpaint,

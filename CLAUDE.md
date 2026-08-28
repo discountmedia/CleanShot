@@ -24,7 +24,7 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 `admin`, `approvals`, `export`, `jobs`, `modify`, `operations`, `profiles`, `projects`, `saved_prompts`, `scan_results`, `sessions`, `support`, `upload`, `worker`
 
 ### Services (FastAPI)
-`gcs`, `image_processing`, `pricing`, `rate_limit`, `tasks`
+`cutout`, `fal`, `gcs`, `image_processing`, `pricing`, `rate_limit`, `tasks`
 
 ---
 
@@ -80,8 +80,11 @@ Internal B2B tool that takes used-forklift photos and produces clean, listing-re
 **Total background removal (`transparentBackground`, 2026-08-26).** A real transparent cutout for the new-equipment site, which shows units on no backdrop at all. **This toggle is not a prompt fragment** — it is the only one that is not. It runs a matting pass (`services/cutout.py`) over the FINISHED enhance output, after `upscale_to_standard`, and computes an alpha channel only; the machine's RGB is exactly what the operator approved.
 
 - **Do not reimplement this as a prompt** ("seamless white backdrop", "transparent background"). That is a generation, not a cutout: it re-draws the machine (identity drift) and makes the model decide where the mast lattice, fork gaps, and overhead-guard openings end — the exact fine structure the durable findings above say it botches, with no background texture left to hide the mistake in.
-- **Matting is in-container, not a vendor call.** `rembg` + `onnxruntime`, model `isnet-general-use` **baked into the image at build time** (`U2NET_HOME=/opt/rembg-models`). Chosen over remove.bg / Bria / Photoroom to avoid a new secret, a new rate limiter, per-image spend on a bulk workflow, and one more vendor that can 429 mid-batch. The price is image size and CPU — every call goes through `asyncio.to_thread` so a 2800x2000 pass never blocks the event loop Cloud Tasks callbacks arrive on. `CUTOUT_MODEL` swaps the model (e.g. to `birefnet-general`) but **the Dockerfile prefetch line must change with it**, or the first request tries to download at runtime as a non-root user.
-- **`CUTOUT_MODEL` and `CUTOUT_ALPHA_MATTING` are in the workflow's `--set-env-vars` list**, which is authoritative and replayed on every deploy (lesson #1). `CUTOUT_MODEL` must stay in lockstep with the Dockerfile prefetch line — a model named in the env but not baked into the image sends the first cutout request off to download several hundred megabytes as a non-root user, which is the failure the prefetch exists to prevent.
+- **Matting is a VENDOR CALL as of 2026-08-28 — fal.ai `fal-ai/birefnet/v2`.** It ran in-container (`rembg` + `onnxruntime`, `isnet-general-use` baked at build time) from 2026-08-26 until then. That choice was made deliberately over remove.bg / Bria / Photoroom to avoid a new secret, a new rate limiter, per-image spend on a bulk workflow, and one more vendor that can 429 mid-batch; the operator reversed it. Two facts made the reversal cheaper than it looks: **`isnet-general-use` computes its mask at 1024x1024 internally and upscales**, so the old engine was putting a 1024-derived alpha on a 2800x2000 image and BiRefNet at `2048x2048` is strictly better precision, not merely different; and dropping rembg + onnxruntime + the 170MB model removed most of the container's cold-start weight.
+- **We ask fal for the MASK and composite locally** (`mask_only` + `output_mask`, `refine_foreground: false`). Taking fal's finished cutout would mean accepting its re-encode on pixels the operator already approved, which throws away the "RGB is never regenerated" property that is the entire point of matting-not-prompting. The reader prefers `mask_image` over `image` on purpose: `image` is only the mask if fal honoured `mask_only`, and if it did not, using its red channel as alpha would produce nonsense rather than an error.
+- **The 2048 in fal's docs is `operating_resolution`, NOT an input cap.** It is the model's internal working resolution (enum: 1024/2048/2304). The pipeline's 2800x2000 standard therefore did NOT have to change to accommodate fal — `CUTOUT_MAX_UPLOAD_LONG_EDGE_PX` is a per-vendor TRANSPORT cap only, exactly like `OPENAI_MAX_LONG_EDGE_PX`, and sending more pixels than the model will operate on just buys a bigger bill for an identical mask.
+- **`CUTOUT_MODEL` now names a fal model id** (`fal-ai/birefnet/v2`), not an onnx file, and `CUTOUT_ALPHA_MATTING` is gone — it was a rembg-only knob. Both were dropped from the workflow's `--set-env-vars` list; the code defaults are correct and there is no longer a Dockerfile prefetch line to keep in lockstep. `CUTOUT_FAL_MODEL` (BiRefNet weights, default `General Use (Heavy)`) and `CUTOUT_OPERATING_RESOLUTION` are env-overridable so tuning edge quality stays a redeploy rather than a code change.
+- ⚠️ **`cleanshot-fal-key` MUST EXIST IN SECRET MANAGER BEFORE THE NEXT API DEPLOY.** `deploy-api.yml` now mounts `FAL_KEY=cleanshot-fal-key:latest`, and `gcloud run deploy` FAILS on a secret that does not exist — this will break the deploy, not just the cutout. Create it with the `read -s` / `printf` pattern in lesson #21.
 - **A cutout failure is NOT downgraded to an opaque image.** `CutoutUnavailableError` fails the job. The toggle exists because the destination site needs transparency, so shipping an opaque file is a wrong answer wearing a success badge.
 - **Export becomes PNG and loses the watermark**, and both are forced by `export_pro` reading `img.hasalpha()` — not by a flag threaded down from the request, so the bytes and the format can never disagree. JPEG has no alpha at all: encoding a cutout as JPEG does not "lose transparency", it composites onto **black**. The disclaimer is skipped because a cutout lands in a product-page composite where a burnt-in corner caption sits on top of the site's own layout. `_ext_for()` keeps every filename, GCS content-type, and ZIP entry in step.
 - **`apply_adjustments` preserves alpha now.** It used to `extract_band(0, n=3)` outright, so one contrast tweak on a cutout silently returned an opaque image. Alpha stays ATTACHED through the geometry steps (rotate/crop) so it stays registered, and is detached only for the colour maths (`linear()` would scale transparency; `colourspace("lch")` is undefined on alpha).
@@ -275,8 +278,9 @@ Provider feature flags (Cloud Run env, baked into deploy-api.yml):
 ## ⚠️ Enhance runs INLINE, not in a BackgroundTask (2026-08-27, `15b233c`)
 
 **Why jobs hung instead of failing.** Enhance used to run in a FastAPI
-`BackgroundTask`, so the vendor call, the 2800×2000 upscale and the ONNX matting
-pass all executed **after** the 200 was returned. Cloud Run deploys this service
+`BackgroundTask`, so the vendor call, the 2800×2000 upscale and the matting
+pass (then in-container ONNX, now a fal call) all executed **after** the 200
+was returned. Cloud Run deploys this service
 **without `--no-cpu-throttling`**, and that post-response window is exactly where
 CPU is throttled to near zero — two Gemini images with the cutout toggle on took
 over five minutes.
@@ -323,7 +327,8 @@ enhance went inline.
 | Limiter | Window | Reason |
 |---|---|---|
 | `openai_image_rate_limiter` | 5 events / 60s | Original Tier-1 `/v1/images/edits` ceiling. Stays in place even though enhance is now `gpt-5 + image_generation tool` on `/v1/responses` — the internal tool call still hits the image endpoint. |
-| `grok_image_rate_limiter` | 3 events / 30s | Defensive default — xAI doesn't publish a per-minute cap for `/v1/images/edits`. Retune once we have real burst data. |
+| `grok_image_rate_limiter` | 3 events / 30s | Defensive default — xAI doesn't publish a per-minute cap for `/v1/images/edits`. Retune once we have real burst data. (Grok is dormant again as of 2026-08-28; the limiter stays wired.) |
+| `fal_rate_limiter` | 8 events / 10s | Defensive guess — fal publishes no per-minute cap and concurrency is account-tier dependent. Matters more than the others because matting runs INSIDE the enhance request: a 429 fails the whole job, since a cutout must never degrade to an opaque image. Back-pressure is cheaper than a retry. |
 
 **Important:** limiters are process-local. If `max-instances > 1` and you run heavy batches across multiple Cloud Run pods, they won't coordinate. Known-good fix when that bites is a Valkey-backed limiter. As of 2026-08-27 there are exactly two limiters: OpenAI (5/60s, a real Tier-1 org cap) and Grok (3/30s, a defensive guess). Gemini has none — only `Semaphore(8)`.
 
@@ -653,5 +658,5 @@ Run with `VERBOSE=1` to see polling timestamps, GCS output file size (sanity che
 - API URL: `https://cleanshot-api-387208973244.us-central1.run.app`
 - Web URL: `https://cleanshot.vercel.app` (+ `https://cleanshot.discountmedia.com` once DNS lands)
 - API service account: `forklift-api@cleanshot-493512.iam.gserviceaccount.com`
-- Secrets in use: `cleanshot-database-url`, `cleanshot-api-key(+prev)`, `cleanshot-openai-key`, `cleanshot-anthropic-key`, `cleanshot-bfl-key` (erase-only — Flux is no longer a primary generator), `cleanshot-gemini-key`, `cleanshot-xai-key`, `cleanshot-runcomfy-key`, `cleanshot-ideogram-key` (5th primary generator + per-variant edit/inpaint tools), `cleanshot-reve-key` (6th primary generator — reinstated 2026-05-26), `cleanshot-tasks-oidc-sa`, `cleanshot-worker-url`
+- Secrets in use: `cleanshot-database-url`, `cleanshot-api-key(+prev)`, `cleanshot-openai-key`, `cleanshot-anthropic-key`, `cleanshot-bfl-key` (erase-only — Flux is no longer a primary generator), `cleanshot-gemini-key`, `cleanshot-xai-key`, `cleanshot-runcomfy-key`, `cleanshot-ideogram-key` (per-variant edit + inpaint tools), **`cleanshot-fal-key`** (fal.ai — background-removal matting, added 2026-08-28; must exist before the next deploy or `gcloud run deploy` fails), `cleanshot-tasks-oidc-sa`, `cleanshot-worker-url`
 - Deprecated (safe to delete from Secret Manager): `cleanshot-recraft-key` (Recraft removed 2026-05-26)

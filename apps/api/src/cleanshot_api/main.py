@@ -181,6 +181,19 @@ async def lifespan(app: FastAPI):
         name="openai_image_edit",
     )
 
+    # --- fal.ai rate limiter ---
+    # fal publishes no per-minute cap for model endpoints; concurrency is
+    # account-tier dependent. This is a DEFENSIVE GUESS, not a measured
+    # limit. It matters more than the other limiters because matting sits
+    # INSIDE the enhance request now: a 429 here fails the whole job (a
+    # cutout must never degrade to an opaque image), so back-pressure is
+    # cheaper than a retry. Raise it once a real batch shows headroom.
+    app.state.fal_rate_limiter = AsyncRateLimiter(
+        max_events=8,
+        interval_seconds=10.0,
+        name="fal",
+    )
+
     # --- xAI / Grok image-edit rate limiter ---
     # xAI doesn't publish a per-minute cap for /v1/images/edits, so this
     # is a DEFENSIVE GUESS, not a measured limit: 3 events per 30s, i.e.

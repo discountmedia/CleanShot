@@ -45,6 +45,13 @@ PER_IMAGE_USD: dict[str, float] = {
     # image-gen tool portion ~$0.07. Refine once real invoices land.
     "gpt-5":                          0.080,
 
+    # fal.ai BiRefNet v2 background removal. fal bills per-megapixel on
+    # most vision models; at 2048x2048 operating resolution this is a
+    # sub-cent call. $0.002 is a PLACEHOLDER until a real invoice lands —
+    # unlike the enhance rows this fires on every cutout, so it is worth
+    # calibrating before reading any spend dashboard.
+    "fal-ai/birefnet/v2":             0.002,
+
     # xAI Grok image edit (https://docs.x.ai). Public pricing for
     # /v1/images/edits isn't published yet — placeholder of $0.07 per
     # edit (roughly the midpoint of comparable image-edit models).

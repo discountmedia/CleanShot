@@ -36,10 +36,13 @@ dependencies = [
     # In-container on purpose: no vendor key, no rate limiter, no per-image
     # spend on a bulk workflow, nothing to 429 mid-batch. Costs image size and
     # CPU instead — see services/cutout.py for the full trade.
-    # onnxruntime is pinned to the CPU wheel; Cloud Run has no GPU, and the
-    # default `onnxruntime-gpu` would pull CUDA for nothing.
-    "rembg>=2.0.59",
-    "onnxruntime>=1.19",
+    # rembg + onnxruntime were removed 2026-08-28 when matting moved to
+    # fal.ai (fal-ai/birefnet/v2). They were the bulk of the image size and
+    # of cold-start weight, along with the 170MB model baked in the
+    # Dockerfile. If matting ever comes back in-container, both belong here
+    # again together with the Dockerfile prefetch line — one without the
+    # other means the first request tries to download a model as a non-root
+    # user and hangs.
 
     # Cache (Valkey 9.0 / Memorystore)
     "valkey>=6.0",           # Valkey-native client (drop-in redis.asyncio API)
