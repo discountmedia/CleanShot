@@ -133,29 +133,52 @@ new-equipment site.
   `upscale_to_standard` over the finished pixels and only computes alpha. Asking
   an image model for "a transparent background" would re-draw the machine and
   make it guess where the mast lattice ends — see the durable findings.
-- **The matting engine is IN-CONTAINER**: `rembg` + `onnxruntime`, model
-  `isnet-general-use` prefetched into `/opt/rembg-models` at Docker build time.
-  Chosen over a cutout vendor (remove.bg / Bria / Photoroom) to avoid a new
-  secret, a new rate limiter, per-image spend on a bulk workflow, and one more
-  vendor that can 429 mid-batch.
-- **This is the riskiest part of the change and it is UNVERIFIABLE on the dev
-  machine** — there is no Python env, so `rembg` has never been imported and the
-  Docker build has never run. Two specific failure modes to expect on the first
-  deploy: the image build failing or timing out on the ~500 MB of new deps plus
-  the model fetch, and `opencv-python-headless` failing at IMPORT (which takes
-  the whole API down, not just the cutout path) if `libglib2.0-0` / `libgomp1`
-  turn out not to be enough. Both are build- or boot-time, so a green deploy
-  plus a healthy revision is most of the evidence.
+- **The matting engine is fal.ai `fal-ai/birefnet/v2` as of 2026-08-28.** It
+  was in-container (`rembg` + `onnxruntime`, `isnet-general-use` prefetched
+  into `/opt/rembg-models`) from 2026-08-26 until then. In-container had been
+  chosen over a cutout vendor precisely to avoid a new secret, a new rate
+  limiter, per-image spend on a bulk workflow, and one more vendor that can
+  429 mid-batch — the operator reversed that call. `rembg`, `onnxruntime` and
+  the baked model are gone, and they were most of the image weight.
+- **We ask fal for the MASK and composite locally**, we do not take its
+  finished cutout. Accepting the vendor's composite would mean accepting its
+  re-encode on pixels the operator already approved, which discards the
+  "RGB is never regenerated" property that is the whole reason this is a
+  matting pass. `mask_image` is read in preference to `image` because
+  `image` is only the mask if fal honoured `mask_only` — if it did not,
+  using its red channel as alpha is nonsense rather than an error.
+- **fal's 2048 is `operating_resolution`, not an input cap**, so the
+  2800x2000 standard did NOT change. `CUTOUT_MAX_UPLOAD_LONG_EDGE_PX` is a
+  per-vendor transport cap only, same shape as `OPENAI_MAX_LONG_EDGE_PX`.
+  Worth knowing this is an upgrade: `isnet-general-use` computed at
+  1024x1024 internally and upscaled, so the old engine put a 1024-derived
+  alpha onto a 2800x2000 image.
+- ⚠️ **UNVERIFIED against a real cutout.** pyvips is not installed on the dev
+  machine, so `_composite_alpha` has never run, and the mask polarity
+  (white = foreground) is assumed from convention. An inverted mask is loud,
+  not silent — the machine would vanish and the backdrop would remain.
+- ⚠️ **`libglib2.0-0` and `libgomp1` MUST STAY in the Dockerfile.** Their old
+  comment credited them to opencv/onnxruntime arriving via rembg, which now
+  reads as licence to delete them. libvips is built on GLib and pyvips is the
+  entire image pipeline; dropping libglib fails at IMPORT and the whole API
+  stops booting.
 - **Export changes shape for these images**: PNG, no disclaimer watermark,
   driven by `img.hasalpha()` in `export_pro` rather than by a request flag.
   `_ext_for()` keeps filenames, GCS content-types and ZIP entries in step.
 - **Alpha now survives `apply_adjustments`** (it was being dropped outright, so
   a contrast tweak on a cutout returned an opaque image), and the per-variant
   erase/tweak tools re-matte when the variant they edit already had alpha.
-- **Cold start and CPU are the operating cost.** `min-instances=5` keeps the
-  pool warm, but each instance now loads a ~170 MB ONNX model on its first
-  cutout, and the pass itself is a second or two of CPU per image on top of the
-  vendor call.
+- **The operating cost moved from CPU to spend and latency.** No model loads
+  on the instance any more, so cold start got materially lighter; instead
+  every cutout is a paid fal call inside the enhance request. `fal_rate_limiter`
+  (8 per 10s) is a defensive guess and matters more than the other limiters,
+  because a 429 fails the whole job rather than degrading — a cutout must
+  never come back opaque.
+- **`cleanshot-fal-key` is required for the API to DEPLOY**, not just to
+  matte: `deploy-api.yml` mounts it via `--set-secrets` and `gcloud run
+  deploy` fails outright on a missing secret. It exists as of 2026-08-28 —
+  revision `cleanshot-api-00170-64w` deployed clean, which also proves the
+  service account can read it.
 
 ---
 
