@@ -328,7 +328,7 @@ Two-app monorepo. Next.js owns the browser surface and proxies every API call th
 
 <h2 id="enhance">Enhance providers</h2>
 <p>
-The Enhance tab exposes a <strong>3-checkbox</strong> model selector with a "Select all" header toggle. Provider literal: <code>"gemini" | "openai" | "grok"</code>. Grok was restored 2026-08-27 but is <strong>not ticked by default</strong>. Routing in <code>_run_enhance</code> in <code>enhance_worker.py</code>. Defaults to gemini.
+The Enhance tab exposes a <strong>2-checkbox</strong> model selector with a "Select all" header toggle. Provider literal: <code>"gemini" | "openai" | "grok"</code> &mdash; the literal still admits Grok, but it is <strong>dormant again as of 2026-08-28</strong> (omitted from <code>ENHANCE_PROVIDERS</code>) after one live day. Routing in <code>_run_enhance</code> in <code>enhance_worker.py</code>. Defaults to gemini.
 </p>
 <table>
   <tr><th>Provider</th><th>Model</th><th>Endpoint / SDK</th><th>Secret</th></tr>

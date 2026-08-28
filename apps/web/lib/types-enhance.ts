@@ -34,16 +34,23 @@ export type EnhanceProvider = "gemini" | "openai" | "grok";
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
-  // Grok was dormant 2026-07-21 -> 2026-08-27 and is LIVE again. The
-  // dormancy was implemented purely as an omission from THIS array: the
-  // union, every Record below, the xAI key, the rate limiter and the
-  // backend _enhance_with_grok helper were all left in place, so the
-  // revival really was one line here.
+  // "grok" — DORMANT AGAIN as of 2026-08-28. Live for one day; the
+  // operator tried it against the Gemini reference and stopped rather
+  // than keep tuning: output bled the fork red onto the mast, overhead
+  // guard and body, and re-posed the camera angle. Two fixes shipped that
+  // day (removing an invented 4000-char prompt cap, then giving Grok its
+  // own terse edit-model builder) and the second was never evaluated.
   //
-  // It is deliberately NOT ticked by default - see the initial fan-out
-  // set in EnhancePanel.tsx. Grok's limiter is ~6/min (a defensive guess,
-  // not a measured cap), so defaulting it on would slow every batch.
-  "grok",
+  // Dormancy is an omission from THIS ARRAY ONLY. Still in place and
+  // still correct: the EnhanceProvider union, every Record below,
+  // XAI_API_KEY (confirmed valid), the rate limiter, the PER_IMAGE_USD
+  // row, _enhance_with_grok, and _build_grok_prompt. Re-enabling is
+  // re-adding "grok" to this array — and if you do, START from the
+  // terse builder, not from the Gemini prose. Deleting that builder is
+  // how this went wrong: its Kontext ancestor was removed on 2026-08-27
+  // and Grok was switched on hours later with nothing but Gemini's
+  // declarative prompt, which this repo had already measured as the
+  // "whole machine turns red" failure mode for edit models.
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {

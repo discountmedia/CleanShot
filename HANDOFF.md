@@ -63,7 +63,7 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
    computed and stored on the usage_event row at write time, so old rows keep
    their real figures. Don't restore the entries to "fix" the dashboard.
 
-3. **The Grok re-enable — DONE 2026-08-27.** `"grok"` is back in
+3. **The Grok re-enable — done 2026-08-27, REVERTED 2026-08-28.** Live for one day, then made dormant again at the operator's call: it bled the fork red onto the mast/guard/body and re-posed the camera versus a Gemini render that passed scan 3/3. `_build_grok_prompt` (`acdc2e2`) was written to fix exactly that and **was never evaluated** — test it before re-deriving anything. Original notes: `"grok"` is back in
    `ENHANCE_PROVIDERS`. Everything else it needed was already in place. It is
    deliberately **not ticked by default**; the initial fan-out set in
    `EnhancePanel.tsx` stays `["gemini", "openai"]` because Grok's ~6/min
