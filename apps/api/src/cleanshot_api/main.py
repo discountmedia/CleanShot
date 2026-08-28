@@ -115,11 +115,14 @@ async def lifespan(app: FastAPI):
             raise RuntimeError("SCAN_PROVIDER_OPENAI=true but OPENAI_API_KEY is not set")
         app.state.openai = openai.AsyncOpenAI(
             api_key=settings.openai_api_key,
-            # Bumped 3 → 8 so the SDK's built-in 429 backoff can ride out
-            # OpenAI's per-minute rate windows (Tier-1 gpt-image-2 is
-            # capped at 5 input-images/min). Safety net on top of the
-            # explicit rate limiter below.
-            max_retries=8,
+            # Was 8, cut to 2 on 2026-08-27. Eight retries against the
+            # 300s timeout below is a worst case near 40 minutes holding
+            # one rate-limiter slot, and now that /worker/enhance runs
+            # inline that worst case also blows through Cloud Run's 900s
+            # request timeout and earns a Cloud Tasks retry on top. The
+            # explicit rate limiter below - not SDK retries - is what
+            # keeps us inside the Tier-1 5-input-images/min window.
+            max_retries=2,
             # 300s budget. /v1/responses (scan, GPT-5.4) returns in ~5s
             # so the higher ceiling is harmless there, but /v1/images/edits
             # with quality="high" on full-res forklift photos was reliably

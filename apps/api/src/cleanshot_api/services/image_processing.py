@@ -211,6 +211,53 @@ def upscale_to_standard(input_bytes: bytes) -> bytes:
     return img.write_to_buffer(".png")
 
 
+def _sniff_content_type(data: bytes) -> str:
+    """Magic-byte content-type sniff. Mirrors the one in enhance_worker."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF":
+        return "image/webp"
+    return "image/jpeg"
+
+
+def downsize_for_vendor(input_bytes: bytes, max_long_edge: int) -> tuple[bytes, str]:
+    """
+    Shrink a source photo so its long edge is at most `max_long_edge`.
+    Returns (bytes, content_type).
+
+    NOT a reinstatement of the global INPUT_MAX_LONG_EDGE_PX cap. That cap was
+    removed on 2026-08-21 on purpose, so the 2800x2000 standardisation has real
+    detail to work from instead of enlarging a 1024px frame, and it must stay
+    removed for Gemini. This is a PER-PROVIDER escape hatch for the one path
+    where full resolution is a measured problem: OpenAI inlines the source as
+    base64 in the /v1/responses body, and full-res photos there were
+    "reliably exceeding the prior 90s cap with zero successes in a run of 12
+    attempts". The enhance_worker constant's own comment names OpenAI upload
+    timeouts as the thing to watch for; this is that watch firing.
+
+    An image already within the bound is returned BYTES-IDENTICAL with its
+    sniffed content type - a needless re-encode would cost detail and a JPEG
+    generation for nothing, and most sources are already small enough.
+
+    Oversized images are auto-rotated first, so stripping EXIF cannot flip the
+    result. Alpha is preserved by emitting PNG when the source carries it: the
+    enhance path never sends a cutout here, but the tweak/erase paths could,
+    and handing a vendor a silently flattened cutout only surfaces as a black
+    background much later.
+    """
+    img = pyvips.Image.new_from_buffer(input_bytes, "")
+    if max(img.width, img.height) <= max_long_edge:
+        return input_bytes, _sniff_content_type(input_bytes)
+
+    img = img.autorot()
+    scale = max_long_edge / max(img.width, img.height)
+    img = img.resize(scale, kernel="lanczos3")
+
+    if img.hasalpha():
+        return img.write_to_buffer(".png"), "image/png"
+    return img.write_to_buffer(".jpg", Q=92, strip=True), "image/jpeg"
+
+
 def export_pro(input_bytes: bytes, *, ai_disclaimer: bool = True) -> ExportResult:
     """
     PRO preset: encode the enhanced image as-is, at ENHANCED_WIDTH x

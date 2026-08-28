@@ -29,6 +29,7 @@ from cleanshot_api.core.config import get_settings
 from cleanshot_api.db import queries
 from cleanshot_api.services.image_processing import (
     apply_adjustments,
+    downsize_for_vendor,
     upscale_to_standard,
 )
 from cleanshot_api.services.cutout import has_alpha, remove_background
@@ -897,6 +898,12 @@ def _build_kontext_prompt(
 # uploads (the original reason for the cap), and provider request-size limits.
 INPUT_MAX_LONG_EDGE_PX = 1024
 
+# Per-provider cap for the OpenAI path ONLY (see downsize_for_vendor).
+# 2048 is the resize target main.py already anticipates: "once Phase 3
+# input-resize-to-2048 ships, this can come back down" - written next to
+# the 300s client timeout that full-resolution uploads forced.
+OPENAI_MAX_LONG_EDGE_PX = 2048
+
 
 async def _load_image_bytes(gcs_uri: str) -> tuple[bytes, str]:
     """Download bytes from GCS at NATIVE RESOLUTION.
@@ -1415,8 +1422,17 @@ async def _enhance_with_openai(
 
     OpenAI requires the image bytes in the request (no GCS URI ingress),
     so we download via _load_image_bytes first and inline as a data URL.
+
+    The source is capped at OPENAI_MAX_LONG_EDGE_PX before the base64.
+    Unlike Gemini, which takes the GCS bytes at native resolution, this
+    path pays for resolution twice - once uploading a multi-megabyte data
+    URL, once in the model's own processing - and that is the documented
+    cause of /v1/responses timeouts on this endpoint. Gemini is untouched.
     """
     image_bytes, ct = await _load_image_bytes(gcs_uri)
+    image_bytes, ct = await asyncio.to_thread(
+        downsize_for_vendor, image_bytes, OPENAI_MAX_LONG_EDGE_PX
+    )
     image_b64 = base64.b64encode(image_bytes).decode()
 
     response = await openai_client.responses.create(
@@ -2615,13 +2631,34 @@ async def handle_enhance_task(
     """
     FastAPI route handler for POST /worker/enhance.
 
-    Returns HTTP 200 IMMEDIATELY (quick-acknowledge) then fires the
-    Gemini work in the background. Cloud Tasks sees 200 → marks task done.
-    If the background work fails, the job row is updated to status=failed.
-    The frontend polls /jobs/{id} and shows the error state.
+    Runs the enhance INLINE and returns 200 only once it is finished.
+
+    This was a quick-acknowledge until 2026-08-27: add_task() + an
+    immediate 200, with the vendor call, the 2800x2000 upscale and the
+    matting pass all running in a FastAPI BackgroundTask AFTER the
+    response was sent. On Cloud Run that is the THROTTLED window - the
+    service deploys without --no-cpu-throttling, so CPU is allocated only
+    during request processing and every CPU-bound step ran at a fraction
+    of a core. Two Gemini images with the cutout toggle on took over five
+    minutes. Inline, the same work holds a real vCPU, and it is billed
+    only while it actually runs rather than 24/7.
+
+    Retry semantics are UNCHANGED. _run_enhance catches every exception,
+    marks the job row failed and returns normally, so Cloud Tasks still
+    sees a 200 and still does not retry a job that failed on its own.
+
+    The one NEW failure mode is a job outliving Cloud Run's 900s request
+    timeout: the instance kills it mid-flight, Cloud Tasks sees a 5xx and
+    retries (max_attempts=3), which bills the vendor call again. Typical
+    jobs are 20-75s. The OpenAI path was the only one running near that
+    ceiling, which is why its input is now downsized and its retry count
+    cut - do not raise either back without re-checking this.
+
+    `background_tasks` stays in the signature because the router passes it
+    and the sibling handlers still use it.
     """
-    background_tasks.add_task(_run_enhance, request, payload)
-    return {"status": "acknowledged"}
+    await _run_enhance(request, payload)
+    return {"status": "completed"}
 
 
 # ─── Erase pipeline (BFL flux-tools/erase-v1) ────────────────────────────────
