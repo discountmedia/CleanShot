@@ -648,6 +648,189 @@ def _build_enhance_prompt(
     return "\n\n".join(sections)
 
 
+def _build_grok_prompt(
+    toggles: EnhanceToggles,
+    equipment_type: str = "forklift",
+    spine_override: str | None = None,
+    fork_visibility: ForkVisibility | None = None,
+) -> str:
+    """Build a Grok-specific enhance prompt. Terse, imperative, "change X, keep Y".
+
+    WHY GROK DOES NOT USE _build_enhance_prompt
+    -------------------------------------------
+    Grok (`/v1/images/edits`) is an identity-preserving EDIT model, the same
+    class as Flux Kontext. This repo already learned — and wrote down — that
+    such models "degrade badly on the long, multi-section declarative prose
+    that _build_enhance_prompt feeds Gemini", and named the result **the
+    "whole machine turns red" failure mode**. That text lived in
+    `_build_kontext_prompt`, which was deleted along with Kontext on
+    2026-08-27. Grok was then routed through the Gemini builder and reproduced
+    the failure exactly: operator-reported output on 2026-08-28 had the mast,
+    overhead guard and body bled red from the fork instruction, and the camera
+    angle re-posed from side-profile to three-quarter.
+
+    Removing the invented 4000-char cap earlier the same day did NOT fix it,
+    and plausibly made it worse: it delivered MORE of the wrong-shaped prompt.
+    The cap removal was still correct on its own terms — it was silently
+    discarding the GUARDRAILS block — but shape, not length, is the problem.
+
+    This is a faithful adaptation of the deleted Kontext builder, whose shape
+    was tuned against this model class. Two things in it are load-bearing and
+    should not be "tidied":
+
+      • The fork clause ends with "Leave the carriage, mast, and the black
+        load-back-rest cage unpainted." That sentence is the anti-bleed
+        instruction. Gemini's fragment builder has no equivalent because
+        Gemini does not need one. Grok does.
+      • The pure-emphasis toggles (new_paint_job / remove_rust / shine_tires /
+        restore_decals) get NO clause of their own. The base already covers
+        paint, rust, tire-shine and decals, and restating them dilutes the
+        edit. Only ACTION toggles append.
+
+    UNVERIFIED. This restores a shape measured against Kontext, not Grok. It
+    needs a side-by-side against the Gemini reference render before it is
+    trusted on a batch — see the enhance-prompt rules in CLAUDE.md.
+
+    DRIFT-WARNING: shares treatment intent with _build_enhance_prompt (Gemini)
+    and the Scan-tab regen prompt in apps/web/lib/scan-helpers.ts — when the
+    treatment changes, update all three.
+    """
+    eq_display = EQUIPMENT_DISPLAY.get(equipment_type, "forklift")
+    fork = fork_visibility or ForkVisibility()
+    paint_forks_on = (
+        toggles.paint_forks_red_yellow_tips
+        and equipment_type != "scissor_lift"
+    )
+
+    lines: list[str]
+    if spine_override is not None:
+        # Operator prompt (or a master prompt) is the whole base; the action
+        # clauses below still append on top, same contract as the Gemini path.
+        lines = [spine_override]
+    else:
+        lines = [
+            f"Photorealistic image of a heavily used {eq_display} after a "
+            f"quick, inexpensive shop-grade respray. This is a cheap-but-clean "
+            f"commercial repaint to make it listing-ready. Not a restoration, "
+            f"not factory fresh.",
+            "WHAT THE PAINT COVERS:\n"
+            "- Surface chips, scuffs, scratches, faded paint\n"
+            "- Light surface rust and oxidation\n"
+            "- Dirt, grime, and stains\n"
+            "- Dull colors restored to a saturated version of the colour they "
+            "already are",
+            "WHAT THE PAINT DOES NOT COVER (must remain visible):\n"
+            "- Dents, panel deformations, bent hardware\n"
+            "- Deep metal gouges\n"
+            "- Missing/broken parts, cracked components\n"
+            "- Severe rust-through holes and large pitting\n"
+            "- Mismatched aftermarket panels (keep them distinct)",
+            "PAINT STYLE: Realistic shop spray gun application in the SAME "
+            "colours the unit already wears. Even coverage with slight "
+            "orange-peel texture, minor overspray in corners. Looks competent "
+            "but budget-level.",
+            "Preserve all OEM decals in exact original positions with realistic "
+            "wear.",
+            "TIRES: Keep identical tires. Preserve all tread wear, cuts, and "
+            "cracks. Apply glossy tire shine ONLY to sidewalls (deep black, "
+            "wet-look, reflective). Tread stays dry, dusty, and matte.",
+            "SCENE: Exact same camera angle, perspective, framing, lighting, "
+            "and background as the source image. Do not change, crop, rotate, "
+            "re-pose, or replace anything.",
+            "STRICT RULES:\n"
+            "- Do not add lights, beacons, mirrors, antennas, or new "
+            "attachments\n"
+            "- Do not add new damage or wear\n"
+            "- Do not make it look brand new\n"
+            "- Do not leave it unchanged — clear fresh respray must be obvious\n"
+            "- Preserve all original proportions, panels, and mechanical "
+            "details",
+            f"Result: Clearly used {eq_display} with fresh but cheap shop paint "
+            f"job and glossy sidewalls, while keeping all real-world wear and "
+            f"damage.",
+        ]
+
+    if paint_forks_on:
+        # The trailing "leave ... unpainted" sentence is the anti-bleed clause.
+        # fork_visibility is honoured the same way the Gemini fragments do it:
+        # a section that is out of frame is DESCRIBED as absent rather than
+        # silently dropped, so the model has no gap to fill from its prior.
+        if fork.tips_visible and fork.vertical_visible:
+            fork_line = (
+                "Paint only the two fork blades Discount Forklift red with "
+                "safety-yellow tips — red on the shank and roughly the first "
+                "80% of each blade, yellow on the outer ~15 cm tip."
+            )
+        elif fork.tips_visible:
+            fork_line = (
+                "Paint only the two fork blades Discount Forklift red with "
+                "safety-yellow tips. The upright shank is out of frame in this "
+                "photo — paint only the horizontal blade that is visible."
+            )
+        elif fork.vertical_visible:
+            fork_line = (
+                "Paint only the two fork blades Discount Forklift red, red on "
+                "the shank and along the whole visible blade. The fork tips run "
+                "out of frame — keep them running out of frame at their "
+                "existing length; do not shorten the forks and do not add "
+                "yellow tips."
+            )
+        else:
+            fork_line = (
+                "Paint only the two fork blades Discount Forklift red along the "
+                "whole visible length. The tips run out of frame — keep them "
+                "out of frame at their existing length; do not shorten the "
+                "forks and do not add yellow tips."
+            )
+        lines.append(
+            fork_line
+            + " Leave the carriage, mast, overhead guard, counterweight, body "
+            "panels, and the black load-back-rest cage completely unpainted — "
+            "the red goes on the fork blades and nowhere else."
+        )
+
+    if toggles.remove_people:
+        lines.append(
+            "Remove every person, operator, and hand from the frame, "
+            "filling the vacated space with the background behind them."
+        )
+    if toggles.remove_background_signage:
+        lines.append(
+            "Remove background signs, posters, logos, and wall text "
+            "(replace each with the plain surface behind it), but keep all "
+            f"signage on the {eq_display} itself."
+        )
+    if toggles.remove_rental_branding:
+        lines.append(
+            "Remove third-party rental-fleet decals, wraps, and asset-tag "
+            "numbers (Sunbelt, United Rentals, Herc, etc.), matching the "
+            "panel underneath with no ghost outline. Keep all OEM "
+            "manufacturer decals and do not invent any replacement logos."
+        )
+    if toggles.showroom_floor and not toggles.transparent_background:
+        # Skipped under a cutout for the same reason as the Gemini builder:
+        # the floor is about to be matted away, and a glossy grey sweep gives
+        # the matting model a lower-contrast edge under the tyres.
+        lines.append(
+            "If the shot is in a studio or showroom, replace the floor with "
+            "a clean uniform mid-gray (#808080) lightly-polished seamless "
+            "studio floor, keeping the unit's own contact shadow; if it is "
+            "an outdoor yard, warehouse, or lot, leave the ground as-is."
+        )
+    if toggles.improve_lighting:
+        lines.append(
+            "Balance the exposure and lighting while keeping the scene and "
+            "location intact."
+        )
+    if toggles.three_wheel and equipment_type == "forklift":
+        lines.append(
+            "This is a 3-WHEEL forklift — keep the SINGLE rear pivot/steer "
+            "wheel under the counterweight. Do not add a second rear wheel."
+        )
+
+    return "\n".join(lines)
+
+
 # Cap long-edge of the input image before sending to any vendor. Final
 # export is 1024×731, so anything bigger upstream is just paying tax on
 # INPUT RESOLUTION IS NO LONGER CAPPED (2026-08-21).
@@ -1586,13 +1769,24 @@ async def _run_enhance(
             prompt = payload.custom_prompt
         else:
             effective_spine = payload.custom_prompt or spine_override
-            prompt = _build_enhance_prompt(
-                payload.toggles,
-                equipment_type=payload.equipment_type,
-                spine_override=effective_spine,
-                fork_visibility=payload.fork_visibility,
-                framing_already_in_prompt=payload.fork_framing_in_prompt,
-            )
+            if payload.provider == "grok":
+                # Grok is an identity-preserving EDIT model and degrades on
+                # the declarative multi-section prose below — see
+                # _build_grok_prompt for the measured history.
+                prompt = _build_grok_prompt(
+                    payload.toggles,
+                    equipment_type=payload.equipment_type,
+                    spine_override=effective_spine,
+                    fork_visibility=payload.fork_visibility,
+                )
+            else:
+                prompt = _build_enhance_prompt(
+                    payload.toggles,
+                    equipment_type=payload.equipment_type,
+                    spine_override=effective_spine,
+                    fork_visibility=payload.fork_visibility,
+                    framing_already_in_prompt=payload.fork_framing_in_prompt,
+                )
 
         # Attribution suffix for the usage-event `model` label — lets the
         # admin dashboard tell prompt-tuning variants apart (e.g.
