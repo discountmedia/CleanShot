@@ -88,7 +88,27 @@ ENHANCE_MODEL_OPENAI = "gpt-5"
 # { data: [{ b64_json }] } depending on response_format.
 GROK_GENERATE_URL = "https://api.x.ai/v1/images/edits"
 ENHANCE_MODEL_GROK = "grok-imagine-image-quality"
-GROK_PROMPT_MAX_CHARS = 4000
+#
+# There is NO prompt length cap here, deliberately. A
+# GROK_PROMPT_MAX_CHARS = 4000 slice lived here until 2026-08-28. xAI
+# publishes no character limit and the number had no citation anywhere in
+# the repo -- it was invented. What it actually did was silently discard
+# the TAIL of every prompt, and because _build_enhance_prompt appends
+# GUARDRAILS last, the tail is exactly the hard constraints: OEM decal
+# preservation, no added lamps/beacons/attachments, no invented damage,
+# and 'No zoom, crop, rotate, horizon-leveling, or re-posing'.
+#
+# Measured before removing it: the standard toggle set (painted forks +
+# rental-branding removal) assembles to 4,586 characters, so Grok had
+# never once received the anti-re-posing clause. Operator-reported symptom
+# was 'results look good but it changes the angle of the lift' -- the
+# creative half of the prompt survived at the front, the geometry half was
+# cut off the back. Adding sterner anti-drift wording would have made it
+# WORSE, because that wording lands in the discarded region too.
+#
+# If a genuine upstream limit ever appears, let it surface as a 4xx from
+# api.x.ai, which the caller raises and logs. A visible error beats silent
+# geometry corruption.
 
 # Ideogram model label for usage_events.model when Ideogram is picked as a
 # PRIMARY enhance provider (the 5th card on the Enhance tab). Same /v1/edit
@@ -1426,7 +1446,7 @@ async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
       Content-Type: application/json
       body: {
         model:  "grok-imagine-image-quality",
-        prompt: <prompt, capped to GROK_PROMPT_MAX_CHARS>,
+        prompt: <the full assembled prompt, uncapped>,
         image: {
           url:  "data:<mime>;base64,<...>",
           type: "image_url",
@@ -1454,9 +1474,13 @@ async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
         "Authorization": f"Bearer {settings.xai_api_key}",
         "Content-Type":  "application/json",
     }
+    # Logged rather than capped: if xAI ever does start rejecting long
+    # prompts we want the length in the same log line as the 4xx.
+    logger.info("grok: sending prompt of %d chars", len(prompt))
+
     body = {
         "model":  ENHANCE_MODEL_GROK,
-        "prompt": prompt[:GROK_PROMPT_MAX_CHARS],
+        "prompt": prompt,
         "image": {
             "url":  f"data:{ct};base64,{image_b64}",
             "type": "image_url",

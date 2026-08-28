@@ -347,7 +347,7 @@ The Enhance tab exposes a <strong>3-checkbox</strong> model selector with a "Sel
   <tr>
     <td><code>grok</code></td>
     <td><code>grok-imagine-image-quality</code></td>
-    <td><code>POST https://api.x.ai/v1/images/edits</code> &mdash; OpenAI-compatible image-edit API, Bearer auth, prompt max 4000 chars.</td>
+    <td><code>POST https://api.x.ai/v1/images/edits</code> &mdash; OpenAI-compatible image-edit API, Bearer auth. No prompt length cap &mdash; an invented 4000-char slice was removed 2026-08-28 after it was found silently discarding the GUARDRAILS block, which the builder appends last.</td>
     <td><code>cleanshot-xai-key</code></td>
   </tr>
   <tr>
