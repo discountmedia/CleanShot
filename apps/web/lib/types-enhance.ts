@@ -20,21 +20,30 @@
  * Note: Ideogram is still wired internally for the per-variant
  * Tweak ("T cyan Edit") + Inpaint ("🖌 rose") tools — those tools have
  * their own `tool` Literal separate from this primary-provider union.
- * Likewise the BFL erase tool (`⌫ purple`) uses its own BFL_API_KEY
- * path, not this Literal. Backend helpers _enhance_with_kontext /
- * _enhance_with_reve remain as dead-but-harmless code so a revert is a
- * one-line restoration if the operator brings these models back.
+ * ⚠️ UPDATED 2026-08-27 — the dead-but-harmless code is no longer all
+ * there. `_enhance_with_kontext`, `_enhance_with_reve` and
+ * `_erase_with_flux` were DELETED from enhance_worker.py, and the erase
+ * tool now routes to Ideogram inpaint instead of BFL. Restoring Kontext or
+ * Reve is a git revert of that commit, not a one-line change. What DOES
+ * still stand as dead-but-harmless: `grok` in this union, in every Record
+ * below, and as `_enhance_with_grok` in the worker; and Ideogram, which is
+ * live for the Tweak and Inpaint tools.
  */
 export type EnhanceProvider = "gemini" | "openai" | "grok";
 
 export const ENHANCE_PROVIDERS: readonly EnhanceProvider[] = [
   "gemini",
   "openai",
-  // "grok" — made DORMANT 2026-07-21 (operator cut Grok from the mix). Kept
-  // out of the picker roster so it can't be selected, defaulted to, or
-  // fanned-out to — but left in the EnhanceProvider union + every Record below
-  // + the backend _enhance_with_grok helper so re-enabling is a one-line
-  // restore. Joins kontext/ideogram/reve as unreachable-from-picker code.
+  // Grok was dormant 2026-07-21 -> 2026-08-27 and is LIVE again. The
+  // dormancy was implemented purely as an omission from THIS array: the
+  // union, every Record below, the xAI key, the rate limiter and the
+  // backend _enhance_with_grok helper were all left in place, so the
+  // revival really was one line here.
+  //
+  // It is deliberately NOT ticked by default - see the initial fan-out
+  // set in EnhancePanel.tsx. Grok's limiter is ~6/min (a defensive guess,
+  // not a measured cap), so defaulting it on would slow every batch.
+  "grok",
 ] as const;
 
 export const ENHANCE_PROVIDER_LABELS: Record<EnhanceProvider, string> = {

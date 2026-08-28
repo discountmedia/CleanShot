@@ -181,24 +181,16 @@ async def lifespan(app: FastAPI):
         name="openai_image_edit",
     )
 
-    # --- Reve image-edit rate limiter ---
-    # Reve's docs claim no published per-minute cap, but in practice
-    # the API returns 429 RPM errors on bursts. Started at 5/60s
-    # (same as OpenAI), operator still saw 7 in a row succeed before
-    # 429s started — likely a mix of per-instance limiter scope and
-    # Reve's own threshold sitting around there. Pulled down to 3
-    # events per 30s (steady-state ~6/min with a small burst of 3).
-    # Retune once we see how this holds.
-    app.state.reve_image_rate_limiter = AsyncRateLimiter(
-        max_events=3,
-        interval_seconds=30.0,
-        name="reve_image_edit",
-    )
-
     # --- xAI / Grok image-edit rate limiter ---
-    # xAI doesn't publish a per-minute cap for /v1/images/edits.
-    # Defensive default mirrors Reve (3 per 30s ≈ 6/min) until we see
-    # real burst behaviour and can retune.
+    # xAI doesn't publish a per-minute cap for /v1/images/edits, so this
+    # is a DEFENSIVE GUESS, not a measured limit: 3 events per 30s, i.e.
+    # steady-state ~6/min with a small burst of 3. It was originally set
+    # to mirror the Reve limiter (since removed), which had been pulled
+    # down to these numbers after the operator watched 7 requests in a
+    # row succeed before 429s began. Retune against real burst behaviour
+    # — at ~6/min this is nearly as slow as OpenAI's hard 5/min cap, so
+    # it is a plausible throughput bottleneck, not a safe default to
+    # leave unexamined.
     app.state.grok_image_rate_limiter = AsyncRateLimiter(
         max_events=3,
         interval_seconds=30.0,

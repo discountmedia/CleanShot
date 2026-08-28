@@ -1,6 +1,76 @@
-# Session handoff — updated 2026-08-26
+# Session handoff — updated 2026-08-27
 
 Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. "Enhance tab — current shape"). This file is the "where we are right now / what's pending" snapshot.
+
+---
+
+## ⚠️ 2026-08-27 — read this first
+
+**The branch is NOT `main` and nothing from today is pushed or deployed.**
+
+- **Branch:** `fix/enhance-inline-cpu-throttling`. It exists only on this
+  machine — there is no remote branch. Head is `15b233c` plus one docs commit.
+- **`main` on the remote is at `e49b7c6`.** Everything below dated 27 Aug is
+  local-only.
+- **The API is still running the pre-27-Aug revision.** Nothing today has been
+  seen by a real batch.
+
+### What is on this branch
+
+1. **`15b233c` — enhance runs INLINE instead of in a FastAPI BackgroundTask.**
+   Three fixes for jobs that hang rather than fail. Cloud Run deploys this
+   service without `--no-cpu-throttling`, so the post-response window is exactly
+   where CPU is throttled to near zero; two Gemini images with the cutout toggle
+   on took over five minutes. Also caps OpenAI input at 2048px (per-provider, on
+   purpose — the global downsize must stay removed for Gemini) and drops OpenAI
+   `max_retries` 8 → 2. Full reasoning in `CLAUDE.md`.
+
+   ⚠️ **The CPU-throttling diagnosis was read from deploy config, not from Cloud
+   Run metrics.** If enhance still hangs after this deploys, get the metrics
+   before changing anything else.
+
+2. **The BFL/Flux/Reve removal** — which `15b233c` explicitly listed as *not
+   included*, and which is now done. `_erase_with_flux`, `_enhance_with_kontext`
+   and `_enhance_with_reve` are deleted; the erase tool routes to Ideogram
+   inpaint; `EraseRequest.tool` is `Literal["ideogram"]`.
+
+   ⚠️ **This narrows the dormant-code convention and should be a conscious
+   call.** The standing rule in this repo is that unreachable provider code is
+   parked on purpose and restoring it is a one-line change. That is still true of
+   **grok**; it is **no longer true of kontext or reve**, where restoring means a
+   `git revert`. The endpoint shapes are kept in `CLAUDE.md`'s provider table,
+   marked DELETED, because rediscovering them is the expensive part.
+
+   The removal is thorough — `config.py` (BFL/RunComfy/Reve keys and
+   `KONTEXT_SEED`), `pricing.py`, `master_prompts.py`, the Reve rate limiter in
+   `main.py`, the `RegenRequest` provider Literal, and the frontend
+   `EraseDialog` / `SourceCompareCard` / `EnhancePanel` erase wiring all went
+   with it.
+
+   ⚠️ **ONE FILE WAS MISSED, and it is a latent 422.** The BFF route
+   `apps/web/app/api/enhance/erase/route.ts` still reads
+   `tool: body.tool ?? "flux"`, and `apps/web/lib/api.ts` still types the field
+   `"flux" | "ideogram"`. The backend Literal is now `"ideogram"` only, so **any
+   caller that omits `tool` gets a 422.** Nothing omits it today — `EraseDialog`
+   hardcodes `"ideogram"` — so it cannot fire, but the default is wrong and the
+   next caller inherits it.
+
+   ✅ **Historic spend is safe.** `flux-erase-v1`, `flux-1-kontext-max-edit` and
+   `reve-edit-fast-latest` left `PER_IMAGE_USD`, but `cost_estimate_usd` is
+   computed and stored on the usage_event row at write time, so old rows keep
+   their real figures. Don't restore the entries to "fix" the dashboard.
+
+3. **Still not done, from the same plan:** the **Grok re-enable**.
+
+### Before this branch goes anywhere
+
+1. Decide whether the kontext/reve deletion is wanted, or whether it should be
+   reverted and left parked.
+2. Fix the BFF default in `apps/web/app/api/enhance/erase/route.ts`
+   (`?? "flux"` → `?? "ideogram"`) and the type in `lib/api.ts`. Deliberately
+   NOT done in the docs pass that wrote this file — it is a behaviour change in
+   a change set somebody else authored.
+3. Deploy and run a real batch — the inline-enhance fix is unverified.
 
 ---
 

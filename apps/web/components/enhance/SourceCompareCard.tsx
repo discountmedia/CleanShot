@@ -109,8 +109,6 @@ interface SourceCompareCardProps {
   /** Commit this variant's adjustment: renders new bytes and replaces the
    *  variant in place, so the export picks it up with no extra step. */
   onAdjustApply: (provider: EnhanceProvider) => void;
-  /** Opens the per-variant Flux erase dialog. */
-  onErase: (provider: EnhanceProvider) => void;
   /** Opens the per-variant Gemini tweak dialog. */
   onTweak: (provider: EnhanceProvider) => void;
   /** Opens the per-variant Ideogram text-edit dialog (sibling to Tweak). */
@@ -140,7 +138,6 @@ export function SourceCompareCard({
   onRetry,
   onAdjustChange,
   onAdjustApply,
-  onErase,
   onTweak,
   onIdeogramEdit,
   onIdeogramInpaint,
@@ -375,7 +372,6 @@ export function SourceCompareCard({
                   onAdjustApply={() => onAdjustApply(p)}
                   onChoose={() => onChoose(p)}
                   onRegen={() => onRetry(p)}
-                  onErase={() => onErase(p)}
                   onTweak={() => onTweak(p)}
                   onIdeogramEdit={() => onIdeogramEdit(p)}
                   onIdeogramInpaint={() => onIdeogramInpaint(p)}
@@ -458,20 +454,15 @@ interface VariantThumbProps {
   onAdjustChange: (adj: VariantAdjustment) => void;
   onAdjustApply: () => void;
   /**
-   * Opens the per-variant Flux erase dialog. EnhancePanel keeps a
-   * single dialog instance and uses (fileId, provider) to look up the
-   * source asset + URL. Only meaningful when the variant is complete.
-   */
-  onErase: () => void;
-  /**
-   * Opens the per-variant Gemini tweak dialog. Same single-instance
-   * pattern as Erase, just routes to the text-only TweakDialog
-   * instead of the mask-drawing EraseDialog.
+   * Opens the per-variant Gemini tweak dialog. Single-instance pattern:
+   * EnhancePanel owns the dialog and looks the variant up by
+   * (fileId, provider). Routes to the text-only TweakDialog rather than
+   * the mask-drawing EraseDialog.
    */
   onTweak: () => void;
   /** Ideogram sibling of onTweak — same dialog, Ideogram /v1/edit backend. */
   onIdeogramEdit: () => void;
-  /** Ideogram sibling of onErase — same dialog, Ideogram inpaint backend. */
+  /** Opens the mask-drawing EraseDialog, which is Ideogram-inpaint-only. */
   onIdeogramInpaint: () => void;
 }
 
@@ -481,7 +472,7 @@ function VariantThumb({
   onAdjustChange, onAdjustApply,
   onChoose, onRegen, onTweak,
 }: VariantThumbProps) {
-  // onErase / onIdeogramEdit / onIdeogramInpaint are still ACCEPTED (the parent
+  // onIdeogramEdit / onIdeogramInpaint are still ACCEPTED (the parent
   // forwards them and EnhancePanel still owns the dialogs) but are not
   // rendered: the operator asked for a pared-back action set on the variant
   // thumb. Left on the interface as dead-but-harmless plumbing, the same
@@ -582,8 +573,8 @@ function VariantThumb({
             eviction of the old jobId. stopPropagation so the click
             doesn't also trigger the outer "pick winner" select.
 
-            The three quick-action icons (regen / tweak / erase) cluster in
-            the top-left in a clear "↻ ✎ ⌫" order. Each one wraps a `group`
+            The two quick-action icons (regen / tweak) cluster in
+            the top-left in a clear "↻ ✎" order. Each one wraps a `group`
             so a styled hover-tooltip can fade in below the button. */}
 
         {/* Per-variant Retry — restored 2026-08-21 by operator request (see

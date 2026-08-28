@@ -45,7 +45,7 @@ from __future__ import annotations
 from typing import Literal
 
 Author = Literal["claude", "gemini", "openai", "grok"]
-Generator = Literal["gemini", "openai", "grok", "kontext", "ideogram", "reve"]
+Generator = Literal["gemini", "openai", "grok", "ideogram"]
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -196,96 +196,6 @@ TARGET RESULT: an obviously used, previously hard-worked {equipment_type} that h
 
 
 # ════════════════════════════════════════════════════════════════════════════
-# TAILORED — Kontext
-# ════════════════════════════════════════════════════════════════════════════
-
-KONTEXT_GROK = """\
-Photorealistic image of a heavily used {equipment_type} after a quick, inexpensive shop-grade respray. This is a cheap-but-clean commercial repaint to make it listing-ready. Not a restoration, not factory fresh.
-
-WHAT THE PAINT COVERS:
-- Surface chips, scuffs, scratches, faded paint
-- Light surface rust and oxidation
-- Dirt, grime, and stains
-- Dull colors restored to saturated versions of the colors already there
-
-WHAT THE PAINT DOES NOT COVER (must remain visible):
-- Dents, panel deformations, bent hardware
-- Deep metal gouges
-- Missing/broken parts, cracked components
-- Severe rust-through holes and large pitting
-- Mismatched aftermarket panels (keep them distinct)
-
-PAINT STYLE: Realistic shop spray gun application in the exact colors the unit already wears. Even coverage with slight orange-peel texture, minor overspray in corners. Looks competent but budget-level.
-
-Preserve all OEM decals in exact original positions with realistic wear.
-
-TIRES: Keep the exact same tires from the source. Preserve all tread wear, cuts, gouges, and aging cracks on the tread (tread must stay dry, dusty, and matte).
-- If standard black tires: Apply glossy tire shine ONLY to the sidewalls (deep black, wet-look, highly reflective).
-- If non-marking tires (light gray): Paint them light primer gray. Do NOT paint them black. No glossy shine on non-marking tires.
-
-SCENE: Exact same camera angle, perspective, framing, lighting, and background as the source image. Do not change, crop, or replace anything.
-
-STRICT RULES:
-- Do not add lights, beacons, mirrors, antennas, or new attachments
-- Do not add new damage or wear
-- Do not make it look brand new
-- Do not leave it unchanged — clear fresh respray must be obvious
-- Preserve all original proportions, panels, and mechanical details
-
-Result: Clearly used {equipment_type} with fresh but cheap shop paint job and properly treated tires, while keeping all real-world wear and damage.\
-"""
-
-KONTEXT_OPENAI = """\
-Generate a photorealistic image of a used {equipment_type} after a cheap, quick shop respray. Focus on making it look listing-ready but not factory-fresh or restored.
-
-Paint should cover surface scratches, scuffs, light rust, dirt, and faded color. Keep visible all dents, deep gouges, missing or broken parts, severe rust-through, and mismatched panels.
-
-Preserve OEM decals exactly with realistic wear. Spray coverage should be even but show slight orange-peel and minor overspray.
-
-TIRES remain the same: tread wear and cracks visible; apply glossy shine to sidewalls only. Non-marking tires stay light gray.
-
-Maintain the original camera angle, background, lighting, and perspective. Do not add accessories or introduce new damage.
-
-Result: Used equipment that clearly received a fresh, inexpensive respray, with proper tire treatment, and all pre-existing structural imperfections intact.\
-"""
-
-KONTEXT_GEMINI = """\
-Photorealistic 4K image-to-image edit of a heavily used {equipment_type} receiving a cheap, commercial shop-grade respray. The goal is a clean, listing-ready industrial aesthetic, not a factory restoration.
-
-PAINT & SURFACES:
-Apply highly saturated, fresh spray paint matching the exact colors the unit already wears. The fresh paint completely covers all superficial surface scratches, scuffs, light surface rust, chips, and dirt. The paint job looks inexpensive: render a slight orange-peel texture and minor overspray in tight corners. The lighting is professional, sharp, and modern. Mask off all OEM decals, preserving their exact placement, spelling, and pre-existing wear.
-
-STRUCTURAL DAMAGE (MUST PRESERVE):
-Visually retain all physical damage. Do not heal or smooth the metal. Deep metal gouges, bent hardware, panel deformations, cracked components, and severe rust-through holes must remain completely visible under the new paint. Preserve mismatched aftermarket panels exactly as they are.
-
-MECHANICAL ACCURACY:
-Maintain the exact mechanical layout of the source. {anatomy} Do not add beacons, mirrors, or attachments not present in the source.
-
-TIRE SHINE CONTRAST:
-Keep the exact existing tires, preserving all cuts, chunks, and cracks on the tread. The tread must remain dry, matte, and dusty. Apply a heavy, wet-look, glossy tire shine strictly to the sidewalls. (Exception: If the tires are light gray non-marking tires, keep them entirely matte gray with zero gloss).
-
-SCENE:
-Lock the exact camera angle, perspective, and background environment from the source image. The background remains completely untouched. Only the cosmetic paint and tire sidewalls of the equipment are altered.\
-"""
-
-KONTEXT_CLAUDE = """\
-Give the used {equipment_type} a cheap-but-clean shop-grade respray, keeping everything else identical.
-
-Repaint each painted body panel in the same color it already is, preserving the exact panel-to-color layout. The fresh coat covers surface chips, scuffs, scratches, faded patches, light surface rust, oxidation, dirt, and grime, and brings faded paint back to a saturated version of that same color. Render it as a budget spray-gun job: even coverage with faint orange-peel texture and slight overspray in tight corners, not premium bodywork.
-
-Paint over physical damage without repairing it — keep dents, bent hardware, panel deformation, deep metal gouges, cracked or broken parts, missing parts, severe rust-through holes, and large rust pitting fully visible under the new paint. Keep mismatched, replaced, or aftermarket panels distinct.
-
-Keep all OEM make, model, and capacity decals in the same position with the same spelling and existing wear.
-
-Keep the same tires with all tread wear, cuts, gouges, and cracks; the tread stays dry, matte, and dusty. Apply heavy glossy wet-look tire shine to the sidewalls only. If the tires are light-gray non-marking tires, keep them matte gray with no gloss and do not paint them black.
-
-Keep the same camera angle, perspective, framing, lighting, background, and mechanical layout. {anatomy} Do not add lamps, beacons, mirrors, antennas, or attachments, do not introduce new damage, and do not crop, rotate, or re-pose.
-
-The result is a clearly used machine that has just been freshly but cheaply resprayed, with glossy sidewalls, while all structural damage and severe rust remain visible.\
-"""
-
-
-# ════════════════════════════════════════════════════════════════════════════
 # TAILORED — Ideogram
 # ════════════════════════════════════════════════════════════════════════════
 
@@ -359,84 +269,6 @@ Beneath the paint, real wear still shows through: dents and bent hardware painte
 The tires are the original tires, tread dry, dusty, and matte with all its cuts, gouges, and age cracks intact, while the sidewalls carry a heavy glossy wet-look tire shine, deep black and reflective. (Light-gray non-marking tires stay matte gray.)
 
 Same camera angle, perspective, framing, lighting, background, and mechanical layout as the original machine. An honestly used, hard-worked unit, freshly and cheaply resprayed for sale with glossy sidewalls, clearly improved yet clearly still used.\
-"""
-
-
-# ════════════════════════════════════════════════════════════════════════════
-# TAILORED — Reve
-# ════════════════════════════════════════════════════════════════════════════
-
-REVE_GROK = """\
-Photorealistic image of a heavily used {equipment_type} after a quick, inexpensive shop-grade respray. Cheap-but-clean commercial repaint made to look listing-ready. Not a restoration, not factory fresh.
-
-Fresh paint covers: all surface chips, scuffs, scratches, faded areas, light surface rust, dirt, grime, and dull weathered paint. Restores colors to saturated versions of the shades already there.
-
-Fresh paint does NOT cover or hide: dents, panel deformations, bent hardware, deep metal gouges, missing or broken parts, cracked components, severe rust-through holes, large rust pitting, or mismatched aftermarket panels. These must remain clearly visible and unchanged.
-
-Paint style: Realistic shop spray gun respray in the exact colors the unit already wears. Even coverage with slight orange-peel texture, minor overspray in tight corners. Competent but budget-level finish.
-
-All OEM make, model, capacity, and safety decals are masked off and preserved in their exact original positions with realistic wear.
-
-TIRES: Keep the exact same tires from the source image. Preserve all tread wear, cuts, gouges, and aging cracks. Tread must remain dry, dusty, and matte.
-- Standard black tires: Apply glossy tire shine ONLY to the sidewalls (deep black, wet-look, highly reflective).
-- Non-marking tires (light gray): Paint them light primer gray. Do NOT paint them black and do NOT add glossy shine.
-
-Maintain the exact same camera angle, perspective, framing, lighting direction, and background environment as the source image. Do not crop, rotate, or replace the background.
-
-Strict guardrails: Do not add any new lights, beacons, mirrors, antennas, attachments, or hardware. Do not introduce new damage or wear. Do not make the {equipment_type} look brand new. Do not leave it unchanged — the fresh respray must be clearly visible while still showing real use and wear.
-
-Final result: Clearly used {equipment_type} with obvious fresh but cheap shop respray and correctly treated tires.\
-"""
-
-REVE_OPENAI = """\
-Create a photorealistic image of a used {equipment_type} with a quick, inexpensive shop respray. Not restored, not factory-fresh — cheap-but-clean.
-
-Covers: surface scratches, scuffs, light rust, dirt, faded paint.
-Keeps visible: dents, deep gouges, missing/broken parts, severe rust, mismatched panels.
-
-Decals: preserve OEM make, model, capacity exactly with realistic wear.
-
-Tires: maintain original tread wear, cuts, cracks; apply glossy tire shine only to sidewalls, tread stays matte. Non-marking tires remain light gray.
-
-Scene: preserve original camera angle, perspective, lighting, and background. Do not crop, rotate, isolate, or add accessories.
-
-Result: clearly used, freshly resprayed, structural imperfections remain, tires properly treated.\
-"""
-
-REVE_GEMINI = """\
-Prompt Style & Quality:
-A photorealistic, high-resolution industrial product listing photograph. Sharp focus, brilliant lighting, 8k resolution, cinematic lighting.
-
-Main Subject & Scenario:
-A heavily used, functional industrial {equipment_type} after a quick, inexpensive commercial shop-grade spray paint respray. The objective is "cheap but clean" for a resale listing, not a factory restoration.
-
-Paint Application & Texture (The Update):
-The {equipment_type}'s main body panels are covered in a newly applied, highly saturated coat of paint matching the colors they already are. The paint is visually thick and effective at hiding all pre-existing superficial scratches, paint chips, scuffs, and surface oxidation. The overall texture is typical of a quick shop job: render a realistic subtle orange-peel texture upon close inspection, with minor, natural overspray mist and slight edge buildup in tight corners and crevices.
-
-Preserved Wear & Mechanical Constraints (The Integrity):
-Crucially, the fresh paint layer covers and follows the exact contours of all physical damage without healing it. The following must remain clearly visible and unrepaired under the new paint: deep gouges that bite through the metal, significant dents, panel deformations, bent metal hardware, and severe rust-through holes or deep pitting craters. Keep any mismatched aftermarket panels visually distinct. Perfectly preserve all original OEM decals (Model, Make, Capacity) in their exact placement and spelling, showing only realistic wear and minor fading, contrasting sharply with the new paint.
-
-Tires & Scene Composition:
-The tires remain identical to the source image, preserving all existing tread wear, missing chunks, cuts, and rubber aging cracks.
-
-For Black Tires: The treads must look dry, matte, and dusty brown. The sidewalls are treated with a heavy application of glossy, wet-look tire shine, appearing deep black and highly reflective, contrasting with the dusty treads.
-
-For Non-Marking (Gray) Tires: The entire tire must be rendered in a flat, matte light primer gray with zero glossy elements.
-Maintain the exact camera angle, perspective, framing, and environmental background of the original image, with the background remaining 100% unchanged.\
-"""
-
-REVE_CLAUDE = """\
-Repaint each painted body panel in the exact color it already is, keeping the same panel-to-color layout, with no recoloring. The fresh coat covers surface chips, scuffs, scratches, faded patches, light surface rust, oxidation, dirt, and grime, and brings faded paint back to a saturated version of that same color. Make it a budget spray-gun job: even coverage with a faint orange-peel texture up close and minor overspray in tight corners, not premium bodywork.
-
-Paint over the damage without fixing it. Keep these fully visible under the new paint: dents, bent hardware, panel deformation, deep metal gouges, cracked or broken parts, missing parts, severe rust-through holes, and large rust pitting. Keep mismatched, replaced, or aftermarket panels distinct.
-
-Keep all OEM make, model, and capacity decals in their exact original position and spelling, with their existing wear.
-
-Keep the same tires and all tread wear, cuts, gouges, and age cracks; the tread stays dry, dusty, and matte. Add heavy glossy wet-look tire shine to the sidewalls only. Light-gray non-marking tires stay matte gray with no gloss and are never painted black.
-
-Keep the camera angle, perspective, framing, lighting, background, and mechanical layout exactly as in the source. {anatomy} Do not add lamps, beacons, mirrors, antennas, or attachments, and do not crop, rotate, re-pose, or change the background. Add no new damage.
-
-Result: a clearly used, hard-worked {equipment_type} that has just been freshly but cheaply resprayed, with glossy sidewalls, improved but honest, with only structural damage and severe rust still showing.\
 """
 
 
@@ -572,20 +404,13 @@ GENERIC_PROMPTS: dict[str, str] = {
     "grok": GROK_GENERIC,
 }
 
-# Sparse: exactly the 12 edit-tailored cells + the 3 namesake cells authored.
+# Sparse: exactly the 4 edit-tailored cells (Ideogram, the only surviving
+# edit-style generator) + the 3 namesake cells authored.
 TAILORED_PROMPTS: dict[tuple[str, str], str] = {
-    ("kontext", "claude"): KONTEXT_CLAUDE,
-    ("kontext", "gemini"): KONTEXT_GEMINI,
-    ("kontext", "openai"): KONTEXT_OPENAI,
-    ("kontext", "grok"): KONTEXT_GROK,
     ("ideogram", "claude"): IDEOGRAM_CLAUDE,
     ("ideogram", "gemini"): IDEOGRAM_GEMINI,
     ("ideogram", "openai"): IDEOGRAM_OPENAI,
     ("ideogram", "grok"): IDEOGRAM_GROK,
-    ("reve", "claude"): REVE_CLAUDE,
-    ("reve", "gemini"): REVE_GEMINI,
-    ("reve", "openai"): REVE_OPENAI,
-    ("reve", "grok"): REVE_GROK,
     # Namesakes — the generator authored by its own namesake LLM.
     ("gemini", "gemini"): GEMINI_TO_GEMINI,
     ("openai", "openai"): OPENAI_TO_OPENAI,
@@ -593,11 +418,10 @@ TAILORED_PROMPTS: dict[tuple[str, str], str] = {
 }
 
 # Which authors are offered under "Tailored for <generator>" in the UI. Mirrored
-# on the frontend as TAILORED_AUTHORS_BY_GENERATOR in apps/web/lib/types.ts.
+# on the frontend as TAILORED_AUTHORS_BY_GENERATOR in
+# apps/web/lib/types-enhance.ts (NOT types.ts — that pointer was always wrong).
 TAILORED_AUTHORS: dict[str, list[str]] = {
-    "kontext": ["claude", "gemini", "openai", "grok"],
     "ideogram": ["claude", "gemini", "openai", "grok"],
-    "reve": ["claude", "gemini", "openai", "grok"],
     "gemini": ["gemini"],
     "openai": ["openai"],
     "grok": ["grok"],

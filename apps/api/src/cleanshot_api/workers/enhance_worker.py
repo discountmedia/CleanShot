@@ -5,11 +5,12 @@ Pattern (Phase 2 v2.5):
   1. HTTP 200 returned immediately (quick-acknowledge) to prevent Cloud Tasks
      from retrying a live task.
   2. asyncio.create_task() fires the Gemini call in the background.
-  3. Semaphore(2) per instance limits concurrent Gemini Pro Image calls.
+  3. Semaphore(8) per instance limits concurrent Gemini Pro Image calls
+     (see main.py — this docstring said 2 long after it became 8).
      Global cap is enforced by Cloud Tasks max_concurrent_dispatches=10.
   4. On completion: write output asset to GCS, update job row, auto-enqueue scan.
 
-Models: gemini-2.5-flash-image (default) | gpt-image-2-2026-04-21 (OpenAI opt-in) | flux-2-max (BFL opt-in)
+Models: gemini-3.1-flash-image-preview (default) | gpt-5 (OpenAI) | grok-imagine-image-quality (xAI)
 """
 
 from __future__ import annotations
@@ -76,104 +77,6 @@ ENHANCE_MODEL_GEMINI = "gemini-3.1-flash-image-preview"
 # We force tool_choice so gpt-5 always invokes the tool (no chance of
 # it deciding the prompt is conversational and just replying in text).
 ENHANCE_MODEL_OPENAI = "gpt-5"
-# BFL erase endpoint. Flux is no longer a generation provider on the
-# Enhance tab — it's reserved for mask-based object removal via
-# /v1/flux-tools/erase-v1 (operator paints a mask in the browser over
-# something on a completed variant they want gone; the backend submits
-# both image + mask to BFL and writes the cleaned result as a new
-# asset). Same async-polling pattern as the prior flux-2-max generator
-# (POST returns { id, polling_url }; poll until "Ready"; GET
-# result.sample for bytes). Auth is via the same x-key header / same
-# BFL_API_KEY secret we already mount.
-FLUX_ERASE_URL = "https://api.bfl.ai/v1/flux-tools/erase-v1"
-# Polling cadence: ramp from 0.5s up to 2.0s instead of a flat 1.5s.
-# Median FLUX 2 MAX finish is 15-25s — the prior flat 1.5s spent ~10
-# poll-intervals at the start of every job rounding up to the next 1.5s
-# tick, wasting 1-4s per call. Front-loading the polls with sub-second
-# checks catches the rare 8-12s finishers immediately; the long tail
-# settles at 2s so we don't hammer BFL on slow jobs.
-# After the explicit ramp we hold at 2.0s for the remainder; the total
-# budget (max attempts × 2.0s ceiling) is sized for ~90s same as before.
-FLUX_POLL_INTERVALS_S: tuple[float, ...] = (
-    0.5, 0.5, 0.75, 1.0, 1.25, 1.5, 1.5, 1.75,
-)
-FLUX_POLL_STEADY_INTERVAL_S = 2.0
-FLUX_POLL_MAX_ATTEMPTS = 50        # ~90s total budget; FLUX 2 MAX typically finishes in 10-30s
-
-# BFL Flux Kontext Max image-edit — called DIRECTLY against api.bfl.ai
-# (NOT the RunComfy proxy). Going direct buys two things the proxy
-# denied us, both of which silently defeated prompt tuning:
-#   1. prompt_upsampling=false → BFL uses our EXACT prompt instead of
-#      rewriting it through its own upsampler. Via RunComfy we couldn't
-#      set this, so a fully-rewritten color-lock prompt (verified in the
-#      submit log) produced byte-identical output to the prior prompt —
-#      BFL was collapsing both into the same generic intent.
-#   2. No proxy-side result cache keyed on image+seed.
-# Same async submit/poll/result contract as the Erase tool
-# (_erase_with_flux): POST returns { id, polling_url }; poll until
-# "Ready"; GET result.sample (presigned, no auth) for the bytes. Auth via
-# the x-key header / the BFL_API_KEY secret we already mount for Erase.
-# Input image is base64 (`input_image`), not a fetchable URL.
-#
-# Why Kontext specifically: BFL positions it as purpose-built for
-# identity-preserving edits — "change anything except the subject."
-KONTEXT_SUBMIT_URL = "https://api.bfl.ai/v1/flux-kontext-max"
-ENHANCE_MODEL_KONTEXT = "flux-kontext-max"
-# Reasonable per-call prompt ceiling. Kontext's docs don't publish a
-# hard cap but most BFL models tolerate up to ~4k chars; staying
-# inside that bound matches what we send to the other providers.
-KONTEXT_PROMPT_MAX_CHARS = 3800
-# Kontext typical finish is 15–40s. Front-load the schedule to
-# discover completion ~1–2s sooner on the typical case, then a tight
-# 1.0s steady interval so we don't sit on a finished job for up to
-# 2s after it lands. Larger MAX_ATTEMPTS preserves the prior ~90s
-# total budget (was 50 × 2s ≈ 100s; now 90 × 1s ≈ 90s) so we don't
-# regress on the long-tail cases. RunComfy publishes no status-poll
-# rate limit; ~60-90 status polls per minute is well within
-# reasonable usage.
-KONTEXT_POLL_INTERVALS_S: tuple[float, ...] = (
-    0.5, 0.5, 0.75, 0.75, 1.0, 1.0, 1.0,
-)
-KONTEXT_POLL_STEADY_INTERVAL_S = 1.0
-KONTEXT_POLL_MAX_ATTEMPTS = 90
-
-# RunComfy/Kontext accepts aspect_ratio ONLY as one of these fixed enum
-# strings — NOT an arbitrary "W:H". Verified against RunComfy's published
-# flux-1-kontext edit schema (2026-05-28). Passing the input photo's own
-# ratio (snapped to the nearest enum) keeps Kontext from reframing or
-# outpainting the scene; omitting it lets RunComfy apply its 16:9 default,
-# which widescreen-crops a typical ~4:3 forklift photo.
-KONTEXT_ASPECT_RATIOS: tuple[tuple[str, float], ...] = (
-    ("21:9", 21 / 9),
-    ("16:9", 16 / 9),
-    ("3:2", 3 / 2),
-    ("4:3", 4 / 3),
-    ("1:1", 1.0),
-    ("3:4", 3 / 4),
-    ("2:3", 2 / 3),
-    ("9:16", 9 / 16),
-    ("9:21", 9 / 21),
-)
-
-
-def _nearest_kontext_aspect_ratio(width: int, height: int) -> str:
-    """Snap a pixel W×H to the closest RunComfy/Kontext aspect-ratio enum.
-
-    Distance is measured in log space so the match is symmetric for
-    portrait/landscape inverses (e.g. 2:1 is as far from 1:1 as 1:2 is).
-    """
-    import math
-
-    if width <= 0 or height <= 0:
-        return "4:3"
-    target = math.log(width / height)
-    best_label = "4:3"
-    best_dist = float("inf")
-    for label, value in KONTEXT_ASPECT_RATIOS:
-        dist = abs(math.log(value) - target)
-        if dist < best_dist:
-            best_label, best_dist = label, dist
-    return best_label
 
 
 # Grok / xAI image editing — synchronous JSON request to /v1/images/edits.
@@ -196,23 +99,6 @@ GROK_PROMPT_MAX_CHARS = 4000
 # (which is used for the per-variant tweak/inpaint tools) so future model
 # bumps can move independently per surface if needed.
 ENHANCE_MODEL_IDEOGRAM = "ideogram-3.0"
-
-# Reve — 6th primary enhance generator (reinstated 2026-05-26 after a
-# brief absence). Synchronous JSON request, returns base64-encoded PNG +
-# credit accounting in the same response. Auth via Bearer token in
-# Authorization header. We pin to `latest-fast` (resolves to
-# reve-edit-fast@20251030) instead of `latest` for RPM headroom; the
-# full-quality model trips Reve's undocumented per-minute cap on small
-# bursts. Pin to a dated slug like "reve-edit-fast@20251030" if you
-# need frozen behaviour across versions.
-REVE_GENERATE_URL = "https://api.reve.com/v1/image/edit"
-ENHANCE_MODEL_REVE = "reve-edit-fast-latest"
-# Reve's edit_instruction field caps at 2560 chars — our stock prompt
-# can exceed that with all toggles on, so we truncate. The Reve docs
-# explicitly say "this instruction will be automatically enhanced by
-# the model", so a clean truncation loses less than it would on the
-# more literal providers.
-REVE_PROMPT_MAX_CHARS = 2560
 
 
 # Display name + per-type anatomy guardrail for the equipment-aware prompt.
@@ -740,146 +626,6 @@ def _build_enhance_prompt(
     )
 
     return "\n\n".join(sections)
-
-
-def _build_kontext_prompt(
-    toggles: EnhanceToggles,
-    equipment_type: str = "forklift",
-    spine_override: str | None = None,
-) -> str:
-    """Build a Kontext-specific enhance prompt.
-
-    Flux Kontext is an identity-preserving EDIT model — it responds to
-    short, imperative "change X, keep Y" instructions and degrades badly on
-    the long, multi-section declarative prose that _build_enhance_prompt
-    feeds Gemini (the "whole machine turns red" failure mode). This builds a
-    terse base instruction (always: cheap respray + sidewall tire-shine +
-    keep identity/scene) and appends ONE short clause per active ACTION
-    toggle.
-
-    The pure-emphasis toggles (new_paint_job / remove_rust / shine_tires /
-    restore_decals) are intentionally NOT given their own clauses — the base
-    already covers paint, rust, tire-shine and decal preservation, and
-    re-stating them just dilutes the edit for Kontext.
-
-    `spine_override` — when set (a rendered master prompt from
-    workers/master_prompts.py), it REPLACES the terse built-in base; the
-    paint-forks clause + the per-toggle ACTION clauses still append on top.
-    None → behaves exactly as before (legacy / "auto" path).
-
-    During the model-tuning phase test users run with all toggles OFF, so
-    they receive only the clean base — exactly the baseline we want to
-    measure. See [[project-model-tuning-phase]].
-
-    DRIFT-WARNING: shares treatment intent with _build_enhance_prompt
-    (Gemini) and the Scan-tab regen prompt in apps/web/lib/scan-helpers.ts —
-    when the treatment changes, update all three.
-    """
-    eq_display = EQUIPMENT_DISPLAY.get(equipment_type, "forklift")
-    paint_forks_on = (
-        toggles.paint_forks_red_yellow_tips
-        and equipment_type != "scissor_lift"
-    )
-
-    lines: list[str]
-    if spine_override is not None:
-        # Master-prompt path: the selected prompt is the whole base; toggle
-        # clauses still append below.
-        lines = [spine_override]
-    else:
-        # Built-in terse base (the "auto" / legacy path). {eq_display}
-        # interpolation retained; toggle clauses below are untouched.
-        lines = [
-            f"Photorealistic image of a heavily used {eq_display} after a "
-        f"quick, inexpensive shop-grade respray. This is a cheap-but-clean "
-        f"commercial repaint to make it listing-ready. Not a restoration, "
-        f"not factory fresh.",
-        "WHAT THE PAINT COVERS:\n"
-        "- Surface chips, scuffs, scratches, faded paint\n"
-        "- Light surface rust and oxidation\n"
-        "- Dirt, grime, and stains\n"
-        "- Dull colors restored to a saturated version of the colour they already are",
-        "WHAT THE PAINT DOES NOT COVER (must remain visible):\n"
-        "- Dents, panel deformations, bent hardware\n"
-        "- Deep metal gouges\n"
-        "- Missing/broken parts, cracked components\n"
-        "- Severe rust-through holes and large pitting\n"
-        "- Mismatched aftermarket panels (keep them distinct)",
-        "PAINT STYLE: Realistic shop spray gun application in the SAME "
-        "colours the unit already wears. Even coverage with slight "
-        "orange-peel texture, minor overspray in corners. Looks competent "
-        "but budget-level.",
-        "Preserve all OEM decals in exact original positions with realistic "
-        "wear.",
-        "TIRES: Keep identical tires. Preserve all tread wear, cuts, and "
-        "cracks. Apply glossy tire shine ONLY to sidewalls (deep black, "
-        "wet-look, reflective). Tread stays dry, dusty, and matte.",
-        "SCENE: Exact same camera angle, perspective, framing, lighting, "
-        "and background as the source image. Do not change, crop, or "
-        "replace anything.",
-        "STRICT RULES:\n"
-        "- Do not add lights, beacons, mirrors, antennas, or new "
-        "attachments\n"
-        "- Do not add new damage or wear\n"
-        "- Do not make it look brand new\n"
-        "- Do not leave it unchanged — clear fresh respray must be obvious\n"
-        "- Preserve all original proportions, panels, and mechanical "
-        "details",
-        f"Result: Clearly used {eq_display} with fresh but cheap shop paint "
-        f"job and glossy sidewalls, while keeping all real-world wear and "
-        f"damage.",
-    ]
-
-    if paint_forks_on:
-        lines.append(
-            "Paint only the two fork blades Discount Forklift red with "
-            "safety-yellow tips — red on the shank and roughly the first "
-            "80% of each blade, yellow on the outer ~15 cm tip. Leave the "
-            "carriage, mast, and the black load-back-rest cage unpainted."
-        )
-    if toggles.remove_people:
-        lines.append(
-            "Remove every person, operator, and hand from the frame, "
-            "filling the vacated space with the background behind them."
-        )
-    if toggles.remove_background_signage:
-        lines.append(
-            "Remove background signs, posters, logos, and wall text "
-            "(replace each with the plain surface behind it), but keep all "
-            f"signage on the {eq_display} itself."
-        )
-    if toggles.remove_rental_branding:
-        lines.append(
-            "Remove third-party rental-fleet decals, wraps, and asset-tag "
-            "numbers (Sunbelt, United Rentals, Herc, etc.), matching the "
-            "panel underneath with no ghost outline. Keep all OEM "
-            "manufacturer decals and do not invent any replacement logos."
-        )
-    if toggles.showroom_floor and not toggles.transparent_background:
-        # Skipped under a cutout: the floor is about to be matted away, so
-        # replacing it first is wasted instruction — and a glossy grey sweep
-        # gives the matting model a lower-contrast edge to find under the
-        # tyres than the real ground did.
-        lines.append(
-            "If the shot is in a studio or showroom, replace the floor with "
-            "a clean uniform mid-gray (#808080) lightly-polished seamless "
-            "studio floor, keeping the unit's own contact shadow; if it is "
-            "an outdoor yard, warehouse, or lot, leave the ground as-is."
-        )
-    if toggles.improve_lighting:
-        lines.append(
-            "Balance the exposure and lighting while keeping the scene and "
-            "location intact."
-        )
-    # 3-wheel guardrail — gated to equipment_type=="forklift" same as
-    # the Gemini procedural builder.
-    if toggles.three_wheel and equipment_type == "forklift":
-        lines.append(
-            "This is a 3-WHEEL forklift — keep the SINGLE rear pivot/steer "
-            "wheel under the counterweight. Do not add a second rear wheel."
-        )
-
-    return "\n".join(lines)
 
 
 # Cap long-edge of the input image before sending to any vendor. Final
@@ -1570,16 +1316,18 @@ async def _inpaint_with_ideogram(
     instruction: str | None,
 ) -> bytes:
     """
-    Mask-based inpaint via Ideogram /v1/ideogram-v3/inpaint. Sister to
-    _erase_with_flux — same client-supplied WHITE=erase mask convention,
-    but Ideogram's API uses the inverted convention (BLACK = region to
-    edit). We invert the mask server-side so the EraseDialog can stay
-    vendor-agnostic.
+    Mask-based inpaint via Ideogram /v1/ideogram-v3/inpaint, and the only
+    mask-based vendor left after the BFL removal.
 
-    Ideogram inpaint requires a prompt (unlike Flux erase where it's
-    optional). When the operator leaves the fill hint blank we fall
-    back to a neutral "fill with plausible background" instruction —
-    same effective behaviour as Flux's default.
+    MASK CONVENTION. The client (EraseDialog) always sends WHITE=erase,
+    BLACK=preserve. Ideogram's API uses the INVERTED convention
+    (BLACK = the region to edit), so we invert server-side and the dialog
+    stays vendor-agnostic. Do not "simplify" by changing what the client
+    draws — the inversion belongs here, at the vendor boundary.
+
+    A PROMPT IS MANDATORY. Ideogram 422s without one, so the blank-hint
+    fallback to "fill with plausible background" below is load-bearing
+    error avoidance, not a nicety. Do not remove it.
     """
     settings = get_settings()
     if not settings.ideogram_api_key:
@@ -1591,8 +1339,16 @@ async def _inpaint_with_ideogram(
 
     image_bytes, _ct = await _load_image_bytes(gcs_uri)
 
-    # Same EXIF/dim normalisation as _erase_with_flux — and then invert
-    # the mask so WHITE=erase (our convention) becomes BLACK=edit
+    # EXIF/dim normalisation, then mask inversion.
+    #
+    # autorot() first: a mask is drawn against the DISPLAYED image, so if
+    # the source carries an EXIF rotation the raw pixels and the mask
+    # disagree and the erase lands in the wrong place. The mask is then
+    # resized with NEAREST-NEIGHBOUR specifically — any smoothing kernel
+    # produces grey edge pixels, and a binary mask must stay binary.
+    # (This rationale used to live in _erase_with_flux, now deleted.)
+    #
+    # Finally invert: WHITE=erase (our convention) becomes BLACK=edit
     # (Ideogram's convention).
     def _normalise() -> tuple[bytes, bytes]:
         import pyvips
@@ -1659,243 +1415,6 @@ async def _inpaint_with_ideogram(
                 f"{fetched.text[:200]}"
             )
         return fetched.content
-
-
-async def _enhance_with_reve(gcs_uri: str, prompt: str) -> bytes:
-    """
-    Call Reve's /v1/image/edit endpoint synchronously and return raw PNG
-    bytes.
-
-    Request shape (per https://docs.reve.com):
-      Authorization: Bearer <REVE_API_KEY>
-      Accept: application/json
-      body: {
-        edit_instruction: <prompt — capped to REVE_PROMPT_MAX_CHARS>,
-        reference_image:  <base64 source bytes>,
-        version:          "latest-fast",
-      }
-
-    Reve exposes its speed/quality knob via the `version` string itself,
-    not a separate `mode` field (a `mode` parameter 400s with
-    "One or more of your parameters is not recognized."). Valid versions
-    are `latest`, `latest-fast`, `reve-edit@20250915`, and
-    `reve-edit-fast@20251030`. We pin to `latest-fast` because the
-    full-quality model reliably trips Reve's undocumented per-minute
-    cap (~7 successful edits then a wall of 429s even with our
-    3-per-30s limiter in front). The fast variant is materially cheaper
-    in credits + has noticeably more RPM headroom.
-
-    Response shape (when accept=json):
-      {
-        image:              <base64 PNG>,
-        version:            "reve-edit@...",
-        content_violation:  bool,
-        request_id:         "rsid-...",
-        credits_used:       int,
-        credits_remaining:  int,
-      }
-
-    Aspect ratio is intentionally NOT sent — Reve defaults to the
-    reference image's aspect, which is what we want (we already cap
-    uploads at 1024 long-edge in compress.ts).
-    """
-    settings = get_settings()
-    if not settings.reve_api_key:
-        raise RuntimeError(
-            "Reve provider requested but REVE_API_KEY is not set. "
-            "Mount cleanshot-reve-key:latest via Cloud Run --set-secrets "
-            "and re-deploy."
-        )
-
-    image_bytes, _ct = await _load_image_bytes(gcs_uri)
-    image_b64 = base64.b64encode(image_bytes).decode()
-
-    body = {
-        "edit_instruction": prompt[:REVE_PROMPT_MAX_CHARS],
-        "reference_image":  image_b64,
-        "version":          "latest-fast",
-    }
-    headers = {
-        "Authorization": f"Bearer {settings.reve_api_key}",
-        "Accept":        "application/json",
-        "Content-Type":  "application/json",
-    }
-
-    # Reve is synchronous — a single POST returns the rendered image.
-    # Timeout matches the OpenAI client (300s); Reve typically returns
-    # in 10-30s but we'd rather wait than fail.
-    async with httpx.AsyncClient(timeout=300.0) as client:
-        resp = await client.post(REVE_GENERATE_URL, headers=headers, json=body)
-
-    if resp.status_code >= 400:
-        # Surface the structured error fields if present.
-        try:
-            err = resp.json()
-            detail = err.get("message") or err.get("error_code") or resp.text[:300]
-        except Exception:
-            detail = resp.text[:300]
-        raise ValueError(f"Reve edit failed ({resp.status_code}): {detail}")
-
-    data = resp.json()
-    if data.get("content_violation"):
-        raise ValueError(
-            "Reve flagged the response as a content-policy violation; no image returned."
-        )
-    image_b64_out = data.get("image")
-    if not image_b64_out:
-        raise ValueError(f"Reve returned no image bytes: {data}")
-
-    # Reve returns a base64-encoded PNG payload — decode once to raw bytes.
-    return base64.b64decode(image_b64_out)
-
-
-async def _erase_with_flux(
-    gcs_uri: str,
-    mask_png_base64: str,
-    instruction: str | None,
-) -> bytes:
-    """
-    Call BFL's flux-tools/erase-v1 endpoint to remove the masked region
-    from the source image. Mask is a base64-encoded PNG drawn client-side
-    where white pixels mark areas to erase and black pixels mark areas
-    to preserve.
-
-    Same async-polling pattern as the (now-removed) flux-2-max generator:
-      1. POST FLUX_ERASE_URL with { image, mask, prompt? } → { id, polling_url }
-      2. GET polling_url every FLUX_POLL_INTERVALS_S until Ready / terminal
-      3. GET result.sample (a presigned URL, no auth) → image bytes
-    """
-    settings = get_settings()
-    if not settings.bfl_api_key:
-        raise RuntimeError(
-            "Flux erase requested but BFL_API_KEY is not set. "
-            "Mount cleanshot-bfl-key:latest via Cloud Run --set-secrets "
-            "and re-deploy."
-        )
-
-    image_bytes, _ct = await _load_image_bytes(gcs_uri)
-
-    # Normalise the source image AND the mask to identical dimensions in
-    # a single pass. We can't trust:
-    #   (a) the source JPEG (iPhone EXIF orientation rotates the browser
-    #       display but BFL reads raw JPEG without applying EXIF), OR
-    #   (b) the mask matching the source (the operator drew at the
-    #       browser's reported naturalWidth × naturalHeight which can
-    #       diverge from the source's true pixel dims for the same EXIF
-    #       reason — or if Seedream / other providers returned slightly
-    #       different resolution than what landed in GCS after the
-    #       browser scaled it).
-    # Fix: re-encode the source to PNG with EXIF baked in, then
-    # explicitly resize the mask to the source's post-autorot dims so
-    # the two are *guaranteed* to match before we send to BFL.
-    def _normalise() -> tuple[bytes, bytes, int, int, int, int]:
-        import pyvips
-        src = pyvips.Image.new_from_buffer(image_bytes, "")
-        src = src.autorot()
-        src_w, src_h = src.width, src.height
-        src_png = src.write_to_buffer(".png")
-
-        mask_raw = base64.b64decode(mask_png_base64)
-        mask = pyvips.Image.new_from_buffer(mask_raw, "")
-        mask_w, mask_h = mask.width, mask.height
-        if mask_w != src_w or mask_h != src_h:
-            # Pixel-resample the mask so its dimensions match the source.
-            # Operator's stroke regions map to roughly the same area;
-            # binary mask is still binary after nearest-neighbour resize.
-            hscale = src_w / mask_w
-            vscale = src_h / mask_h
-            mask = mask.resize(hscale, vscale=vscale, kernel="nearest")
-        mask_png = mask.write_to_buffer(".png")
-        return src_png, mask_png, src_w, src_h, mask_w, mask_h
-
-    src_png, mask_png, src_w, src_h, mask_w_in, mask_h_in = await asyncio.to_thread(_normalise)
-    logger.info(
-        "BFL erase: source %dx%d, incoming mask %dx%d (resized to match if needed)",
-        src_w, src_h, mask_w_in, mask_h_in,
-    )
-
-    image_b64 = base64.b64encode(src_png).decode()
-    mask_b64  = base64.b64encode(mask_png).decode()
-
-    auth_headers = {"x-key": settings.bfl_api_key}
-    body: dict[str, Any] = {
-        "image": image_b64,
-        "mask":  mask_b64,
-    }
-    # BFL accepts an optional prompt to guide what should fill the
-    # erased region. Empty/None means "infer plausible background."
-    if instruction and instruction.strip():
-        body["prompt"] = instruction.strip()
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        submit = await client.post(
-            FLUX_ERASE_URL,
-            headers={**auth_headers, "Content-Type": "application/json"},
-            json=body,
-        )
-        if submit.status_code >= 400:
-            raise ValueError(
-                f"BFL erase submit failed ({submit.status_code}): "
-                f"{submit.text[:300]}"
-            )
-        submit_data = submit.json()
-        polling_url = submit_data.get("polling_url")
-        if not polling_url:
-            raise ValueError(
-                f"BFL erase submit returned no polling_url: {submit_data}"
-            )
-
-        for attempt in range(FLUX_POLL_MAX_ATTEMPTS):
-            interval = (
-                FLUX_POLL_INTERVALS_S[attempt]
-                if attempt < len(FLUX_POLL_INTERVALS_S)
-                else FLUX_POLL_STEADY_INTERVAL_S
-            )
-            await asyncio.sleep(interval)
-            poll = await client.get(polling_url, headers=auth_headers)
-            if poll.status_code >= 400:
-                raise ValueError(
-                    f"BFL erase poll failed ({poll.status_code}): "
-                    f"{poll.text[:300]}"
-                )
-            poll_data = poll.json()
-            status = poll_data.get("status")
-
-            if status == "Ready":
-                result = poll_data.get("result") or {}
-                sample_url = result.get("sample")
-                if not sample_url:
-                    raise ValueError(
-                        f"BFL erase Ready without result.sample URL: {poll_data}"
-                    )
-                image_resp = await client.get(sample_url)
-                image_resp.raise_for_status()
-                return image_resp.content
-
-            if status in (
-                "Error",
-                "Content Moderated",
-                "Request Moderated",
-                "Task not found",
-            ):
-                detail = (
-                    poll_data.get("result")
-                    or poll_data.get("error")
-                    or "no detail"
-                )
-                raise ValueError(
-                    f"BFL erase returned terminal status '{status}': {detail}"
-                )
-
-        budget_s = (
-            sum(FLUX_POLL_INTERVALS_S)
-            + max(0, FLUX_POLL_MAX_ATTEMPTS - len(FLUX_POLL_INTERVALS_S))
-              * FLUX_POLL_STEADY_INTERVAL_S
-        )
-        raise TimeoutError(
-            f"BFL erase did not finish within {budget_s:.0f}s "
-            f"({FLUX_POLL_MAX_ATTEMPTS} polls)"
-        )
 
 
 async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
@@ -1975,155 +1494,6 @@ async def _enhance_with_grok(gcs_uri: str, prompt: str) -> bytes:
     return img_resp.content
 
 
-async def _enhance_with_kontext(gcs_uri: str, prompt: str) -> bytes:
-    """
-    Call BFL Flux Kontext Max DIRECTLY (api.bfl.ai) — same async
-    submit/poll/result contract as _erase_with_flux:
-
-      1. download source bytes, base64-encode (no data: prefix)
-      2. POST KONTEXT_SUBMIT_URL with
-         { prompt, input_image, aspect_ratio, prompt_upsampling: false,
-           output_format, safety_tolerance, seed? } → { id, polling_url }
-      3. GET polling_url every KONTEXT_POLL_INTERVALS_S until "Ready"
-         (or a terminal Error / *Moderated / Task-not-found status)
-      4. GET result.sample (presigned, no auth) → image bytes
-    """
-    settings = get_settings()
-    if not settings.bfl_api_key:
-        raise RuntimeError(
-            "Kontext provider requested but BFL_API_KEY is not set. "
-            "Mount cleanshot-bfl-key:latest via Cloud Run --set-secrets "
-            "and re-deploy."
-        )
-
-    image_bytes, _ct = await _load_image_bytes(gcs_uri)
-
-    # Pin the output to the input's own aspect ratio so Kontext doesn't
-    # reframe/outpaint. Reuse the enum snap — every value it returns is a
-    # valid BFL aspect_ratio string inside BFL's 3:7..7:3 range. Fall back
-    # to 4:3 on any dim-read failure.
-    aspect_ratio = "4:3"
-    try:
-        import pyvips
-
-        _img = pyvips.Image.new_from_buffer(image_bytes, "")
-        aspect_ratio = _nearest_kontext_aspect_ratio(_img.width, _img.height)
-    except Exception:
-        logger.warning(
-            "Kontext: could not read input dims for %s; defaulting "
-            "aspect_ratio=4:3",
-            gcs_uri,
-            exc_info=True,
-        )
-
-    image_b64 = base64.b64encode(image_bytes).decode()
-
-    auth_headers = {"x-key": settings.bfl_api_key}
-    body: dict[str, Any] = {
-        "prompt":            prompt[:KONTEXT_PROMPT_MAX_CHARS],
-        "input_image":       image_b64,
-        "aspect_ratio":      aspect_ratio,
-        # CRITICAL: send our EXACT wording. With upsampling on (the proxy
-        # default) BFL rewrites the prompt and washes out every nuance —
-        # that's what made tuning a no-op through RunComfy.
-        "prompt_upsampling": False,
-        "output_format":     "png",
-        "safety_tolerance":  2,
-    }
-    # Tuning-phase determinism: when KONTEXT_SEED >= 0 every render reuses it
-    # so the prompt is the only variable between outputs. -1 (default) omits
-    # it → random per call. See Settings.kontext_seed.
-    if settings.kontext_seed >= 0:
-        body["seed"] = settings.kontext_seed
-
-    # TEMP tuning instrumentation — proves exactly what reaches BFL (prompt
-    # variant, aspect_ratio, seed, upsampling). Remove once Kontext is
-    # dialled in.
-    logger.info(
-        "Kontext submit (BFL direct): aspect_ratio=%s seed=%s upsampling=%s "
-        "prompt_len=%d prompt_head=%r",
-        body["aspect_ratio"],
-        body.get("seed", "<omitted>"),
-        body["prompt_upsampling"],
-        len(body["prompt"]),
-        body["prompt"][:180],
-    )
-
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        # ── 1. Submit ──────────────────────────────────────────────
-        submit = await client.post(
-            KONTEXT_SUBMIT_URL,
-            headers={**auth_headers, "Content-Type": "application/json"},
-            json=body,
-        )
-        if submit.status_code >= 400:
-            raise ValueError(
-                f"BFL Kontext submit failed ({submit.status_code}): "
-                f"{submit.text[:300]}"
-            )
-        submit_data = submit.json()
-        polling_url = submit_data.get("polling_url")
-        if not polling_url:
-            raise ValueError(
-                f"BFL Kontext submit returned no polling_url: {submit_data}"
-            )
-
-        # ── 2. Poll until Ready / terminal ─────────────────────────
-        for attempt in range(KONTEXT_POLL_MAX_ATTEMPTS):
-            interval = (
-                KONTEXT_POLL_INTERVALS_S[attempt]
-                if attempt < len(KONTEXT_POLL_INTERVALS_S)
-                else KONTEXT_POLL_STEADY_INTERVAL_S
-            )
-            await asyncio.sleep(interval)
-            poll = await client.get(polling_url, headers=auth_headers)
-            if poll.status_code >= 400:
-                raise ValueError(
-                    f"BFL Kontext poll failed ({poll.status_code}): "
-                    f"{poll.text[:300]}"
-                )
-            poll_data = poll.json()
-            status = poll_data.get("status")
-
-            if status == "Ready":
-                result = poll_data.get("result") or {}
-                sample_url = result.get("sample")
-                if not sample_url:
-                    raise ValueError(
-                        f"BFL Kontext Ready without result.sample URL: {poll_data}"
-                    )
-                # presigned, no auth — fetch immediately (short-lived)
-                img_resp = await client.get(sample_url)
-                img_resp.raise_for_status()
-                return img_resp.content
-
-            if status in (
-                "Error",
-                "Content Moderated",
-                "Request Moderated",
-                "Task not found",
-            ):
-                detail = (
-                    poll_data.get("result")
-                    or poll_data.get("error")
-                    or "no detail"
-                )
-                raise ValueError(
-                    f"BFL Kontext returned terminal status '{status}': {detail}"
-                )
-            # Otherwise still Pending / Queued — keep polling.
-
-        budget_s = (
-            sum(KONTEXT_POLL_INTERVALS_S)
-            + max(0, KONTEXT_POLL_MAX_ATTEMPTS - len(KONTEXT_POLL_INTERVALS_S))
-              * KONTEXT_POLL_STEADY_INTERVAL_S
-        )
-        raise TimeoutError(
-            f"BFL Kontext did not finish within {budget_s:.0f}s "
-            f"({KONTEXT_POLL_MAX_ATTEMPTS} polls)"
-        )
-
-
 async def _run_enhance(
     request: Request,
     payload: EnhanceTaskPayload,
@@ -2192,22 +1562,13 @@ async def _run_enhance(
             prompt = payload.custom_prompt
         else:
             effective_spine = payload.custom_prompt or spine_override
-            if payload.provider == "kontext":
-                # Kontext is an identity-preserving edit model — give it the
-                # terse imperative prompt, not the long Gemini scene prose.
-                prompt = _build_kontext_prompt(
-                    payload.toggles,
-                    equipment_type=payload.equipment_type,
-                    spine_override=effective_spine,
-                )
-            else:
-                prompt = _build_enhance_prompt(
-                    payload.toggles,
-                    equipment_type=payload.equipment_type,
-                    spine_override=effective_spine,
-                    fork_visibility=payload.fork_visibility,
-                    framing_already_in_prompt=payload.fork_framing_in_prompt,
-                )
+            prompt = _build_enhance_prompt(
+                payload.toggles,
+                equipment_type=payload.equipment_type,
+                spine_override=effective_spine,
+                fork_visibility=payload.fork_visibility,
+                framing_already_in_prompt=payload.fork_framing_in_prompt,
+            )
 
         # Attribution suffix for the usage-event `model` label — lets the
         # admin dashboard tell prompt-tuning variants apart (e.g.
@@ -2223,7 +1584,7 @@ async def _run_enhance(
         # still useful for cost control on the AI Studio key (the key has
         # a per-minute rate limit we don't want to blow through), but
         # the binding cap is AI Studio's quota, not Vertex's. OpenAI and
-        # Flux have their own vendor-side rate limits and don't share
+        # Grok have their own vendor-side rate limits and don't share
         # ours.
         if payload.provider == "openai":
             if not openai_client:
@@ -2277,13 +1638,6 @@ async def _run_enhance(
             output_bytes = await _enhance_with_grok(
                 payload.input_gcs_uri, prompt
             )
-        elif payload.provider == "kontext":
-            provider_model = ENHANCE_MODEL_KONTEXT
-            # BFL direct (api.bfl.ai) — no limiter yet; add one if we see
-            # 429s in production. Shares the BFL_API_KEY with the Erase tool.
-            output_bytes = await _enhance_with_kontext(
-                payload.input_gcs_uri, prompt
-            )
         elif payload.provider == "ideogram":
             provider_model = ENHANCE_MODEL_IDEOGRAM
             # Ideogram /v1/edit is sync (no async poll). Same helper as
@@ -2291,16 +1645,6 @@ async def _run_enhance(
             # the same `instruction` field. No published per-minute cap;
             # add a limiter if we observe 429s.
             output_bytes = await _tweak_with_ideogram(
-                payload.input_gcs_uri, prompt
-            )
-        elif payload.provider == "reve":
-            provider_model = ENHANCE_MODEL_REVE
-            # Reve's docs claim no per-minute cap but the API returns
-            # 429 RPM on bursts. Sliding-window throttle at 3 per 30s
-            # (≈ 6/min) — see main.py reve_image_rate_limiter setup
-            # comment for the calibration rationale.
-            await request.app.state.reve_image_rate_limiter.acquire()
-            output_bytes = await _enhance_with_reve(
                 payload.input_gcs_uri, prompt
             )
         else:  # "gemini" or default
@@ -2360,7 +1704,7 @@ async def _run_enhance(
                     status="success",
                     latency_ms=int((_time.monotonic() - call_started_at) * 1000),
                     # All three enhance providers (Gemini image, OpenAI
-                    # gpt-image-2, Flux 2 max) bill per image, not per
+                    # gpt-5, Grok) bill per image, not per
                     # token. estimate_cost_usd does the lookup; returns
                     # None for unknown models so we'd record NULL.
                     cost_estimate_usd=estimate_cost_usd(provider_model or ""),
@@ -2462,7 +1806,7 @@ async def _run_enhance(
             try:
                 # Failed calls still cost real money on some providers
                 # (OpenAI charges for image-edit attempts that error
-                # mid-stream, BFL bills on submission). Record the same
+                # mid-stream). Record the same
                 # estimated cost on failure so the admin's running
                 # spend total stays accurate.
                 await queries.insert_usage_event(
@@ -2661,7 +2005,7 @@ async def handle_enhance_task(
     return {"status": "completed"}
 
 
-# ─── Erase pipeline (BFL flux-tools/erase-v1) ────────────────────────────────
+# ─── Erase pipeline (Ideogram v3 inpaint) ───────────────────────────────────
 
 
 async def _input_was_cutout(gcs_uri: str) -> bool:
@@ -2690,7 +2034,7 @@ async def _run_erase(
     request: Request,
     payload: EraseTaskPayload,
 ) -> None:
-    """Background coroutine for mask-based BFL erase jobs."""
+    """Background coroutine for mask-based Ideogram inpaint jobs."""
     pool = request.app.state.pool
 
     async with pool.acquire() as conn:
@@ -2699,26 +2043,15 @@ async def _run_erase(
 
     import time as _time
     call_started_at = _time.monotonic()
-    if payload.tool == "ideogram":
-        provider_label = "ideogram"
-        provider_model = IDEOGRAM_MODEL_LABEL
-    else:
-        provider_label = "flux"
-        provider_model = "flux-erase-v1"
+    provider_label = "ideogram"
+    provider_model = IDEOGRAM_MODEL_LABEL
 
     try:
-        if payload.tool == "ideogram":
-            output_bytes = await _inpaint_with_ideogram(
-                payload.input_gcs_uri,
-                payload.mask_png_base64,
-                payload.instruction,
-            )
-        else:
-            output_bytes = await _erase_with_flux(
-                payload.input_gcs_uri,
-                payload.mask_png_base64,
-                payload.instruction,
-            )
+        output_bytes = await _inpaint_with_ideogram(
+            payload.input_gcs_uri,
+            payload.mask_png_base64,
+            payload.instruction,
+        )
         if not output_bytes:
             raise ValueError(f"{provider_label} erase returned no image bytes")
 
@@ -2812,8 +2145,10 @@ async def handle_erase_task(
 ) -> dict:
     """
     FastAPI route handler for POST /worker/erase. Quick-acknowledge
-    pattern: returns HTTP 200 immediately, BFL polling happens in the
-    background. Same shape as handle_enhance_task.
+    pattern: returns HTTP 200 immediately, the vendor call happens in a
+    background task. NOTE: unlike the old BFL path this is not a poll —
+    Ideogram inpaint is synchronous, so "background" here means only the
+    Cloud Tasks hop. Unlike handle_enhance_task, which now runs inline.
     """
     background_tasks.add_task(_run_erase, request, payload)
     return {"status": "acknowledged"}

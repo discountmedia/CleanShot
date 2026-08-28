@@ -1,13 +1,13 @@
 "use client";
 // apps/web/components/enhance/EraseDialog.tsx
-// Mask-drawing modal for BFL flux-tools/erase-v1.
+// Mask-drawing modal for Ideogram v3 inpaint.
 //
 // Operator clicks "Erase" on a completed enhance variant → this dialog
 // opens with that variant's image as the canvas background. They paint
 // a binary mask over the area to remove (with brush size control + a
 // Clear button), optionally type a short hint for what should fill the
 // erased region, and submit. The mask is exported at the source image's
-// natural pixel dimensions (white=erase, black=preserve) so BFL gets a
+// natural pixel dimensions (white=erase, black=preserve) so the vendor gets a
 // faithful operator intent regardless of how the image was scaled on
 // screen.
 //
@@ -51,10 +51,6 @@ interface EraseDialogProps {
   sourceAssetId: string;
   /** Source variant's signed GET URL, displayed as the canvas background. */
   sourceImageUrl: string;
-  /** Vendor backend — "flux" (default) or "ideogram". Picks the API the
-   *  worker calls plus drives the dialog's subtitle/accent copy so the
-   *  operator knows which model their mask is going to. */
-  tool?: "flux" | "ideogram";
   /** Called when the operator dismisses without accepting a result. */
   onClose: () => void;
   /** Called when the operator accepts the erased result. */
@@ -71,23 +67,16 @@ export function EraseDialog({
   sessionId,
   sourceAssetId,
   sourceImageUrl,
-  tool = "flux",
   onClose,
   onAccept,
 }: EraseDialogProps) {
-  // Per-tool cosmetic + subtitle copy. Functionally the dialog is the
-  // same; only the model that runs on submit changes.
-  const toolMeta = tool === "ideogram"
-    ? {
-        title:    "Ideogram Inpaint — paint over what should be removed",
-        subtitle: "Routed through Ideogram 3.0 /v1/ideogram-v3/inpaint. Stronger at preserving and rendering text — best when the area to remove sits near OEM decals or model numbers.",
-        progress: "Ideogram inpainting…",
-      }
-    : {
-        title:    "Erase — paint over what should be removed",
-        subtitle: "Routed through BFL flux-tools/erase-v1. Heavier strokes give the model more room to invent a clean fill.",
-        progress: "BFL working…",
-      };
+  // Ideogram is the only mask-based vendor left (BFL/Flux removed
+  // 2026-08-27), so this copy is no longer per-tool.
+  const toolMeta = {
+    title:    "Ideogram Inpaint — paint over what should be removed",
+    subtitle: "Routed through Ideogram 3.0 /v1/ideogram-v3/inpaint. Stronger at preserving and rendering text than a plain erase.",
+    progress: "Ideogram inpainting…",
+  };
   const imgRef    = useRef<HTMLImageElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -332,8 +321,8 @@ export function EraseDialog({
         assetId:          sourceAssetId,
         maskPngBase64:    mask,
         instruction:      instruction.trim() || undefined,
-        tool,
-        idempotencyKey:   `erase-${tool}-${sourceAssetId}-${uuidv4()}`,
+        tool:             "ideogram",
+        idempotencyKey:   `erase-ideogram-${sourceAssetId}-${uuidv4()}`,
       });
       setJobId(newJobId);
     } catch (err) {
@@ -347,7 +336,6 @@ export function EraseDialog({
     sessionId,
     sourceAssetId,
     instruction,
-    tool,
   ]);
 
   // ── Poll the erase job ──────────────────────────────────────────────

@@ -84,7 +84,7 @@ async def worker_erase(
     request: Request,
 ) -> dict:
     """
-    Cloud Tasks target for mask-based BFL erase jobs. Source asset is a
+    Cloud Tasks target for mask-based Ideogram inpaint jobs. Source asset is a
     completed enhance variant; operator-drawn mask comes inline in the
     payload as base64 PNG. Quick-acknowledge: HTTP 200 immediately, BFL
     polling happens in background.

@@ -213,23 +213,35 @@ frame. Watch for the thing that originally justified the cap: OpenAI
 
 ## Image-gen providers — what's wired and which model
 
-The Enhance tab picker is now **2 live providers** (`gemini | openai`) — narrowed to 3 on 2026-06-05, then **Grok made dormant 2026-07-21** (see Latest session). The `EnhanceRequest`/`EnhanceTaskPayload` provider Literals still allow `gemini|openai|grok` (grok kept as dormant code). `grok | kontext | ideogram | reve` all remain as dead-but-harmless worker code, unreachable from the picker. All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`. The table below documents all six worker helpers; only `gemini` + `openai` are live.
+The Enhance tab picker is now **2 live providers** (`gemini | openai`) — narrowed to 3 on 2026-06-05, then **Grok made dormant 2026-07-21** (see Latest session). The `EnhanceRequest`/`EnhanceTaskPayload` provider Literals still allow `gemini|openai|grok` (grok kept as dormant code). All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`.
+
+⚠️ **KONTEXT AND REVE WERE DELETED FROM THE WORKER ON 2026-08-27**, along with
+`_erase_with_flux`. Until then this file said all four of
+`grok | kontext | ideogram | reve` "remain as dead-but-harmless worker code" and
+that restoring one was a one-line change. That is **no longer true for kontext or
+reve** — restoring either is a `git revert` of that commit, not a Literal edit.
+
+What still stands as parked-and-restorable: **`grok`** (union, every Record,
+`_enhance_with_grok`) and **`ideogram`**, which is not in the picker but is *live*
+for the Tweak and Inpaint tools. The rows below are kept for kontext and reve
+because the endpoint shapes are the expensive part to rediscover, and they are
+marked **DELETED** so nobody reads them as wiring that exists.
 
 | Provider | Model ID | SDK / endpoint | Key |
 |---|---|---|---|
 | `gemini` | `gemini-3.1-flash-image-preview` | `google-genai` via **AI Studio** backend (`api_key=`, not `vertexai=True`). Preview models live on AI Studio first. | `cleanshot-gemini-key` |
 | `openai` | `gpt-5` + `image_generation` tool | `openai.AsyncOpenAI` `client.responses.create(..., tools=[{"type":"image_generation"}], tool_choice={"type":"image_generation"})`. gpt-5 reads the input image + prompt then dispatches the image_generation tool, which internally invokes a gpt-image-* model. The forced tool_choice ensures gpt-5 always generates (without it, gpt-5 can decide the prompt is conversational and reply with text). | `cleanshot-openai-key` |
 | `grok` | `grok-imagine-image-quality` at `https://api.x.ai/v1/images/edits` | OpenAI-compatible image-edit API, Bearer auth, prompt max 4000 chars | `cleanshot-xai-key` |
-| `kontext` | `flux-1-kontext/max/edit` at `https://model-api.runcomfy.net/v1/models/blackforestlabs/flux-1-kontext/max/edit` | **RunComfy async proxy**. POST returns `request_id`; poll `/v1/requests/{id}/status` until `"completed"`; GET `/v1/requests/{id}/result` for the rendered image URL. Body field is `image_url` (singular string — NOT `images` array; that's Seedream's shape). RunComfy fetches the image via HTTPS so we mint a short-lived signed GCS GET URL via `services.gcs.mint_read_url` and pass that. | `cleanshot-runcomfy-key` |
+| `kontext` **(DELETED 2026-08-27 — reference only)** | `flux-1-kontext/max/edit` at `https://model-api.runcomfy.net/v1/models/blackforestlabs/flux-1-kontext/max/edit` | **RunComfy async proxy**. POST returns `request_id`; poll `/v1/requests/{id}/status` until `"completed"`; GET `/v1/requests/{id}/result` for the rendered image URL. Body field is `image_url` (singular string — NOT `images` array; that's Seedream's shape). RunComfy fetches the image via HTTPS so we mint a short-lived signed GCS GET URL via `services.gcs.mint_read_url` and pass that. | `cleanshot-runcomfy-key` |
 | `ideogram` | `ideogram-3.0` at `https://api.ideogram.ai/v1/edit` | **Sync** multipart endpoint. POST returns JSON with `data[0].url` already populated; GET that URL (no auth header) for the bytes. Reuses the per-variant `_tweak_with_ideogram` helper — primary-enhance path just passes the full enhance prompt instead of a short tweak instruction. Surfaces twice in the UI: as the cyan provider card on Enhance (full generation) AND as the cyan ✎ + rose 🖌 per-variant tools (targeted edit + mask inpaint). Wired 2026-05-26 (`ad7b202`). | `cleanshot-ideogram-key` |
-| `reve` | `reve-edit-fast-latest` at `https://api.reve.com/v1/image/edit` | **Sync** JSON endpoint. Bearer auth. Body: `edit_instruction` (string, **2560-char cap**), `reference_image` (base64), `version` (`latest-fast` pinned). Response: `{ image: <base64 PNG>, credits_used, credits_remaining, content_violation }`. The model's note "this instruction will be automatically enhanced by the model" means truncation is forgiving — we slice to 2560 chars and accept any meaning lost in the tail. Pin to `latest-fast` (not `latest`) for RPM headroom; full-quality reliably trips Reve's undocumented per-minute cap. Operator preferred Reve over Recraft on quality after a same-day re-evaluation (2026-05-26). | `cleanshot-reve-key` |
+| `reve` **(DELETED 2026-08-27 — reference only)** | `reve-edit-fast-latest` at `https://api.reve.com/v1/image/edit` | **Sync** JSON endpoint. Bearer auth. Body: `edit_instruction` (string, **2560-char cap**), `reference_image` (base64), `version` (`latest-fast` pinned). Response: `{ image: <base64 PNG>, credits_used, credits_remaining, content_violation }`. The model's note "this instruction will be automatically enhanced by the model" means truncation is forgiving — we slice to 2560 chars and accept any meaning lost in the tail. Pin to `latest-fast` (not `latest`) for RPM headroom; full-quality reliably trips Reve's undocumented per-minute cap. Operator preferred Reve over Recraft on quality after a same-day re-evaluation (2026-05-26). | `cleanshot-reve-key` |
 
 **Removed / repositioned providers (don't reintroduce as primary generators without reading why):**
 
 - `grok` — made **DORMANT 2026-07-21** (`fb4e24a`; operator cut it from the mix). Removed from `ENHANCE_PROVIDERS` (the picker roster in `lib/types-enhance.ts`) so it can't be selected / defaulted-to / fanned-out-to — but kept in the `EnhanceProvider` union + every Record + the backend `gemini|openai|grok` Literal + `_enhance_with_grok`. Re-enable = uncomment the one array entry. `cleanshot-xai-key` left in place.
 - `recraft` — wired end-to-end on 2026-05-26 (commits `b03032a` through `b21e9eb`), then **gutted same day** after the operator preferred Reve's output on quality. The known footguns are captured in hard-won lesson #21 (secret-value contamination) and the per-model-prompts work item (the 1000-byte prompt cap meant Gemini-tuned prose got hard-truncated, which is most of what made the output ugly). If reintroducing: restore via the cherry-picks of `b03032a`/`9fd8df1`/`b39da9b`/`d903430`/`fe826e8`/`b98f1f1`, AND write `_build_recraft_prompt` before judging quality. `cleanshot-recraft-key` secret left in place pending operator decision on full delete.
 - `seedream` — operator tested 2026-05-26 and rejected on quality grounds. Not wired.
-- `flux` (as generator) — repositioned as the **Erase tool only**, not a generation provider. See "Per-variant edit tools" below.
+- `flux` — was repositioned as the **Erase tool only**, then **removed entirely on 2026-08-27**. `_erase_with_flux` is gone and the erase path routes to Ideogram inpaint. `EraseRequest.tool` is now `Literal["ideogram"]`. See "Per-variant edit tools" below.
 - `runway gen-4` — evaluated 2026-05-26, declined. Redundant with Kontext for identity preservation, 2-3× the cost, slower API.
 
 **Cleanup worker** (anomaly-guided regen from Scan tab) uses the same Gemini AI Studio client as enhance.
@@ -259,6 +271,50 @@ Provider feature flags (Cloud Run env, baked into deploy-api.yml):
 
 ---
 
+## ⚠️ Enhance runs INLINE, not in a BackgroundTask (2026-08-27, `15b233c`)
+
+**Why jobs hung instead of failing.** Enhance used to run in a FastAPI
+`BackgroundTask`, so the vendor call, the 2800×2000 upscale and the ONNX matting
+pass all executed **after** the 200 was returned. Cloud Run deploys this service
+**without `--no-cpu-throttling`**, and that post-response window is exactly where
+CPU is throttled to near zero — two Gemini images with the cutout toggle on took
+over five minutes.
+
+**The code fix beats the gcloud flag.** Running the work inline gives it a real
+vCPU and bills only while it runs. The alternative, `--no-cpu-throttling`, means
+paying for an always-allocated instance 24/7 for a tool used in bursts.
+
+**Retry semantics did NOT change.** `_run_enhance` already absorbs every
+exception and marks the job row failed, so Cloud Tasks still sees a 200 and still
+does not retry. Do not "fix" that by letting exceptions escape — a non-2xx puts
+the task back on the queue and re-bills the vendor call.
+
+**The one new failure mode is the 900s Cloud Run request timeout**, which a
+long job can now breach. Two changes exist to keep jobs under it, and both are
+load-bearing:
+
+- **OpenAI input is capped at 2048px** (`image_processing.py`). ⚠️ This is
+  **per-provider on purpose.** The global input downsize was removed on
+  2026-08-21 so the 2800×2000 standardisation has real detail to work from, and
+  **it must stay removed for Gemini.** OpenAI inlines the source as base64 in the
+  `/v1/responses` body, where full-resolution uploads are the documented cause of
+  timeouts. Do not re-generalise this cap.
+- **OpenAI `max_retries` 8 → 2.** Eight retries against a 300s timeout is a worst
+  case near 40 minutes holding one rate-limiter slot. **The explicit rate
+  limiter, not SDK retries, is what keeps us inside the Tier-1 5-images/min
+  window** — so cutting SDK retries costs nothing.
+
+⚠️ **UNVERIFIED against a real batch.** The CPU-throttling diagnosis was read
+from the deploy config, not from Cloud Run metrics. If enhance still hangs, get
+the metrics before changing anything else.
+
+⚠️ **The enhance worker's module docstring said `Semaphore(2)` long after it
+became `Semaphore(8)`** (the real value is in `main.py`). Global concurrency is
+capped by Cloud Tasks `max_concurrent_dispatches=10`, not by that number.
+
+`handle_erase_task` and `handle_tweak_task` are **still** Cloud Tasks hops. Only
+enhance went inline.
+
 ## Rate limiting
 
 `apps/api/src/cleanshot_api/services/rate_limit.py` exports `AsyncRateLimiter` (sliding window, process-local). Limiters live on `app.state` in [main.py](apps/api/src/cleanshot_api/main.py):
@@ -274,7 +330,20 @@ Also note: the OpenAI client is `max_retries=8, timeout=300.0` because the SDK's
 
 ---
 
-## Per-variant edit tools (Tweak + Erase, dual backends each)
+## Per-variant edit tools (Tweak + Erase)
+
+⚠️ **THE ERASE TOOL IS IDEOGRAM-ONLY AS OF 2026-08-27.** `_erase_with_flux` was
+deleted, `_run_erase` calls `_inpaint_with_ideogram` unconditionally, and
+`EraseRequest.tool` / `EraseTaskPayload.tool` are now `Literal["ideogram"]`. So
+"dual backends each" is true of Tweak and no longer true of Erase.
+
+⚠️ **One caller has not caught up, and it is a latent 422.** `EraseDialog` was
+updated to hardcode `tool: "ideogram"` and its `tool` prop was dropped, but the
+BFF route `apps/web/app/api/enhance/erase/route.ts` still reads
+`tool: body.tool ?? "flux"`, and `lib/api.ts` still types the field
+`"flux" | "ideogram"`. **Any caller that omits `tool` gets a 422.** Nothing omits
+it today — the one caller always sends `"ideogram"` — so this is latent, not
+live. Fix the default before adding a second caller or restoring the ⌫ button.
 
 **ONLY TWO of the five per-variant tools are reachable in the UI** (verified 2026-08-26). `VariantThumb` in `SourceCompareCard.tsx` renders **↻ Retry** and **✎ Tweak with Gemini** and nothing else — it still accepts `onErase` / `onIdeogramEdit` / `onIdeogramInpaint`, and `EnhancePanel` still passes them and still owns the dialogs, but there are bare comment placeholders where the buttons used to be ("the operator asked for a pared-back action set on the variant thumb"). So **Ideogram Edit, Flux Erase and Ideogram Inpaint are dead-but-wired**: backend, schemas, workers and dialogs all intact, no way in. This matters because Ideogram Edit is the tool built for decal typography and model-number restoration, so that work currently has to route through Gemini Tweak, which is the weaker option for embedded text. Restoring a button is a few lines in `VariantThumb`.
 
@@ -286,15 +355,17 @@ The five AS DESIGNED (top-left, left to right): **↻ Regenerate** (amber) · **
 |---|---|---|---|---|
 | ✎ blue | Tweak | text instruction | Gemini Flash Image (AI Studio) — `_tweak_with_gemini` | Additive changes, conversational edits, fast |
 | T cyan | Ideogram Edit | text instruction | Ideogram 3.0 — `POST /v1/edit` (sync multipart) — `_tweak_with_ideogram` | Decal/typography repair, model-number restoration |
-| ⌫ purple | Erase | binary mask | BFL `flux-tools/erase-v1` (async poll) — `_erase_with_flux` | Identity-preserving object removal |
+| ⌫ purple | Erase | binary mask | ~~BFL `flux-tools/erase-v1` — `_erase_with_flux`~~ **DELETED 2026-08-27.** Now Ideogram 3.0 inpaint — `_inpaint_with_ideogram` | Object removal. No longer identity-preserving in the Flux sense — read the note above the matrix |
 | 🖌 rose | Ideogram Inpaint | binary mask | Ideogram 3.0 — `POST /v1/ideogram-v3/inpaint` (sync) — `_inpaint_with_ideogram` | Mask-based edits in/near OEM text or signage |
 
 ### Backend
 
-- **Endpoints:** `POST /api/v1/enhance/erase` and `POST /api/v1/enhance/tweak` in [operations.py](apps/api/src/cleanshot_api/routers/operations.py). Each request carries a `tool` Literal — `"flux" | "ideogram"` for erase, `"gemini" | "ideogram"` for tweak — defaulted to the original backend so old callers don't break.
+- **Endpoints:** `POST /api/v1/enhance/erase` and `POST /api/v1/enhance/tweak` in [operations.py](apps/api/src/cleanshot_api/routers/operations.py). Each request carries a `tool` Literal — **`"ideogram"` only** for erase since 2026-08-27, `"gemini" | "ideogram"` for tweak. The erase field is kept rather than dropped so the request shape does not change under callers and a second backend can return without a schema migration.
 - **Schemas:** `EraseRequest`, `TweakRequest`, `EraseTaskPayload`, `TweakTaskPayload` in [schemas.py](apps/api/src/cleanshot_api/models/schemas.py) — all carry the `tool` field through.
-- **Worker dispatch:** `_run_erase` / `_run_tweak` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py) branch on `payload.tool` and call the matching helper. Both tools reuse the `cleanshot-image-gen` Cloud Tasks queue.
-- **Usage events:** rows tagged with the actual provider (`flux` / `gemini` / `ideogram`) and matching model label (`flux-erase-v1` / `gemini-3.1-flash-image-preview` / `ideogram-3.0`) so the admin dashboard attributes spend correctly per backend.
+- **Worker dispatch:** `_run_tweak` branches on `payload.tool`. **`_run_erase` no longer branches** — there is one backend left, so it calls `_inpaint_with_ideogram` directly. Both tools reuse the `cleanshot-image-gen` Cloud Tasks queue.
+- **Usage events:** rows tagged with the actual provider (`gemini` / `ideogram`) and matching model label (`gemini-3.1-flash-image-preview` / `ideogram-3.0`) so the admin dashboard attributes spend correctly per backend. ⚠️ `flux-erase-v1`, `flux-1-kontext-max-edit` and `reve-edit-fast-latest` were removed from `PER_IMAGE_USD` on 2026-08-27. **Historic rows are unaffected** — `cost_estimate_usd` is computed and STORED at write time, and `estimate_cost_usd()` returns `None` for an unknown model so a future row would be NULL and render as a dash rather than a fake zero. Don't "restore" the entries to make old rows look right; they already are.
+
+- ⚠️ **`handle_erase_task` is still a Cloud Tasks hop, unlike `handle_enhance_task`, which now runs INLINE** (`15b233c`). Ideogram inpaint is synchronous, so "background" here means only the queue hop, not a poll.
 
 ### Ideogram specifics (sync API, no polling)
 
@@ -305,7 +376,7 @@ The five AS DESIGNED (top-left, left to right): **↻ Regenerate** (amber) · **
 
 ### Frontend dialogs
 
-- [EraseDialog.tsx](apps/web/components/enhance/EraseDialog.tsx) accepts `tool="flux" | "ideogram"` — drives title, subtitle, action label, progress label. Same canvas/mask export code path either way. Idempotency key includes the tool name so back-to-back Flux + Ideogram submits on the same variant don't dedupe to one job.
+- [EraseDialog.tsx](apps/web/components/enhance/EraseDialog.tsx) **no longer takes a `tool` prop** (2026-08-27) — it hardcodes `"ideogram"`, and its title/subtitle/progress copy is no longer per-tool. Idempotency key is `erase-ideogram-{assetId}-{uuid}`. ⚠️ The BFF route it posts to still defaults `tool` to `"flux"`; see the warning at the top of this section.
 - [TweakDialog.tsx](apps/web/components/enhance/TweakDialog.tsx) accepts `tool="gemini" | "ideogram"` — same dual-target pattern.
 - EnhancePanel keeps **four separate dialog target states** (`eraseTarget`, `tweakTarget`, `ideogramEditTarget`, `ideogramInpaintTarget`) so opening the Ideogram editor doesn't tear down a half-typed Gemini instruction.
 

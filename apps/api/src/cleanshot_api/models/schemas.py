@@ -26,7 +26,7 @@ class OperationEnum(StrEnum):
     scan = "scan"
     cleanup = "cleanup"
     export = "export"
-    # Mask-based object removal via BFL's flux-tools/erase-v1. Source is
+    # Mask-based object removal via Ideogram v3 inpaint. Source is
     # an existing enhanced variant (its outputAssetId from a prior
     # enhance job); the operator paints a binary mask client-side and
     # the worker dispatches both to BFL.
@@ -394,11 +394,23 @@ class EraseRequest(BaseModel):
     `instruction` is optional — when omitted, the vendor falls back to
     its default "fill with plausible background" behavior.
 
-    `tool` chooses the backend:
-      • "flux"     → BFL flux-tools/erase-v1 (default; identity-preserving)
+    `tool` is Ideogram-only as of 2026-08-27. It used to choose between
+    "flux" (BFL flux-tools/erase-v1) and "ideogram"; the Flux path and its
+    worker helper `_erase_with_flux` were removed, so the Literal now admits
+    one value. It is kept as a field rather than dropped so the request shape
+    does not change under callers and a second backend can return without a
+    schema migration.
+
       • "ideogram" → Ideogram 3.0 inpaint (text-rendering specialist;
                      stronger for OEM decals, model numbers, capacity
                      stickers, signage)
+
+    ⚠️ ONE CALLER HAS NOT CAUGHT UP. `EraseDialog` now hardcodes
+    `tool: "ideogram"`, but the BFF route
+    `apps/web/app/api/enhance/erase/route.ts` still reads
+    `tool: body.tool ?? "flux"` — so any caller that OMITS `tool` gets a 422
+    from this Literal. Nothing omits it today, which is why it is latent rather
+    than live. Change that default before adding a second caller.
     """
     session_id: uuid.UUID
     asset_id: uuid.UUID
@@ -412,7 +424,7 @@ class EraseRequest(BaseModel):
     # Optional natural-language instruction for what should fill the
     # erased region. Leave empty for the vendor's default behaviour.
     instruction: str | None = None
-    tool: Literal["flux", "ideogram"] = "flux"
+    tool: Literal["ideogram"] = "ideogram"
     idempotency_key: str = Field(default_factory=lambda: str(uuid.uuid4()))
 
 
@@ -427,7 +439,7 @@ class EraseTaskPayload(BaseModel):
     input_gcs_uri: str
     mask_png_base64: str
     instruction: str | None = None
-    tool: Literal["flux", "ideogram"] = "flux"
+    tool: Literal["ideogram"] = "ideogram"
 
 
 class TweakRequest(BaseModel):

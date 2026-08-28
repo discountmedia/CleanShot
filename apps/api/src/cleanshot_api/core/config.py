@@ -86,28 +86,11 @@ class Settings(BaseSettings):
 
     openai_api_key: str = Field("", alias="OPENAI_API_KEY")
     anthropic_api_key: str = Field("", alias="ANTHROPIC_API_KEY")
-    # Black Forest Labs (FLUX) — image-edit provider opt-in. Mounted from
-    # GCP Secret Manager (cleanshot-bfl-key) on Cloud Run; absent locally
-    # unless the developer also sets BFL_API_KEY in their .env.
-    bfl_api_key: str = Field("", alias="BFL_API_KEY")
     # xAI / Grok (https://api.x.ai) — image-edit provider via
     # /v1/images/edits with the grok-imagine-image-quality model.
     # Bearer-token auth. Mounted from GCP Secret Manager
     # (cleanshot-xai-key) on Cloud Run.
     xai_api_key: str = Field("", alias="XAI_API_KEY")
-    # RunComfy (https://www.runcomfy.com) — proxies the Bytedance
-    # Seedream-4.5/edit image-to-image model with an async submit →
-    # poll → result flow. Bearer-token auth, image inputs are passed
-    # by HTTPS URL (we mint a short-lived signed GCS GET URL). Mounted
-    # from GCP Secret Manager (cleanshot-runcomfy-key) on Cloud Run.
-    runcomfy_api_key: str = Field("", alias="RUNCOMFY_API_KEY")
-    # Kontext tuning knob: when >= 0, every RunComfy/Kontext render reuses
-    # this seed so a prompt change is the only variable between two outputs
-    # (needed for the model-tuning phase). Default -1 omits the seed →
-    # random per call, the right behaviour for production regenerate variety.
-    # Transient if set via `gcloud run services update`; bake into
-    # deploy-api.yml to persist across deploys (hard-won lesson #1).
-    kontext_seed: int = Field(-1, alias="KONTEXT_SEED")
     # Google AI Studio API key — used for the enhance pipeline's Gemini
     # calls so we can access preview image-gen models (e.g.
     # gemini-3.1-flash-image-preview) that aren't yet published in this
@@ -119,17 +102,10 @@ class Settings(BaseSettings):
     # Ideogram (https://api.ideogram.ai) — used for the per-variant
     # Edit-with-prompt tool (POST /v1/edit, text-only sibling to Gemini
     # Tweak) and the Inpaint-with-prompt tool (POST /v1/ideogram-v3/inpaint,
-    # mask-based sibling to Flux Erase). Sync API; the worker calls it
+    # the only mask-based tool left). Sync API; the worker calls it
     # directly without async polling. Mounted from GCP Secret Manager
     # (cleanshot-ideogram-key) on Cloud Run.
     ideogram_api_key: str = Field("", alias="IDEOGRAM_API_KEY")
-    # Reve (https://api.reve.com) — 6th primary enhance generator
-    # (reinstated 2026-05-26 after a brief absence — operator preferred
-    # it over Recraft on quality after re-evaluating both). Synchronous
-    # /v1/image/edit endpoint with bearer-token auth and base64 JSON
-    # image-in/image-out. Mounted from GCP Secret Manager
-    # (cleanshot-reve-key) on Cloud Run.
-    reve_api_key: str = Field("", alias="REVE_API_KEY")
 
     # -------------------------------------------------------------------------
     # Operational

@@ -634,20 +634,7 @@ export function EnhancePanel({
   const enhanceJobsRef = useRef(enhanceJobs);
   enhanceJobsRef.current = enhanceJobs;
 
-  // Per-variant Flux erase dialog state. When a target is set, the
-  // EraseDialog opens with that variant's source asset. Single dialog
-  // instance shared across all SourceCompareCards — only one erase
-  // can be in flight at a time, which matches operator expectation
-  // (focused detail work, not a batch operation).
-  const [eraseTarget, setEraseTarget] = useState<{
-    fileId:        string;
-    provider:      EnhanceProvider;
-    jobId:         string;
-    sourceAssetId: string;
-    sourceUrl:     string;
-  } | null>(null);
-
-  // Per-variant Gemini tweak dialog state — sister to eraseTarget,
+  // Per-variant Gemini tweak dialog state — same single-instance pattern
   // same single-instance pattern. Text-only conversational sibling to
   // the mask-based Erase tool. Operator types one targeted instruction
   // and Gemini Flash Image applies just that change.
@@ -671,8 +658,9 @@ export function EnhancePanel({
   } | null>(null);
 
   // Per-variant Ideogram inpaint dialog state — mask-based sibling to
-  // eraseTarget but routed through Ideogram 3.0 inpaint. Shares the
-  // EraseDialog component with tool="ideogram".
+  // the tweak target but routed through Ideogram 3.0 inpaint. Uses the
+  // EraseDialog, which is now Ideogram-only (the Flux erase tool was
+  // removed 2026-08-27 along with BFL).
   const [ideogramInpaintTarget, setIdeogramInpaintTarget] = useState<{
     fileId:        string;
     provider:      EnhanceProvider;
@@ -1735,68 +1723,7 @@ export function EnhancePanel({
     });
   }, []);
 
-  // ─── Per-variant erase ─────────────────────────────────────────────────
-
-  /**
-   * Open the EraseDialog for a specific completed variant. The dialog
-   * needs the variant's outputAssetId + its signed URL to load the
-   * image into the canvas. The (fileId, provider) pair lets us look up
-   * the original jobId later when the operator accepts the result so
-   * we can patch the variant in-place.
-   */
-  const handleOpenErase = useCallback(
-    (fileId: string, provider: EnhanceProvider) => {
-      const jobId = enhanceJobs.get(fileId)?.get(provider);
-      if (!jobId) return;
-      const completedItem = completed.get(jobId);
-      if (!completedItem) return;
-      setEraseTarget({
-        fileId,
-        provider,
-        jobId,
-        sourceAssetId: completedItem.outputAssetId,
-        sourceUrl:     completedItem.outputUrl,
-      });
-    },
-    [enhanceJobs, completed],
-  );
-
-  /**
-   * Operator accepted the erased result. Patch the variant in-place —
-   * `completed[jobId]` now points at the new outputAssetId/outputUrl,
-   * and `jobStateMap[jobId].outputAssetId` is updated so the
-   * SourceCompareCard renders the cleaned image. We deliberately keep
-   * the same jobId so the operator's winner-pick, sent-to-Scan flags,
-   * and the existing poller all stay coherent.
-   */
-  const handleEraseAccept = useCallback(
-    (result: EraseDialogResult) => {
-      if (!eraseTarget) return;
-      const { jobId } = eraseTarget;
-      setCompleted((prev) => {
-        const cur = prev.get(jobId);
-        if (!cur) return prev;
-        const next = new Map(prev);
-        next.set(jobId, {
-          ...cur,
-          outputAssetId: result.outputAssetId,
-          outputUrl:     result.outputUrl,
-        });
-        return next;
-      });
-      setJobStateMap((prev) => {
-        const cur = prev.get(jobId);
-        if (!cur) return prev;
-        const next = new Map(prev);
-        next.set(jobId, { ...cur, outputAssetId: result.outputAssetId });
-        return next;
-      });
-      setEraseTarget(null);
-    },
-    [eraseTarget],
-  );
-
-  // Same lookup-and-open pattern as handleOpenErase. The dialog needs
+  // Same lookup-and-open pattern the removed Flux erase handler used. The dialog needs
   // the variant's current outputAssetId + signed URL, and the original
   // jobId so handleTweakAccept can patch the right slot in `completed`
   // when the operator approves the result.
@@ -2115,24 +2042,12 @@ export function EnhancePanel({
           />
         )}
 
-      {/* ── Per-variant Erase dialog (singleton) — Flux backend ── */}
-      <EraseDialog
-        open={eraseTarget !== null}
-        sessionId={sessionId}
-        sourceAssetId={eraseTarget?.sourceAssetId ?? ""}
-        sourceImageUrl={eraseTarget?.sourceUrl ?? ""}
-        tool="flux"
-        onClose={() => setEraseTarget(null)}
-        onAccept={handleEraseAccept}
-      />
-
       {/* ── Per-variant Ideogram inpaint dialog (singleton) ── */}
       <EraseDialog
         open={ideogramInpaintTarget !== null}
         sessionId={sessionId}
         sourceAssetId={ideogramInpaintTarget?.sourceAssetId ?? ""}
         sourceImageUrl={ideogramInpaintTarget?.sourceUrl ?? ""}
-        tool="ideogram"
         onClose={() => setIdeogramInpaintTarget(null)}
         onAccept={handleIdeogramInpaintAccept}
       />
@@ -2733,7 +2648,6 @@ export function EnhancePanel({
                   onChoose={(provider) => chooseWinner(f.id, provider)}
                   onToggleHold={() => toggleHold(f.id)}
                   onRetry={(provider) => retryProvider(f, provider)}
-                  onErase={(provider) => handleOpenErase(f.id, provider)}
                   onTweak={(provider) => handleOpenTweak(f.id, provider)}
                   onIdeogramEdit={(provider) => handleOpenIdeogramEdit(f.id, provider)}
                   onIdeogramInpaint={(provider) => handleOpenIdeogramInpaint(f.id, provider)}

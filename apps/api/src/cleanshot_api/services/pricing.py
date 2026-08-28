@@ -45,34 +45,12 @@ PER_IMAGE_USD: dict[str, float] = {
     # image-gen tool portion ~$0.07. Refine once real invoices land.
     "gpt-5":                          0.080,
 
-    # Black Forest Labs flux-tools/erase-v1. Flux no longer ships as a
-    # generation provider — only the mask-based erase tool is wired up.
-    # BFL bills credits; erase tier is published ~$0.04 per call at the
-    # current rate (1024 credits ≈ $1, ~40 cr/erase). Refine once we
-    # have real invoices.
-    "flux-erase-v1":                  0.040,
-
     # xAI Grok image edit (https://docs.x.ai). Public pricing for
     # /v1/images/edits isn't published yet — placeholder of $0.07 per
     # edit (roughly the midpoint of comparable image-edit models).
     # Update once we have an invoice / real bill to calibrate against.
     "grok-imagine-image-quality":     0.070,
 
-    # BFL Flux Kontext Max image-edit via the RunComfy proxy
-    # (https://www.runcomfy.com). RunComfy bills credits-per-call;
-    # Kontext Max sits at the higher-quality / higher-cost tier so a
-    # ~$0.08 placeholder is reasonable until the first real invoice.
-    "flux-1-kontext-max-edit":        0.080,
-
-    # Reve (https://api.reve.com). Reve bills credits — example response
-    # in their docs showed `credits_used: 30` against an initial 1000
-    # budget. Without a published USD-per-credit conversion we use a
-    # conservative $0.03/edit placeholder. After a few real runs,
-    # inspect the actual credits_used + Reve's pricing page and
-    # update this entry. The -fast variant we pin to is cheaper in
-    # credits than the full-quality model; refine once we have real
-    # invoices to calibrate against.
-    "reve-edit-fast-latest":          0.030,
 }
 
 
