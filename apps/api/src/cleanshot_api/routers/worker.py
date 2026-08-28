@@ -86,7 +86,7 @@ async def worker_erase(
     """
     Cloud Tasks target for mask-based Ideogram inpaint jobs. Source asset is a
     completed enhance variant; operator-drawn mask comes inline in the
-    payload as base64 PNG. Quick-acknowledge: HTTP 200 immediately, BFL
+    payload as base64 PNG. Quick-acknowledge: HTTP 200 immediately, vendor
     polling happens in background.
     """
     return await handle_erase_task(payload, background_tasks, request)

@@ -134,8 +134,8 @@ def enqueue_cleanup(payload: CleanupTaskPayload) -> str:
 
 def enqueue_erase(payload: EraseTaskPayload) -> str:
     """
-    Enqueue a Flux erase task. Shares cleanshot-image-gen with enhance +
-    cleanup (BFL has plenty of headroom and erase calls are infrequent —
+    Enqueue an Ideogram inpaint (erase) task. Shares cleanshot-image-gen
+    with enhance + cleanup (erase calls are infrequent —
     no need for a dedicated queue).
     """
     settings = get_settings()

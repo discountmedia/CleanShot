@@ -74,8 +74,8 @@ jobs:
             --allow-unauthenticated \
             --ingress=all \
             --service-account=forklift-api@cleanshot-493512.iam.gserviceaccount.com \
-            --set-secrets="DATABASE_URL=cleanshot-database-url:latest,API_KEY=cleanshot-api-key:latest,API_KEY_PREV=cleanshot-api-key-prev:latest,OPENAI_API_KEY=cleanshot-openai-key:latest,ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,BFL_API_KEY=cleanshot-bfl-key:latest,GEMINI_API_KEY=cleanshot-gemini-key:latest,XAI_API_KEY=cleanshot-xai-key:latest,RUNCOMFY_API_KEY=cleanshot-runcomfy-key:latest,IDEOGRAM_API_KEY=cleanshot-ideogram-key:latest,REVE_API_KEY=cleanshot-reve-key:latest,TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,WORKER_URL=cleanshot-worker-url:latest" \
-            --set-env-vars="GCP_PROJECT=cleanshot-493512,GCP_REGION=us-central1,GCS_BUCKET_ORIGINALS=cleanshot-originals-prod,GCS_BUCKET_DERIVATIVES=cleanshot-derivatives-prod,VALKEY_URL=valkey://10.122.45.83:6379,TASKS_QUEUE_GEN=cleanshot-image-gen,TASKS_QUEUE_SCAN=cleanshot-image-scan,TASKS_QUEUE_INGEST=cleanshot-ingest-copy,TASKS_LOCATION=us-central1,ENVIRONMENT=production,LOG_LEVEL=INFO,SCAN_PROVIDER_OPENAI=true,SCAN_PROVIDER_ANTHROPIC=true,KONTEXT_SEED=12345,CUTOUT_MODEL=isnet-general-use,CUTOUT_ALPHA_MATTING=false" \
+            --set-secrets="DATABASE_URL=cleanshot-database-url:latest,API_KEY=cleanshot-api-key:latest,API_KEY_PREV=cleanshot-api-key-prev:latest,OPENAI_API_KEY=cleanshot-openai-key:latest,ANTHROPIC_API_KEY=cleanshot-anthropic-key:latest,GEMINI_API_KEY=cleanshot-gemini-key:latest,XAI_API_KEY=cleanshot-xai-key:latest,IDEOGRAM_API_KEY=cleanshot-ideogram-key:latest,TASKS_OIDC_SA=cleanshot-tasks-oidc-sa:latest,WORKER_URL=cleanshot-worker-url:latest" \
+            --set-env-vars="GCP_PROJECT=cleanshot-493512,GCP_REGION=us-central1,GCS_BUCKET_ORIGINALS=cleanshot-originals-prod,GCS_BUCKET_DERIVATIVES=cleanshot-derivatives-prod,VALKEY_URL=valkey://10.122.45.83:6379,TASKS_QUEUE_GEN=cleanshot-image-gen,TASKS_QUEUE_SCAN=cleanshot-image-scan,TASKS_QUEUE_INGEST=cleanshot-ingest-copy,TASKS_LOCATION=us-central1,ENVIRONMENT=production,LOG_LEVEL=INFO,SCAN_PROVIDER_OPENAI=true,SCAN_PROVIDER_ANTHROPIC=true,CUTOUT_MODEL=isnet-general-use,CUTOUT_ALPHA_MATTING=false" \
             --vpc-egress=all-traffic \
             --network=default \
             --subnet=default
@@ -99,13 +99,13 @@ jobs:
 # dual-Gemini-client lifespan code lands, and the new GEMINI_API_KEY
 # secret mount actually activates the AI Studio path.
 #
-# 2026-05-20: Reve provider removed from the stack — REVE_API_KEY
-# dropped from --set-secrets. cleanshot-reve-key can be deleted from
-# Secret Manager once we're sure no other tools reference it.
+# 2026-08-27: BFL/Flux, Reve and RunComfy removed from the stack. Their
+# mounts (BFL_API_KEY, REVE_API_KEY, RUNCOMFY_API_KEY) and KONTEXT_SEED are
+# gone from the lines above, and the worker helpers were deleted, not parked.
+# cleanshot-bfl-key / cleanshot-reve-key / cleanshot-runcomfy-key are
+# deletable from Secret Manager once this deploy lands.
 #
-# 2026-05-28: KONTEXT_SEED=12345 pinned for the Kontext prompt-tuning phase
-# so a prompt change is the only variable between renders. It lives here
-# (not a transient `gcloud run services update`) so it survives every
-# redeploy during tuning. REMOVE THIS once Kontext is dialled in — prod
-# regenerate wants a random seed per call (Settings.kontext_seed default -1
-# omits the seed when this env var is absent).
+# NOTE: the note previously here claimed Reve was dropped on 2026-05-20. It
+# was false — Reve was reinstated 2026-05-26 and was still mounted and still
+# read by config.py right up to today. Do not trust a removal note in this
+# file without checking the --set-secrets line above it.

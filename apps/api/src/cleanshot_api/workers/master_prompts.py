@@ -10,13 +10,15 @@ a different LLM (Claude, Gemini, OpenAI, Grok), in three flavours:
 
   • GENERIC — one-size-fits-all, used for any generator. 4 prompts (one per
     author).
-  • TAILORED — bespoke wording for the three edit-style generators that need it
-    (Kontext, Ideogram, Reve), one per author = 12 prompts.
+  • TAILORED — bespoke wording for the edit-style generators that need it.
+    Kontext and Reve were DELETED 2026-08-27, leaving Ideogram as the only
+    one: 4 prompts (one per author). Do NOT read this as licence to delete
+    the Ideogram block too — it is live for the Tweak and Inpaint tools.
   • NAMESAKE — a tailored prompt for each generator that shares a name with an
     author (Gemini→Gemini, OpenAI→OpenAI, Grok→Grok) = 3 prompts. There is no
     Claude→Claude because Claude is not an image generator.
 
-Total = 19 prompts.
+Total = 11 prompts (4 generic + 4 Ideogram tailored + 3 namesake).
 
 The Enhance tab exposes these via a per-card prompt-choice key:
   • "auto"            → None here → caller uses the procedural builder

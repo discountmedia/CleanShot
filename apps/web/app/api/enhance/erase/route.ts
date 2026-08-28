@@ -22,7 +22,7 @@ interface ClientRequest {
   maskPngBase64: string;
   instruction?: string;
   /** "flux" (default) or "ideogram". */
-  tool?: "flux" | "ideogram";
+  tool?: "ideogram";
   idempotencyKey: string;
 }
 
@@ -44,7 +44,9 @@ export async function POST(request: NextRequest) {
       asset_id:         body.assetId,
       mask_png_base64:  body.maskPngBase64,
       ...(body.instruction?.trim() ? { instruction: body.instruction } : {}),
-      tool:             body.tool ?? "flux",
+      // Default must track EraseTaskPayload.tool, which is Literal["ideogram"]
+      // as of 2026-08-27. Defaulting to "flux" here 422s the worker.
+      tool:             body.tool ?? "ideogram",
       idempotency_key:  body.idempotencyKey,
     }),
     signal: request.signal,

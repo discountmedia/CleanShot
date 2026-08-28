@@ -29,13 +29,13 @@ class OperationEnum(StrEnum):
     # Mask-based object removal via Ideogram v3 inpaint. Source is
     # an existing enhanced variant (its outputAssetId from a prior
     # enhance job); the operator paints a binary mask client-side and
-    # the worker dispatches both to BFL.
+    # the worker dispatches both to Ideogram v3 inpaint.
     erase = "erase"
     # Text-guided variant refinement via Gemini Flash Image (same model
     # as primary enhance, different intent). Operator writes a free-text
     # instruction ("remove the propane tank", "add some surface scuffs
     # to the side panel"), backend sends variant + instruction to
-    # Gemini. Used when the Flux erase tool's mask flow is overkill /
+    # Gemini. Used when the erase tool's mask flow is overkill /
     # under-powered for the kind of edit needed.
     tweak = "tweak"
     # Deterministic pixel-level adjustments via pyvips (Modify tab):
@@ -239,10 +239,11 @@ class EnhanceRequest(BaseModel):
     #   grok             — DORMANT since 2026-07-21. Still accepted here, but
     #                      dropped from ENHANCE_PROVIDERS so the picker can't
     #                      select it. One-line restore.
-    # The LIVE picker is gemini + openai only. Kontext / Ideogram / Reve were
-    # removed 2026-06-05; their workers/_enhance_with_* helpers remain as
-    # dead-but-harmless code and are NOT valid values here. Flux is not a
-    # generator at all any more — it backs the per-variant Erase tool only.
+    # The LIVE picker is gemini + openai + grok (Grok restored 2026-08-27).
+    # Kontext and Reve were removed from the picker 2026-06-05 and DELETED
+    # from the worker 2026-08-27 — restoring either is a git revert now, not
+    # a Literal edit. Ideogram is still not valid here; it remains live only
+    # for the per-variant Tweak and Inpaint tools.
     provider: Literal["gemini", "openai", "grok"] = "gemini"
     # What kind of equipment is in the photo — drives the per-type
     # anatomy guardrail block in _build_enhance_prompt + the equipment

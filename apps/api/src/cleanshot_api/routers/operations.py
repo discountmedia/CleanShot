@@ -110,11 +110,12 @@ async def enqueue_erase_job(
     pool: asyncpg.Pool = Depends(get_pool),
 ) -> EraseResponse:
     """
-    Mask-based object erase via BFL flux-tools/erase-v1. The source
+    Mask-based object erase via Ideogram v3 inpaint. The source
     asset_id is typically the outputAssetId of a completed enhance
     variant — the operator drew a mask over something they want
     removed (a sticker, a scratch, background clutter, etc.).
-    Returns 202 immediately; actual BFL work is async.
+    Returns 202 immediately; the vendor call happens on the Cloud Tasks
+    hop. (Ideogram inpaint itself is synchronous, unlike the old BFL poll.)
     """
     async with pool.acquire() as conn:
         asset = await queries.get_asset(conn, body.asset_id)

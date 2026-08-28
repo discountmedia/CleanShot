@@ -3,8 +3,8 @@ Per-model pricing → usage_events.cost_estimate_usd.
 
 Two rate styles:
   • PER_IMAGE_USD — flat dollar amount per API call. Used for image-gen
-    and image-edit models (Gemini Flash Image, OpenAI gpt-image-2,
-    Black Forest Labs Flux). These providers don't return token counts;
+    and image-edit models (Gemini Flash Image, OpenAI gpt-5, xAI Grok,
+    Ideogram). These providers don't return token counts;
     they charge per generated image instead.
   • PER_TOKEN_USD — (input_per_million, output_per_million) tuples used
     for the text/vision LLMs (scan worker's gemini-2.5-flash, gpt-5.4,
@@ -20,7 +20,7 @@ Where to verify:
   - Gemini:    https://ai.google.dev/gemini-api/docs/pricing
   - OpenAI:    https://platform.openai.com/docs/pricing
   - Anthropic: https://www.anthropic.com/pricing
-  - BFL Flux:  https://docs.bfl.ai/pricing
+  - xAI Grok:  https://docs.x.ai
 """
 
 from __future__ import annotations
@@ -71,8 +71,15 @@ PER_TOKEN_USD: dict[str, tuple[float, float]] = {
 
     # Anthropic. Every Claude call in the app (scan, variant judge, prompt
     # optimizer) runs on opus-5 as of 2026-08-27. The older ids are retained
-    # because usage_events rows written before that date name them and a
-    # missing key would break cost reporting on historical data.
+    # so that a re-run or a rolled-back model id still costs correctly.
+    #
+    # NOTE (corrected 2026-08-27): they are NOT needed to protect historical
+    # data, which the previous wording claimed. cost_estimate_usd is computed
+    # HERE and STORED on the usage_event row at insert time; the admin
+    # dashboard SUMs that stored column and never re-derives it from the model
+    # name. Removing a key cannot retroactively change an old row's cost --
+    # verified when flux-erase-v1 / flux-1-kontext-max-edit /
+    # reve-edit-fast-latest were dropped above on 2026-08-27.
     "claude-opus-5":     (5.00, 25.00),
     "claude-sonnet-4-6": (3.00, 15.00),
     "claude-opus-4-7":   (15.00, 75.00),
