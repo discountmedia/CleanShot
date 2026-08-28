@@ -8,8 +8,13 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 
 **The branch is NOT `main` and nothing from today is pushed or deployed.**
 
-- **Branch:** `fix/enhance-inline-cpu-throttling`. It exists only on this
-  machine — there is no remote branch. Head is `15b233c` plus one docs commit.
+- **Branch:** `fix/enhance-inline-cpu-throttling`, being renamed to `main`
+  with the old `main` preserved as `old_main`. It exists only on this
+  machine — there is no remote branch yet.
+- **Commit history is `15b233c` (inline enhance) → `8a0a24c` → `1f698db`
+  (removal + docs) → the docs pass that wrote this line.** An earlier version
+  of this file said "`15b233c` plus one docs commit", which was never true.
+  Read `git log`, not this bullet.
 - **`main` on the remote is at `e49b7c6`.** Everything below dated 27 Aug is
   local-only.
 - **The API is still running the pre-27-Aug revision.** Nothing today has been
@@ -47,30 +52,37 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
    `EraseDialog` / `SourceCompareCard` / `EnhancePanel` erase wiring all went
    with it.
 
-   ⚠️ **ONE FILE WAS MISSED, and it is a latent 422.** The BFF route
-   `apps/web/app/api/enhance/erase/route.ts` still reads
-   `tool: body.tool ?? "flux"`, and `apps/web/lib/api.ts` still types the field
-   `"flux" | "ideogram"`. The backend Literal is now `"ideogram"` only, so **any
-   caller that omits `tool` gets a 422.** Nothing omits it today — `EraseDialog`
-   hardcodes `"ideogram"` — so it cannot fire, but the default is wrong and the
-   next caller inherits it.
+   ✅ **The two missed files are fixed (2026-08-27).**
+   `apps/web/app/api/enhance/erase/route.ts` now defaults `tool` to
+   `"ideogram"` and `apps/web/lib/api.ts` types it `"ideogram"`, matching the
+   backend Literal. The 422 that would have hit any caller omitting `tool`
+   can no longer fire.
 
    ✅ **Historic spend is safe.** `flux-erase-v1`, `flux-1-kontext-max-edit` and
    `reve-edit-fast-latest` left `PER_IMAGE_USD`, but `cost_estimate_usd` is
    computed and stored on the usage_event row at write time, so old rows keep
    their real figures. Don't restore the entries to "fix" the dashboard.
 
-3. **Still not done, from the same plan:** the **Grok re-enable**.
+3. **The Grok re-enable — DONE 2026-08-27.** `"grok"` is back in
+   `ENHANCE_PROVIDERS`. Everything else it needed was already in place. It is
+   deliberately **not ticked by default**; the initial fan-out set in
+   `EnhancePanel.tsx` stays `["gemini", "openai"]` because Grok's ~6/min
+   limiter would slow every batch. The operator confirmed `cleanshot-xai-key`
+   is still valid.
 
 ### Before this branch goes anywhere
 
-1. Decide whether the kontext/reve deletion is wanted, or whether it should be
-   reverted and left parked.
-2. Fix the BFF default in `apps/web/app/api/enhance/erase/route.ts`
-   (`?? "flux"` → `?? "ideogram"`) and the type in `lib/api.ts`. Deliberately
-   NOT done in the docs pass that wrote this file — it is a behaviour change in
-   a change set somebody else authored.
-3. Deploy and run a real batch — the inline-enhance fix is unverified.
+1. ~~Decide whether the kontext/reve deletion is wanted~~ — confirmed wanted
+   by the operator, who asked for it explicitly.
+2. ~~Fix the BFF default and the `lib/api.ts` type~~ — both done.
+3. **Deploy and run a real batch.** Still the open item, and the important
+   one. The inline-enhance fix is unverified: the CPU-throttling diagnosis was
+   read from `deploy-api.yml`, not from Cloud Run metrics. The test is two
+   Gemini photos with the cutout toggle — well under a minute means the
+   diagnosis was right; still hanging means get the metrics before changing
+   anything else.
+4. **Delete the unmounted secrets** once the deploy lands: `cleanshot-bfl-key`,
+   `cleanshot-reve-key`, `cleanshot-runcomfy-key`.
 
 ---
 
@@ -196,8 +208,10 @@ hard-won lesson #27.
 ### Finding 3 — three per-variant tools are dead-but-wired
 
 `VariantThumb` renders only **↻ Retry** and **✎ Tweak (Gemini)**. **Ideogram
-Edit, Flux Erase and Ideogram Inpaint** have intact backends, schemas, workers,
-task routing, usage attribution and mounted dialogs — and no button.
+Edit and Ideogram Inpaint** have intact backends, schemas, workers, task
+routing, usage attribution and mounted dialogs — and no button. (Flux Erase
+was a third such tool until 2026-08-27; it was deleted with BFL rather than
+left parked, which is why removing it cost no working functionality.)
 CLAUDE.md's "five small icons" table described the design, not the app, and has
 been corrected. This is now prioritised open work item #16, because Ideogram Edit
 is specifically the tool for decal typography and model-number restoration, so
@@ -299,7 +313,7 @@ second unlogged, unlimited Anthropic call on the same footing).
 - **`AUTH_ENABLED=true`** in Vercel (Production) when ready — locks the app behind Microsoft SSO + activates the email allowlist. Confirm the allowlist first; test on Preview. Still inert; the workspace runs as `dev@local`. **Templates are credited to the signed-in email**, so anything saved while running as `dev@local` shows `dev@local` as its author — and since titles are permanent, those bylines cannot be corrected later.
 - **`ADMIN_EMAILS` now gates template deletion**, not just the admin dashboard. Confirm the allowlist is who you want holding the only delete button for the shared library. (This is CleanShot's own `ADMIN_EMAILS` — a different list from the one in df-headshot-archive.)
 - **Watch the first API revision after this push** — it runs the shared-templates migration (title de-dup, then the new unique index, then `use_count`, then `saved_prompt_votes`) on startup.
-- `cleanshot-xai-key` (Grok) is dormant but the secret stays (one-line re-enable). `cleanshot-recraft-key` is still safe to delete.
+- `cleanshot-xai-key` (Grok) is **live again as of 2026-08-27** and the operator confirms the key value is still good. Safe to delete: `cleanshot-recraft-key`, and after the next deploy `cleanshot-bfl-key`, `cleanshot-reve-key` and `cleanshot-runcomfy-key`.
 - Domain onboarding is a **4-place checklist** (lesson #26): Vercel + `lib/auth.ts` trustedOrigins + Entra redirect URI + `infra/gcs-cors.json` (re-apply to BOTH buckets).
 
 ---

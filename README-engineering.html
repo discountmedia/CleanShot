@@ -319,7 +319,7 @@ Two-app monorepo. Next.js owns the browser surface and proxies every API call th
 <h2 id="dataflow">Data flow (upload &rarr; export)</h2>
 <ol class="bullets">
   <li><strong>Upload.</strong> Browser PUTs raw photo bytes directly to GCS via a signed URL minted by FastAPI. JPEG conversion + long-edge cap to 1024 px happen client-side in <code>compress.ts</code> before the PUT.</li>
-  <li><strong>Enhance.</strong> Operator clicks Enhance with N providers selected. FastAPI creates one job per (asset_id, provider) pair, enqueues a Cloud Task. The worker fans out to the picked vendors (Gemini / OpenAI / Grok / Kontext) via per-provider helpers in <code>enhance_worker.py</code>, writes each output to GCS, marks the job complete.</li>
+  <li><strong>Enhance.</strong> Operator clicks Enhance with N providers selected. FastAPI creates one job per (asset_id, provider) pair, enqueues a Cloud Task. The worker fans out to the picked vendors (Gemini / OpenAI / Grok) via per-provider helpers in <code>enhance_worker.py</code>, writes each output to GCS, marks the job complete.</li>
   <li><strong>Scan.</strong> Multi-vendor consensus &mdash; Gemini (Vertex), OpenAI (gpt-5.4), Anthropic (claude-opus-5). Each provider gets the cleaned image + a structured JSON schema; results are aggregated into pass/mixed/fail per asset. Provider isolation uses <code>asyncio.gather(return_exceptions=True)</code> (NOT TaskGroup &mdash; see lessons).</li>
   <li><strong>Modify <span class="pill">optional</span>.</strong> Darkroom-style pyvips pipeline: rotate &rarr; wedge-crop &rarr; smart-crop (aspect) &rarr; brightness/contrast &rarr; saturation. Endpoint <code>POST /api/v1/modify/batch</code>, service <code>apply_adjustments()</code>. Operator can skip straight from Scan to Resize, OR upload raw photos directly to Modify (standalone mode &mdash; merges into the same <code>allAssets</code> pool as the queued post-Scan set). On success, the panel shows a green "Continue to Resize &rarr;" CTA.</li>
   <li><strong>Resize.</strong> Operator picks PRO (1024&times;731 7:5 cover-crop), Collage (1024 long-edge fit), Branded Collage (1024&times;540 composed marketing layout), or Custom dimensions. pyvips on the backend does the actual resize + JPEG quality iteration. PRO uses NDJSON streaming progress for batch operations.</li>
@@ -328,7 +328,7 @@ Two-app monorepo. Next.js owns the browser surface and proxies every API call th
 
 <h2 id="enhance">Enhance providers</h2>
 <p>
-The Enhance tab exposes a <strong>6-checkbox</strong> model selector with a "Select all" header toggle. Provider literal: <code>"gemini" | "openai" | "grok" | "kontext" | "ideogram" | "reve"</code>. Routing in <code>_run_enhance</code> in <code>enhance_worker.py</code>. Defaults to gemini.
+The Enhance tab exposes a <strong>3-checkbox</strong> model selector with a "Select all" header toggle. Provider literal: <code>"gemini" | "openai" | "grok"</code>. Grok was restored 2026-08-27 but is <strong>not ticked by default</strong>. Routing in <code>_run_enhance</code> in <code>enhance_worker.py</code>. Defaults to gemini.
 </p>
 <table>
   <tr><th>Provider</th><th>Model</th><th>Endpoint / SDK</th><th>Secret</th></tr>
@@ -351,10 +351,10 @@ The Enhance tab exposes a <strong>6-checkbox</strong> model selector with a "Sel
     <td><code>cleanshot-xai-key</code></td>
   </tr>
   <tr>
-    <td><code>kontext</code></td>
+    <td><code>kontext</code> <strong>(DELETED 2026-08-27)</strong></td>
     <td><code>flux-1-kontext/max/edit</code></td>
-    <td>RunComfy async proxy. Submit &rarr; poll &rarr; result. Body field <code>image_url</code> (singular), NOT <code>images</code>. Provider prefix collapsed: <code>blackforestlabs</code>.</td>
-    <td><code>cleanshot-runcomfy-key</code></td>
+    <td>Reference only &mdash; the worker helper is gone. RunComfy async proxy. Submit &rarr; poll &rarr; result. Body field <code>image_url</code> (singular), NOT <code>images</code>. Provider prefix collapsed: <code>blackforestlabs</code>.</td>
+    <td><em>unmounted</em></td>
   </tr>
   <tr>
     <td><code>ideogram</code></td>
@@ -363,7 +363,7 @@ The Enhance tab exposes a <strong>6-checkbox</strong> model selector with a "Sel
     <td><code>cleanshot-ideogram-key</code></td>
   </tr>
   <tr>
-    <td><code>reve</code></td>
+    <td><code>reve</code> <strong>(DELETED 2026-08-27)</strong></td>
     <td><code>reve-edit-fast-latest</code></td>
     <td><code>POST https://api.reve.com/v1/image/edit</code> (sync JSON). Bearer auth. Body: <code>edit_instruction</code> (2560-char cap), <code>reference_image</code> (base64), <code>version</code> pinned to <code>latest-fast</code> for RPM headroom. Reve "automatically enhances the instruction internally" &mdash; tolerates terse imperative prose better than long Gemini-tuned scene prose.</td>
     <td><code>cleanshot-reve-key</code></td>
@@ -373,7 +373,7 @@ The Enhance tab exposes a <strong>6-checkbox</strong> model selector with a "Sel
 <h4>Removed / repositioned</h4>
 <ul class="bullets">
   <li><span class="pill danger">removed</span> <code>recraft</code> &mdash; wired end-to-end on 2026-05-26, then gutted same day after operator preferred Reve's output on quality. Secret <code>cleanshot-recraft-key</code> retained in Secret Manager pending full delete decision.</li>
-  <li><span class="pill warn">repositioned</span> <code>flux</code> as generator &mdash; now the Erase tool only. See "Per-variant edit tools" below.</li>
+  <li><span class="pill danger">removed</span> <code>flux</code> / BFL &mdash; was repositioned as the Erase tool only, then deleted outright 2026-08-27. <code>_erase_with_flux</code> is gone; the mask tool routes to Ideogram inpaint and <code>EraseRequest.tool</code> is <code>Literal["ideogram"]</code>.</li>
   <li><span class="pill danger">declined</span> Runway Gen-4 &mdash; redundant with Kontext for identity preservation, 2-3&times; cost, slower API. Evaluated 2026-05-26.</li>
   <li><span class="pill danger">declined</span> Seedream &mdash; operator tested 2026-05-26 and rejected on quality.</li>
 </ul>
@@ -403,7 +403,7 @@ Three vendors run in parallel against the same cleaned image. Code path: <code>s
 
 <h2 id="tools">Per-variant edit tools</h2>
 <p>
-Five icons sit on every completed enhance variant (top-left, left to right): <strong>↻ Regenerate</strong> (amber) &middot; <strong>✎ Tweak with Gemini</strong> (blue) &middot; <strong>T Edit with Ideogram</strong> (cyan) &middot; <strong>⌫ Erase with Flux</strong> (purple) &middot; <strong>🖌 Inpaint with Ideogram</strong> (rose). Tweak + Edit are text-only; Erase + Inpaint are mask-based. Each pair shares a dialog component; a <code>tool</code> prop drives copy + vendor routing.
+<strong>Two</strong> icons actually render on a completed enhance variant: <strong>↻ Regenerate</strong> (amber) &middot; <strong>✎ Tweak with Gemini</strong> (blue). <code>VariantThumb</code> destructures only <code>onChoose / onRegen / onTweak</code>. The <strong>T Edit with Ideogram</strong> (cyan) and <strong>🖌 Inpaint with Ideogram</strong> (rose) handlers are still accepted and forwarded by the parent, and their backends are intact, but no JSX renders them. <strong>⌫ Erase with Flux</strong> (purple) was deleted entirely 2026-08-27 along with BFL. Restoring a mask tool is re-adding one button, not re-wiring a backend.
 </p>
 <table>
   <tr><th>Icon</th><th>Name</th><th>Input</th><th>Vendor / endpoint</th><th>Best for</th></tr>
@@ -503,14 +503,11 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
   <tr><td><code>cleanshot-anthropic-key</code></td><td><code>ANTHROPIC_API_KEY</code></td><td>Scan (claude)</td></tr>
   <tr><td><code>cleanshot-gemini-key</code></td><td><code>GEMINI_API_KEY</code></td><td>Enhance + Cleanup + Tweak (AI Studio backend)</td></tr>
   <tr><td><code>cleanshot-xai-key</code></td><td><code>XAI_API_KEY</code></td><td>Grok</td></tr>
-  <tr><td><code>cleanshot-runcomfy-key</code></td><td><code>RUNCOMFY_API_KEY</code></td><td>Kontext (Flux-1-Kontext-Max via RunComfy)</td></tr>
-  <tr><td><code>cleanshot-bfl-key</code></td><td><code>BFL_API_KEY</code></td><td>Erase (Flux flux-tools/erase-v1) &mdash; erase-only now, not a generator</td></tr>
   <tr><td><code>cleanshot-ideogram-key</code></td><td><code>IDEOGRAM_API_KEY</code></td><td>5th primary generator + per-variant Edit + Inpaint tools (Ideogram 3.0)</td></tr>
-  <tr><td><code>cleanshot-reve-key</code></td><td><code>REVE_API_KEY</code></td><td>6th primary generator (Reve, reinstated 2026-05-26 after Recraft was rejected on quality)</td></tr>
   <tr><td><code>cleanshot-tasks-oidc-sa</code></td><td><code>TASKS_OIDC_SA</code></td><td>Cloud Tasks worker callback OIDC token</td></tr>
   <tr><td><code>cleanshot-worker-url</code></td><td><code>WORKER_URL</code></td><td>Cloud Tasks worker callback URL</td></tr>
 </table>
-<p>Deprecated (safe to delete from Secret Manager): <code>cleanshot-recraft-key</code> &mdash; Recraft removed 2026-05-26.</p>
+<p>Deprecated (safe to delete from Secret Manager): <code>cleanshot-recraft-key</code> (Recraft removed 2026-05-26), and as of 2026-08-27 <code>cleanshot-bfl-key</code>, <code>cleanshot-reve-key</code> and <code>cleanshot-runcomfy-key</code> &mdash; all three unmounted from <code>deploy-api.yml</code> when BFL/Flux, Reve and Kontext were deleted.</p>
 
 <h2 id="ratelimit">Rate limiting</h2>
 <p>
@@ -519,8 +516,7 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
 <table>
   <tr><th>Limiter</th><th>Window</th><th>Reason</th></tr>
   <tr><td><code>openai_image_rate_limiter</code></td><td>5 / 60s</td><td>Original Tier-1 <code>/v1/images/edits</code> ceiling. Still applies even though we moved to <code>gpt-5 + image_generation</code> tool path &mdash; internal tool call still hits the image endpoint.</td></tr>
-  <tr><td><code>reve_image_rate_limiter</code></td><td>3 / 30s</td><td>Reve's docs claim no published RPM cap, but in practice bursts hit 429. Pulled down to 3/30s (steady-state ~6/min with a small burst of 3).</td></tr>
-  <tr><td><code>grok_image_rate_limiter</code></td><td>3 / 30s</td><td>Defensive default mirroring Reve; xAI doesn't publish a per-minute cap.</td></tr>
+  <tr><td><code>grok_image_rate_limiter</code></td><td>3 / 30s</td><td><strong>A defensive guess, not a measured cap</strong> &mdash; xAI publishes no per-minute limit. The numbers were inherited from the Reve limiter (since deleted), which had been pulled to 3/30s after the operator watched 7 requests succeed before 429s began. At ~6/min this is barely faster than OpenAI's hard 5/min, so it is a plausible batch bottleneck worth measuring.</td></tr>
 </table>
 <div class="card warn">
   Limiters are <strong>process-local</strong>. With <code>min-instances=5</code> the effective real ceiling is <code>limit &times; 5</code> under burst load &mdash; e.g. "5 per 60s OpenAI" actually behaves like "25 per 60s" when all 5 instances are warm. Don't tighten the local values to "compensate" &mdash; that wastes capacity on cold instances. Real fix is a Valkey-backed limiter (Open Work item below). Kontext (RunComfy) + Ideogram still have no limiters; add one if 429s appear.
@@ -583,7 +579,7 @@ Optional opt-in flag (<code>ai_disclaimer: bool</code>) on PRO / Collage / Brand
 </ul>
 
 <footer>
-  CleanShot &middot; cleanshot-493512 / us-central1 &middot; engineering reference last updated 2026-05-26 (Reve restored, infinite library, perf bump, Modify tab)
+  CleanShot &middot; cleanshot-493512 / us-central1 &middot; engineering reference last updated 2026-08-27 (BFL/Flux + Kontext + Reve deleted, Grok restored, enhance runs inline)
 </footer>
 
 </div>

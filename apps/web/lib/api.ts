@@ -606,9 +606,10 @@ export async function enqueueErase(params: {
   maskPngBase64: string;
   /** Optional natural-language hint for what should fill the erased region. */
   instruction?: string;
-  /** Vendor backend — "flux" (BFL flux-tools/erase-v1, default) or
-   *  "ideogram" (Ideogram 3.0 inpaint — stronger on typography/decals). */
-  tool?: "flux" | "ideogram";
+  /** Vendor backend. Ideogram-only since 2026-08-27 — BFL/Flux was deleted.
+   *  Must stay in sync with EraseTaskPayload.tool, which is Literal["ideogram"];
+   *  a wider type here only buys a 422 at the worker. */
+  tool?: "ideogram";
   idempotencyKey: string;
 }): Promise<{ jobId: string }> {
   return post("/api/enhance/erase", params);

@@ -406,7 +406,7 @@ img { max-width: 100%; height: auto; border-radius: 6px; }
 <p>AI-powered forklift image processing platform. Upload raw forklift photos, enhance them with a prompt you write, see an automatic quality scan beside each result, adjust and retry per image, then export to marketplace specs — all on one tab.</p>
 <blockquote>
 <p><strong>Current-state note (updated 2026-08-21).</strong> Some of the body below still describes older behaviour. The corrections that matter:
-- <strong>Enhance providers: 2 live</strong> — Gemini and OpenAI (gpt-5 + image tool). <strong>Grok is dormant</strong> (kept as dead code, gone from the picker). Kontext / Ideogram / Reve were retired as <em>generators</em> (Kontext &amp; Ideogram survive only as per-variant edit tools; Flux is the Erase tool). Any &ldquo;4 providers&rdquo; / &ldquo;6 providers&rdquo; text below is stale.
+- <strong>Enhance providers: 3 live</strong> — Gemini, OpenAI (gpt-5 + image tool) and <strong>Grok, restored 2026-08-27</strong> after being dormant since 2026-07-21. Grok is in the picker but <strong>not ticked by default</strong>. <strong>BFL/Flux, Kontext and Reve were DELETED on 2026-08-27</strong>, not parked — restoring one is a <code>git revert</code>, not a Literal edit. Ideogram is not a generator but is live for the per-variant Tweak and Inpaint tools. Any &ldquo;4 providers&rdquo; / &ldquo;6 providers&rdquo; text below is stale.
 - <strong>Enhance is prompt-first:</strong> the operator writes their own prompt (required), with an equipment-aware &ldquo;Insert recommended prompt&rdquo; starter and a <strong>shared template library</strong> the whole team contributes to and picks from. Toggles <em>augment</em> that prompt; they no longer build it.
 - <strong>Only four toggles are visible</strong> — rental-fleet branding removal, floor cleanup, remove people, shine tires. The rest are hidden, not deleted (<code>VISIBLE_TOGGLES</code> in <code>apps/web/lib/types.ts</code>).
 - <strong>Scan is inline on Enhance.</strong> Every generated image is scanned automatically and the verdict renders beside that image. Nothing navigates to the Scan tab.
@@ -433,7 +433,7 @@ img { max-width: 100%; height: auto; border-radius: 6px; }
 <p>Two side tools:</p>
 <ul>
 <li><strong>Scan tab</strong> — the same three-provider consensus scan (Gemini Flash, GPT-5.4, Claude Sonnet/Opus) as a <strong>standalone</strong> tool with its own uploader, for images that didn&rsquo;t come from Enhance. Note that a standalone upload has no &ldquo;before&rdquo; to compare against, so it gets the isolated scan rather than the differential one.</li>
-<li><strong>Per-variant Erase / Tweak</strong> — a mask-drawing canvas (BFL <code>flux-tools/erase-v1</code>) and a text-instruction edit (Gemini) on any completed variant.</li>
+<li><strong>Per-variant Tweak</strong> — a text-instruction edit (Gemini) on any completed variant. A mask-drawing canvas also exists, now backed by Ideogram v3 inpaint (the BFL erase tool was removed 2026-08-27), but note that <strong>no mask button currently renders</strong> on the variant thumb — only Regenerate and Tweak do.</li>
 </ul>
 <hr>
 <h2 id="architecture-overview">Architecture Overview</h2>
@@ -671,16 +671,10 @@ Cloud Infrastructure (GCP — cleanshot-493512, us-central1)
 <td>OpenAI-compatible image-edit API</td>
 </tr>
 <tr>
-<td>Enhance</td>
-<td><code>flux-1-kontext/max/edit</code></td>
-<td>RunComfy proxy → BFL Kontext Max</td>
-<td>Async submit/poll/result; identity-preserving</td>
-</tr>
-<tr>
-<td>Erase tool</td>
-<td><code>flux-tools/erase-v1</code></td>
-<td>BFL direct (<code>x-key</code>)</td>
-<td>Mask-based object removal, async polling</td>
+<td>Erase / Inpaint tool</td>
+<td><code>ideogram-3.0</code></td>
+<td>Ideogram <code>/v1/ideogram-v3/inpaint</code> (sync)</td>
+<td>Mask-based object removal. Mask is inverted server-side: the client sends WHITE=erase, Ideogram wants BLACK=edit</td>
 </tr>
 <tr>
 <td>Cleanup / Regen</td>
@@ -734,8 +728,7 @@ Cloud Infrastructure (GCP — cleanshot-493512, us-central1)
 <li><strong>OpenAI (enhance):</strong> <code>responses.create</code> with <code>tools=[{"type":"image_generation"}]</code> + <code>tool_choice={"type":"image_generation"}</code>. Result PNG is base64 on the <code>image_generation_call</code> output item.</li>
 <li><strong>OpenAI (scan):</strong> <code>responses.parse(..., text_format=ScanResult)</code> — let the SDK do the strict-mode JSON schema conversion (Pydantic&rsquo;s <code>model_json_schema()</code> is missing <code>additionalProperties: false</code> and gets rejected).</li>
 <li><strong>Anthropic (scan):</strong> Raw base64 <strong>without</strong> any prefix, structured output via the tool-call pattern (<code>tools=[{name, input_schema}]</code> + <code>tool_choice={"type":"tool", "name":...}</code>). No <code>output_config</code> parameter — it 400s.</li>
-<li><strong>BFL (Kontext via RunComfy):</strong> Image passed as <code>image_url</code> (singular HTTPS string, NOT <code>images</code> array). Provider prefix is <code>blackforestlabs</code> (collapsed, no hyphens).</li>
-<li><strong>BFL (Erase tool, direct):</strong> <code>x-key</code> header, <code>{ image: base64, mask: base64, prompt? }</code>. Mask must match source dimensions exactly — the backend runs the source through <code>pyvips.autorot()</code> + nearest-neighbour mask resize to handle EXIF orientation mismatches.</li>
+<li><strong>Ideogram (Inpaint tool):</strong> multipart POST, sync, returns <code>data[0].url</code> (fetch it without an auth header). A prompt is <strong>mandatory</strong> — Ideogram 422s without one, so a blank fill-hint falls back to &ldquo;fill with plausible background&rdquo;. Mask must match source dimensions exactly: the backend runs the source through <code>pyvips.autorot()</code> then resizes the mask with <strong>nearest-neighbour</strong> — a mask is drawn against the <em>displayed</em> image, so an EXIF rotation would otherwise land the edit in the wrong place, and any smoothing kernel would produce grey pixels in what must stay a binary mask.</li>
 </ul>
 <hr>
 <h2 id="prerequisites">Prerequisites</h2>
@@ -936,19 +929,14 @@ ALLOWED_EMAILS     contractor@outlook.com,freelancer@gmail.com
 <td>Google AI Studio key for enhance/cleanup (<code>gemini-3.1-flash-image-preview</code>). Scan uses Vertex IAM (no key) on a separate client.</td>
 </tr>
 <tr>
-<td><code>BFL_API_KEY</code></td>
-<td>Yes</td>
-<td>Black Forest Labs — powers the per-variant <strong>Erase tool</strong> (<code>flux-tools/erase-v1</code>). No longer used for generation (Flux was retired as a generator).</td>
-</tr>
-<tr>
 <td><code>XAI_API_KEY</code></td>
 <td>Yes</td>
-<td>xAI Grok image-edit (<code>grok-imagine-image-quality</code>).</td>
+<td>xAI Grok image-edit (<code>grok-imagine-image-quality</code>). Live again as of 2026-08-27.</td>
 </tr>
 <tr>
-<td><code>RUNCOMFY_API_KEY</code></td>
+<td><code>IDEOGRAM_API_KEY</code></td>
 <td>Yes</td>
-<td>RunComfy proxy — powers the <strong>Kontext</strong> generator (BFL <code>flux-1-kontext/max/edit</code>).</td>
+<td>Ideogram 3.0 — per-variant Tweak (<code>/v1/edit</code>) and the mask-based Inpaint tool (<code>/v1/ideogram-v3/inpaint</code>). The only mask-based backend left.</td>
 </tr>
 <tr>
 <td><code>SCAN_PROVIDER_OPENAI</code></td>
@@ -972,7 +960,10 @@ ALLOWED_EMAILS     contractor@outlook.com,freelancer@gmail.com
 </tr>
 </tbody>
 </table>
-<p><strong>Removed:</strong> <code>REVE_API_KEY</code> was retired alongside the Reve provider on 2026-05-20. The <code>cleanshot-reve-key</code> secret can be deleted from Secret Manager whenever you&rsquo;re sure nothing else references it.</p>
+<p><strong>Removed 2026-08-27:</strong> <code>BFL_API_KEY</code>, <code>REVE_API_KEY</code> and <code>RUNCOMFY_API_KEY</code> are no longer mounted, and <code>KONTEXT_SEED</code> is gone. <code>cleanshot-bfl-key</code>, <code>cleanshot-reve-key</code> and <code>cleanshot-runcomfy-key</code> are deletable from Secret Manager once that deploy lands.</p>
+<blockquote>
+<p>An earlier note here claimed Reve was retired on 2026-05-20. That was <strong>false</strong> — Reve was reinstated on 2026-05-26 and was still mounted and still read by <code>config.py</code> right up until 2026-08-27. Don&rsquo;t trust a removal note without checking <code>deploy-api.yml</code> itself.</p>
+</blockquote>
 <hr>
 <h2 id="auth-setup-microsoft-sso">Auth Setup (Microsoft SSO)</h2>
 <p>See <code>ENTRA_SETUP.md</code> for the complete step-by-step guide. The short version:</p>
@@ -1148,7 +1139,10 @@ gcloud<span class="w"> </span>run<span class="w"> </span>services<span class="w"
 <p>The <strong>Fork conditionals</strong> switch sits directly above the Enhance button and is <strong>off by default</strong>, session-only, and never enabled as a side effect of anything else. Turning it on reveals two per-image controls — <em>vertical fork section not visible</em> and <em>fork tips not visible</em>. These <strong>remove</strong> the offending prompt fragment (and, for tips, substitute a red-only instruction) rather than piling on more instructions, because emphatic &ldquo;do not draw X&rdquo; phrasing backfires on Gemini.</p>
 <p>Turning the switch off restores the previous prompt exactly, with no residual effect, and takes effect on the next run — images already generated are untouched. If you&rsquo;ve rewritten the prompt yourself there&rsquo;s no fragment of ours left to remove, so the constraint is appended as an explicit instruction instead and the UI says so.</p>
 <h3 id="erase-tool-per-variant">Erase tool (per-variant)</h3>
-<p>Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), optionally type a one-line hint for what should fill the cleaned area, and submit. Routes through BFL&rsquo;s <code>flux-tools/erase-v1</code>. On accept, the cleaned image replaces the variant in-place.</p>
+<p>Opens a full-screen mask-drawing modal. Paint over the area to remove with the brush (adjustable size), type a hint for what should fill the cleaned area, and submit. Routes through Ideogram v3 inpaint. On accept, the cleaned image replaces the variant in-place.</p>
+<blockquote>
+<p>Two caveats. Ideogram <strong>requires</strong> a prompt, so leaving the hint blank sends &ldquo;fill with plausible background&rdquo; rather than nothing. And as of 2026-08-27 <strong>no button on the variant thumb opens this dialog</strong> — the component and its whole backend are wired, but <code>VariantThumb</code> renders only Regenerate and Tweak. Restoring it is re-adding one button, not re-wiring a backend.</p>
+</blockquote>
 <h3 id="scan-tab-standalone">Scan tab (standalone)</h3>
 <p>Decoupled from the Enhance pipeline. Nothing on Enhance sends images here.</p>
 <ol>
@@ -1252,16 +1246,6 @@ approved/sarah_partner_org/2026-05-15_hyster_h50ft/unit_front.jpg
 <td><code>grok-imagine-image-quality</code> (enhance)</td>
 <td>per image</td>
 <td>$0.070</td>
-</tr>
-<tr>
-<td><code>flux-1-kontext-max-edit</code> via RunComfy (enhance)</td>
-<td>per image</td>
-<td>$0.080</td>
-</tr>
-<tr>
-<td><code>flux-erase-v1</code> (per-variant erase tool)</td>
-<td>per use</td>
-<td>$0.040</td>
 </tr>
 <tr>
 <td><code>gemini-2.5-flash</code> (scan, primary)</td>

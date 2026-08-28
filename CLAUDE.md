@@ -213,7 +213,7 @@ frame. Watch for the thing that originally justified the cap: OpenAI
 
 ## Image-gen providers — what's wired and which model
 
-The Enhance tab picker is now **2 live providers** (`gemini | openai`) — narrowed to 3 on 2026-06-05, then **Grok made dormant 2026-07-21** (see Latest session). The `EnhanceRequest`/`EnhanceTaskPayload` provider Literals still allow `gemini|openai|grok` (grok kept as dormant code). All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`.
+The Enhance tab picker is **3 live providers** (`gemini | openai | grok`) as of 2026-08-27, when Grok was restored after being dormant since 2026-07-21. Grok is in the picker but **not ticked by default** — the initial fan-out set in `EnhancePanel.tsx` is still `["gemini", "openai"]`, deliberately, because Grok's limiter is ~6/min and defaulting it on slows every batch. All routing happens in `_run_enhance` in [enhance_worker.py](apps/api/src/cleanshot_api/workers/enhance_worker.py). Defaults to `gemini`.
 
 ⚠️ **KONTEXT AND REVE WERE DELETED FROM THE WORKER ON 2026-08-27**, along with
 `_erase_with_flux`. Until then this file said all four of
@@ -238,7 +238,7 @@ marked **DELETED** so nobody reads them as wiring that exists.
 
 **Removed / repositioned providers (don't reintroduce as primary generators without reading why):**
 
-- `grok` — made **DORMANT 2026-07-21** (`fb4e24a`; operator cut it from the mix). Removed from `ENHANCE_PROVIDERS` (the picker roster in `lib/types-enhance.ts`) so it can't be selected / defaulted-to / fanned-out-to — but kept in the `EnhanceProvider` union + every Record + the backend `gemini|openai|grok` Literal + `_enhance_with_grok`. Re-enable = uncomment the one array entry. `cleanshot-xai-key` left in place.
+- `grok` — was dormant 2026-07-21 → **2026-08-27, now LIVE again**. The dormancy really had been implemented as nothing but an omission from the `ENHANCE_PROVIDERS` array in `lib/types-enhance.ts`: the `EnhanceProvider` union, every provider-keyed Record, the `gemini|openai|grok` backend Literal, the xAI key, the rate limiter, the `PER_IMAGE_USD` row and `_enhance_with_grok` were all left intact, so the revival was genuinely one line. **`cleanshot-xai-key` is confirmed valid** (operator, 2026-08-27). Two inherited caveats: `GROK_PROMPT_MAX_CHARS = 4000` truncates silently with nothing logged while `custom_prompt` has no cap — long templates get cut for Grok and not for Gemini/OpenAI, which will read as a Grok quality problem in the first A/B — and its $0.07 cost row is an unverified placeholder.
 - `recraft` — wired end-to-end on 2026-05-26 (commits `b03032a` through `b21e9eb`), then **gutted same day** after the operator preferred Reve's output on quality. The known footguns are captured in hard-won lesson #21 (secret-value contamination) and the per-model-prompts work item (the 1000-byte prompt cap meant Gemini-tuned prose got hard-truncated, which is most of what made the output ugly). If reintroducing: restore via the cherry-picks of `b03032a`/`9fd8df1`/`b39da9b`/`d903430`/`fe826e8`/`b98f1f1`, AND write `_build_recraft_prompt` before judging quality. `cleanshot-recraft-key` secret left in place pending operator decision on full delete.
 - `seedream` — operator tested 2026-05-26 and rejected on quality grounds. Not wired.
 - `flux` — was repositioned as the **Erase tool only**, then **removed entirely on 2026-08-27**. `_erase_with_flux` is gone and the erase path routes to Ideogram inpaint. `EraseRequest.tool` is now `Literal["ideogram"]`. See "Per-variant edit tools" below.
@@ -324,7 +324,7 @@ enhance went inline.
 | `openai_image_rate_limiter` | 5 events / 60s | Original Tier-1 `/v1/images/edits` ceiling. Stays in place even though enhance is now `gpt-5 + image_generation tool` on `/v1/responses` — the internal tool call still hits the image endpoint. |
 | `grok_image_rate_limiter` | 3 events / 30s | Defensive default — xAI doesn't publish a per-minute cap for `/v1/images/edits`. Retune once we have real burst data. |
 
-**Important:** limiters are process-local. If `max-instances > 1` and you run heavy batches across multiple Cloud Run pods, they won't coordinate. Known-good fix when that bites is a Valkey-backed limiter. Kontext (via RunComfy) has **no limiter** — RunComfy hasn't published a cap; add one if 429s start showing up.
+**Important:** limiters are process-local. If `max-instances > 1` and you run heavy batches across multiple Cloud Run pods, they won't coordinate. Known-good fix when that bites is a Valkey-backed limiter. As of 2026-08-27 there are exactly two limiters: OpenAI (5/60s, a real Tier-1 org cap) and Grok (3/30s, a defensive guess). Gemini has none — only `Semaphore(8)`.
 
 Also note: the OpenAI client is `max_retries=8, timeout=300.0` because the SDK's backoff alone wasn't enough on the prior direct `gpt-image-2` quality="high" path. The new `gpt-5 + image_generation tool` path is taking real quota pressure now that BOTH enhance AND scan-side `gpt-5.4` share the same `/v1/responses` rate budget — that's how we got the "Gemini: fail/0%/0ms" scan cascade (see scan section above). Watch for 429s in production; either tier-bump the OpenAI org or add a scan-side limiter if it persists.
 
@@ -337,17 +337,16 @@ deleted, `_run_erase` calls `_inpaint_with_ideogram` unconditionally, and
 `EraseRequest.tool` / `EraseTaskPayload.tool` are now `Literal["ideogram"]`. So
 "dual backends each" is true of Tweak and no longer true of Erase.
 
-⚠️ **One caller has not caught up, and it is a latent 422.** `EraseDialog` was
-updated to hardcode `tool: "ideogram"` and its `tool` prop was dropped, but the
-BFF route `apps/web/app/api/enhance/erase/route.ts` still reads
-`tool: body.tool ?? "flux"`, and `lib/api.ts` still types the field
-`"flux" | "ideogram"`. **Any caller that omits `tool` gets a 422.** Nothing omits
-it today — the one caller always sends `"ideogram"` — so this is latent, not
-live. Fix the default before adding a second caller or restoring the ⌫ button.
+✅ **The latent 422 is closed (2026-08-27).** For a while the BFF route
+`apps/web/app/api/enhance/erase/route.ts` still defaulted `tool` to `"flux"`
+and `lib/api.ts` still typed it `"flux" | "ideogram"`, against a backend
+Literal that had narrowed to `"ideogram"` — so any caller omitting `tool`
+would have 422'd. Both are now `"ideogram"`. Keep the three in sync: the
+BFF default, the `lib/api.ts` type, and `EraseRequest`/`EraseTaskPayload`.
 
-**ONLY TWO of the five per-variant tools are reachable in the UI** (verified 2026-08-26). `VariantThumb` in `SourceCompareCard.tsx` renders **↻ Retry** and **✎ Tweak with Gemini** and nothing else — it still accepts `onErase` / `onIdeogramEdit` / `onIdeogramInpaint`, and `EnhancePanel` still passes them and still owns the dialogs, but there are bare comment placeholders where the buttons used to be ("the operator asked for a pared-back action set on the variant thumb"). So **Ideogram Edit, Flux Erase and Ideogram Inpaint are dead-but-wired**: backend, schemas, workers and dialogs all intact, no way in. This matters because Ideogram Edit is the tool built for decal typography and model-number restoration, so that work currently has to route through Gemini Tweak, which is the weaker option for embedded text. Restoring a button is a few lines in `VariantThumb`.
+**ONLY TWO of the five per-variant tools are reachable in the UI** (verified 2026-08-26). `VariantThumb` in `SourceCompareCard.tsx` renders **↻ Retry** and **✎ Tweak with Gemini** and nothing else — it still accepts `onErase` / `onIdeogramEdit` / `onIdeogramInpaint`, and `EnhancePanel` still passes them and still owns the dialogs, but there are bare comment placeholders where the buttons used to be ("the operator asked for a pared-back action set on the variant thumb"). So **Ideogram Edit and Ideogram Inpaint are dead-but-wired**: backend, schemas, workers and dialogs all intact, no way in. (Flux Erase was the third until 2026-08-27, when it was deleted outright along with BFL — it is not dormant, it is gone.) This matters because Ideogram Edit is the tool built for decal typography and model-number restoration, so that work currently has to route through Gemini Tweak, which is the weaker option for embedded text. Restoring a button is a few lines in `VariantThumb`.
 
-The five AS DESIGNED (top-left, left to right): **↻ Regenerate** (amber) · **✎ Tweak with Gemini** (blue) · **T Edit with Ideogram** (cyan) · **⌫ Erase with Flux** (purple) · **🖌 Inpaint with Ideogram** (rose). Tweak + Edit are text-only; Erase + Inpaint are mask-based. Each pair shares a dialog component; a `tool` prop drives copy + vendor routing.
+The four that remain AS DESIGNED (top-left, left to right): **↻ Regenerate** (amber) · **✎ Tweak with Gemini** (blue) · **T Edit with Ideogram** (cyan) · **🖌 Inpaint with Ideogram** (rose). Tweak + Edit are text-only; Inpaint is mask-based. A fifth, **⌫ Erase with Flux** (purple), was deleted 2026-08-27. Tweak/Edit still share a dialog with a `tool` prop; the mask dialog no longer has one, because Ideogram is the only mask backend left.
 
 ### Tools matrix
 
