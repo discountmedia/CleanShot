@@ -19,6 +19,7 @@ import asyncio
 import base64
 import logging
 import mimetypes
+import os
 import uuid
 from typing import Any
 
@@ -64,6 +65,30 @@ logger = logging.getLogger(__name__)
 # all 404'd the same way). Always pin to an explicit dated/numbered
 # image model that's published in us-central1 for this project.
 ENHANCE_MODEL_GEMINI = "gemini-3.1-flash-image-preview"
+
+# Native output resolution asked of Gemini. MEASURED 2026-08-29 on
+# gemini-3.1-flash-image-preview, same input photo, same prompt:
+#
+#   (unset)  1209x864   1.04 MP  -> upscale_to_standard must cover-scale x2.32
+#   "2K"     2418x1728  4.18 MP  -> x1.16
+#   "4K"     4836x3456  16.7 MP  -> x0.58 (a downsample)
+#
+# Nothing set this before, so every stored asset was a ~2.3x lanczos UPSCALE of
+# a 1 MP generation. Against a busy background that is invisible; against a
+# transparent cutout it is not, which is how the operator found it.
+#
+# 2K and not 4K, for a measured reason rather than taste: the API container is
+# **1 GiB with Semaphore(8)**. A 4836x3456 image decodes to ~50 MB of raw pixels
+# for the resize, so eight concurrent jobs is 400 MB+ of pixel data alone and a
+# Cloud Run OOM kills every in-flight job, not just the greedy one. 2K decodes
+# to ~12.5 MB, so eight is ~100 MB. **Raise the memory limit BEFORE setting this
+# to 4K.** At x1.16 the remaining upscale is nearly nothing anyway; 4K buys
+# supersampling, not a fix.
+#
+# ⚠️ PER_IMAGE_USD carries a flat $0.039 for this model. Google prices image
+# output by tokens, which scale with resolution, so that row is probably now
+# low. Re-check it against a real bill rather than trusting it.
+GEMINI_IMAGE_SIZE = os.environ.get("GEMINI_IMAGE_SIZE", "2K").strip()
 # OpenAI image-edit now goes through gpt-5 + the image_generation
 # tool (Responses API), rather than calling client.images.edit on
 # gpt-image-2 directly. gpt-5 reads the input image + prompt, then
@@ -1167,24 +1192,7 @@ async def _enhance_with_gemini(
     file_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
     text_part = types.Part.from_text(text=prompt)
 
-    response = await genai_client.aio.models.generate_content(
-        model=ENHANCE_MODEL_GEMINI,
-        contents=[types.Content(role="user", parts=[file_part, text_part])],
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE", "TEXT"],
-            # Gemini 3.x thinking control. "High" gives the model the
-            # most reasoning budget — useful for image edits where the
-            # standard treatment + emphasis stack is long and the model
-            # benefits from planning the edit before generating. Capital
-            # "High" matches the official Python SDK enum exactly.
-            # gemini-3.1-flash-image-preview only accepts "High" — both
-            # "Medium" and "Low" return 400 INVALID_ARGUMENT. So this
-            # isn't really a perf knob on the current model. Reassess
-            # when image-gen models with a real thinking-level spectrum
-            # ship to AI Studio.
-            thinking_config=types.ThinkingConfig(thinking_level="High"),
-        ),
-    )
+    response = await _gemini_generate_image(genai_client, [file_part, text_part])
 
     # google-genai already decodes the protobuf bytes field, so `data` is raw
     # image bytes — do NOT b64-decode again (silently drops non-base64 chars).
@@ -1201,6 +1209,62 @@ async def _enhance_with_gemini(
     #     before the image was generated (rare on Flash Image but possible)
     #   • text-only response → Gemini interpreted the prompt as conversational
     raise ValueError(_describe_gemini_no_image(response, "enhance"))
+
+
+async def _gemini_generate_image(genai_client: Any, parts: list[Any]) -> Any:
+    """
+    One Gemini image call, at GEMINI_IMAGE_SIZE, shared by enhance and tweak.
+
+    Shared because the two were byte-identical calls and the tweak path also
+    runs upscale_to_standard afterwards — so leaving it at the model default
+    would have made tweaking a variant quietly re-blur it back to a 1 MP
+    upscale, undoing the enhance's sharpness for anyone who used the button.
+
+    FALLS BACK rather than failing. If the model rejects `image_config` — a
+    preview model can drop a field between revisions — this retries once at the
+    default resolution and logs a warning. Soft output is a complaint; every
+    enhance job failing is an outage, and this repo produced exactly that once
+    today by shipping a path with no degradation.
+    """
+
+    def _config(image_size: str) -> types.GenerateContentConfig:
+        config = types.GenerateContentConfig(
+            response_modalities=["IMAGE", "TEXT"],
+            # Gemini 3.x thinking control. "High" gives the model the most
+            # reasoning budget — useful for image edits where the standard
+            # treatment + emphasis stack is long and the model benefits from
+            # planning the edit before generating. Capital "High" matches the
+            # official Python SDK enum exactly. gemini-3.1-flash-image-preview
+            # only accepts "High" — both "Medium" and "Low" return 400
+            # INVALID_ARGUMENT, so this is not really a perf knob on the current
+            # model. Reassess when an image-gen model with a real thinking-level
+            # spectrum ships to AI Studio.
+            thinking_config=types.ThinkingConfig(thinking_level="High"),
+        )
+        if image_size:
+            config.image_config = types.ImageConfig(image_size=image_size)
+        return config
+
+    contents = [types.Content(role="user", parts=parts)]
+    try:
+        return await genai_client.aio.models.generate_content(
+            model=ENHANCE_MODEL_GEMINI,
+            contents=contents,
+            config=_config(GEMINI_IMAGE_SIZE),
+        )
+    except Exception as exc:
+        if not GEMINI_IMAGE_SIZE:
+            raise
+        logger.warning(
+            "gemini: image_size=%r rejected (%s) — retrying at the model "
+            "default. Output will be ~1MP and upscaled ~2.3x to the 2800x2000 "
+            "standard, so expect soft results until GEMINI_IMAGE_SIZE is fixed.",
+            GEMINI_IMAGE_SIZE,
+            exc,
+        )
+        return await genai_client.aio.models.generate_content(
+            model=ENHANCE_MODEL_GEMINI, contents=contents, config=_config("")
+        )
 
 
 def _describe_gemini_no_image(response: Any, operation: str) -> str:
@@ -1293,14 +1357,7 @@ async def _tweak_with_gemini(
     file_part = types.Part.from_bytes(data=image_bytes, mime_type=mime_type)
     text_part = types.Part.from_text(text=TWEAK_PREAMBLE + instruction.strip())
 
-    response = await genai_client.aio.models.generate_content(
-        model=ENHANCE_MODEL_GEMINI,
-        contents=[types.Content(role="user", parts=[file_part, text_part])],
-        config=types.GenerateContentConfig(
-            response_modalities=["IMAGE", "TEXT"],
-            thinking_config=types.ThinkingConfig(thinking_level="High"),
-        ),
-    )
+    response = await _gemini_generate_image(genai_client, [file_part, text_part])
 
     for part in response.candidates[0].content.parts:
         if part.inline_data and part.inline_data.data:

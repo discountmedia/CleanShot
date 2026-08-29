@@ -18,10 +18,13 @@ libvips must be installed in the OS layer:
 from __future__ import annotations
 
 import io
+import logging
 import tempfile
 from pathlib import Path
 
 import pyvips
+
+logger = logging.getLogger(__name__)
 
 
 class ExportResult:
@@ -207,6 +210,26 @@ def upscale_to_standard(input_bytes: bytes) -> bytes:
     img = pyvips.Image.new_from_buffer(input_bytes, "")
     if img.width == ENHANCED_WIDTH and img.height == ENHANCED_HEIGHT:
         return input_bytes
+
+    # Log the vendor's NATIVE size and the scale we are about to apply. Nothing
+    # recorded this until 2026-08-29, so "the output looks soft" was unarguable
+    # for months: the answer was that Gemini returned ~1 MP by default and this
+    # was silently cover-scaling it x2.3 to reach 2800x2000. A number in the log
+    # turns that from a matter of opinion into a measurement. Every path that
+    # rewrites a variant comes through here, so enhance, erase and tweak are all
+    # covered by this one line.
+    scale = max(ENHANCED_WIDTH / img.width, ENHANCED_HEIGHT / img.height)
+    logger.info(
+        "sizing: vendor returned %dx%d (%.2f MP), cover-scaling x%.2f to %dx%d%s",
+        img.width,
+        img.height,
+        img.width * img.height / 1e6,
+        scale,
+        ENHANCED_WIDTH,
+        ENHANCED_HEIGHT,
+        " (UPSCALE)" if scale > 1.05 else "",
+    )
+
     img = _cover_crop(img, ENHANCED_WIDTH, ENHANCED_HEIGHT)
     return img.write_to_buffer(".png")
 
