@@ -54,6 +54,7 @@ except-and-return-original path here.
 
 from __future__ import annotations
 
+import array
 import logging
 import os
 
@@ -187,10 +188,33 @@ def _isolate_principal_subject(mask: "pyvips.Image") -> "pyvips.Image":
     value that ships is the ORIGINAL soft mask wherever a kept island covers it.
     So anti-aliased edges survive exactly as the vendor computed them, and the
     only possible effect of this function is turning some pixels transparent.
+
+    NEVER RAISES — and that is load-bearing, not defensive habit. The first
+    version had no failure path, so a bug in here failed the whole enhance job
+    and the operator got FAILED cards instead of a cutout with a plant in it.
+    Read the no-degradation rule in this module's header carefully: it forbids
+    shipping an OPAQUE image, because the destination site needs transparency.
+    Falling back to the un-isolated mask still ships transparency, so it is a
+    correct answer with a cosmetic flaw — categorically different from an
+    opaque file, and never worth an outage.
     """
     if not CUTOUT_ISOLATE_SUBJECT:
         return mask
+    try:
+        return _isolate_islands(mask)
+    except Exception:
+        logger.exception(
+            "cutout: isolate failed — shipping the UN-ISOLATED mask. The cutout "
+            "is still transparent and correct; it may just carry a distractor."
+        )
+        return mask
 
+
+def _isolate_islands(mask: "pyvips.Image") -> "pyvips.Image":
+    """
+    Body of _isolate_principal_subject. MAY RAISE; the caller degrades to the
+    original mask, which is why nothing in here carries its own error handling.
+    """
     total = mask.avg() / 255.0 * mask.width * mask.height
     if total <= 0:
         # An empty mask is a matting failure, not something to isolate. Leave it
@@ -218,10 +242,38 @@ def _isolate_principal_subject(mask: "pyvips.Image") -> "pyvips.Image":
         return mask
 
     marked = (bridged > 127).ifthenelse(labels + 1, 0).cast("ushort")
-    hist = marked.hist_find()
+
+    # ONE memory read, not one getpoint per island. The first cut of this called
+    # `hist(i, 0)` in a comprehension and took production down with "unable to
+    # call getpoint" — pyvips reports the whole lazy pipeline's failure at the
+    # point it is finally forced, which was the first getpoint, so the message
+    # named the wrong operation. Local tests never had more than five islands; a
+    # real 2048px mask has hundreds of speck islands, which is the difference.
+    # Reading the buffer whole makes the bin count EXPLICIT and checkable
+    # instead of assumed, and removes a loop that would have been tens of
+    # thousands of libvips calls even when it worked.
+    hist = marked.hist_find().cast("uint")
+    counts = array.array("I")
+    if counts.itemsize != 4:  # pragma: no cover - not a platform we ship on
+        logger.warning("cutout: isolate skipped, unexpected uint size")
+        return mask
+    counts.frombytes(hist.write_to_memory())
+
+    # CLAMP to the histogram, do not assume it spans the label range. MEASURED:
+    # vips hist_find sizes a ushort histogram to (max value + 1), NOT to a fixed
+    # 65536 — a ushort image whose max is 300 gives 301 bins. labelregions
+    # numbers background regions too, so when the HIGHEST-numbered region is a
+    # background one, `marked` never reaches n_labels + 1 and the histogram is
+    # short. That is the production crash: with two islands the last region
+    # happened to be foreground and the range fit; with 312 speck islands it did
+    # not, and reading one past the end took every cutout job down.
+    #
+    # Clamping is correct rather than merely safe: a label missing from the
+    # histogram cannot appear in `marked`, so its area is genuinely zero.
+    limit = min(len(counts), n_labels + 2)
+
     # Index 0 is every background pixel lumped together — never a candidate.
-    areas = {i: int(hist(i, 0)[0]) for i in range(1, n_labels + 2)}
-    areas = {label: area for label, area in areas.items() if area > 0}
+    areas = {i: counts[i] for i in range(1, limit) if counts[i] > 0}
     if len(areas) <= 1:
         return mask
 
