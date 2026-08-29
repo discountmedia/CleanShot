@@ -51,6 +51,12 @@ PER_IMAGE_USD: dict[str, float] = {
     # unlike the enhance rows this fires on every cutout, so it is worth
     # calibrating before reading any spend dashboard.
     "fal-ai/birefnet/v2":             0.002,
+    # Photoroom background removal (A/B against BiRefNet). PLACEHOLDER: the
+    # first ten images are free, so the marginal cost during the A/B is 0 and
+    # the paid rate has not been checked. Fix this before Photoroom carries
+    # real volume, or the spend dashboard will under-report it the same way
+    # the Gemini row does.
+    "photoroom/segment":              0.0,
 
     # xAI Grok image edit (https://docs.x.ai). Public pricing for
     # /v1/images/edits isn't published yet — placeholder of $0.07 per

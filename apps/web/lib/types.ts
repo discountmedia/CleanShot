@@ -153,6 +153,20 @@ export interface EnhanceToggles {
    */
   transparentBackground: boolean;
   /**
+   * A/B ONLY — routes the matting pass through Photoroom instead of fal
+   * BiRefNet. Does NOT request a cutout on its own: it picks the engine, so
+   * it is a no-op unless transparentBackground is also on.
+   *
+   * Exists because BiRefNet is a salient-object detector (it returned a
+   * potted plant and a wall banner alongside the forklift) while Photoroom is
+   * trained on product photography. Which is better on mast lattice is
+   * unmeasured — that is the point of the toggle.
+   *
+   * WARNING: Photoroom's free tier is TEN IMAGES TOTAL and nothing in this
+   * app meters it. A batch of 8 with this on spends 8 of them.
+   */
+  cutoutPhotoroom: boolean;
+  /**
    * Identity-preservation flag for 3-wheel (single-rear-pivot-wheel)
    * forklifts. When ON, the prompt asserts the unit has ONE rear wheel
    * and tells the generator not to hallucinate a second one. UI only
@@ -185,6 +199,7 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   removeRentalBranding: false,
   showroomFloor: false,
   transparentBackground: false,
+  cutoutPhotoroom: false,
   threeWheel: false,
 };
 
@@ -207,6 +222,7 @@ export const VISIBLE_TOGGLES: ReadonlyArray<keyof EnhanceToggles> = [
   "removePeople",
   "shineTires",
   "transparentBackground",
+  "cutoutPhotoroom",
 ] as const;
 
 export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
@@ -221,6 +237,7 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   removeRentalBranding: "Remove Rental-Fleet Branding",
   showroomFloor: "Perfect Showroom Floor",
   transparentBackground: "Remove Background Entirely",
+  cutoutPhotoroom: "— use Photoroom (A/B)",
   threeWheel: "3-Wheel",
 };
 
@@ -236,6 +253,7 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
   showroomFloor: "Studio / showroom shots only — replaces the floor with a perfect, shiny, middle-gray polished-concrete finish. Preserves the unit's contact shadow. No-op for outdoor / yard photos",
   transparentBackground: "Cuts the unit out completely — no floor, no walls, no sky. Exports as a transparent PNG with no watermark, for the new-equipment site. Overrides Perfect Showroom Floor",
+  cutoutPhotoroom: "A/B test only — does the background removal with Photoroom instead of the default engine. Only does anything when Remove Background Entirely is also on. ⚠️ Free tier is 10 images TOTAL, and a batch of 8 spends 8 of them.",
   threeWheel: "This is a 3-wheel forklift (single rear pivot/steer wheel under the counterweight) — tells the AI to preserve the single-rear-wheel layout instead of hallucinating a second rear wheel. Forklift only.",
 };
 

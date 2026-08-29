@@ -90,6 +90,15 @@ CUTOUT_MAX_UPLOAD_LONG_EDGE_PX = int(
     os.environ.get("CUTOUT_MAX_UPLOAD_LONG_EDGE_PX", "2048")
 )
 
+# Photoroom request shaping, for the A/B engine (services/photoroom.py).
+# `channels=alpha` should return a bare mask rather than a finished cutout —
+# but `_mask_band` copes with either, so this is a preference, not a
+# requirement. `size=full` keeps the mask at the resolution we uploaded;
+# `preview` is smaller and may bill differently on the free tier, which is
+# worth checking on the dashboard before spending the ten credits.
+CUTOUT_PHOTOROOM_CHANNELS = os.environ.get("CUTOUT_PHOTOROOM_CHANNELS", "alpha")
+CUTOUT_PHOTOROOM_SIZE = os.environ.get("CUTOUT_PHOTOROOM_SIZE", "full")
+
 # Below this, an already-small upload is sent as-is rather than re-encoded.
 # Re-encoding a small JPEG would cost a generation of quality for nothing.
 CUTOUT_UPLOAD_REENCODE_MIN_BYTES = int(
@@ -368,6 +377,35 @@ def _isolate_islands(mask: "pyvips.Image") -> "pyvips.Image":
     return isolated
 
 
+def _mask_band(img: "pyvips.Image") -> "pyvips.Image":
+    """
+    Pull a single-band alpha mask out of whatever a matting vendor returned.
+
+    TWO SHAPES ARRIVE and they need opposite handling, which is why this is a
+    function rather than two lines at the call site:
+
+      • A BARE MASK — greyscale, no meaningful alpha. The mask is the pixels,
+        so take band 0.
+      • A FINISHED CUTOUT — RGBA, where the mask is the ALPHA CHANNEL and the
+        RGB is the vendor's own composite (which we discard; see the module
+        header). Taking band 0 here would use the RED CHANNEL as transparency,
+        so a black tyre would come out 92% see-through. This is the exact
+        nonsense the fal reader's `mask_image`-first rule guards against, and
+        Photoroom can return either shape depending on whether it honours
+        `channels=alpha`.
+
+    Distinguished by whether the alpha actually varies. A greyscale mask saved
+    with a fully-opaque alpha channel is still a bare mask, and using that
+    all-255 alpha would produce no cutout at all — the failure would be a
+    completely opaque image, the one outcome this module exists to prevent.
+    """
+    if img.hasalpha():
+        alpha = img[img.bands - 1]
+        if alpha.min() < 255:
+            return alpha
+    return img[0] if img.bands > 1 else img
+
+
 def _composite_alpha(image_bytes: bytes, mask_bytes: bytes) -> bytes:
     """
     Attach `mask_bytes` to `image_bytes` as an alpha channel, at the image's
@@ -385,11 +423,7 @@ def _composite_alpha(image_bytes: bytes, mask_bytes: bytes) -> bytes:
         # not stack a second one (bandjoin would make a 5-band image).
         img = img.flatten(background=[255, 255, 255])
 
-    mask = pyvips.Image.new_from_buffer(mask_bytes, "")
-    if mask.hasalpha():
-        mask = mask.flatten(background=[0, 0, 0])
-    if mask.bands > 1:
-        mask = mask[0]
+    mask = _mask_band(pyvips.Image.new_from_buffer(mask_bytes, ""))
 
     # Isolate BEFORE the resize: islands are cleanest at the mask's native
     # resolution, and it is cheaper on fewer pixels.
@@ -407,18 +441,33 @@ def _composite_alpha(image_bytes: bytes, mask_bytes: bytes) -> bytes:
     return out.write_to_buffer(".png")
 
 
-async def remove_background(image_bytes: bytes) -> bytes:
+async def _fetch_mask_photoroom(upload: bytes, upload_mime: str) -> bytes:
     """
-    Knock the backdrop out of a finished enhance output. Returns PNG bytes with
-    a real alpha channel, at the SAME dimensions as the input — the caller has
-    already standardised to 2800x2000 and this must not change that.
+    Photoroom's mask for one image. A/B alternative to fal — see photoroom.py.
 
-    Raises CutoutUnavailableError if a usable alpha cannot be produced.
-    Callers must NOT swallow that into "ship it opaque".
+    ⚠️ SPENDS ONE OF TEN FREE CREDITS PER CALL. There is no metering on this
+    side; the count lives in Photoroom's dashboard.
     """
-    src = pyvips.Image.new_from_buffer(image_bytes, "")
-    upload, upload_mime = _downscale_for_upload(image_bytes)
+    from cleanshot_api.services import photoroom
 
+    logger.info(
+        "cutout: photoroom segment, upload %d bytes (%s)", len(upload), upload_mime
+    )
+    try:
+        return await photoroom.segment(
+            upload,
+            upload_mime,
+            channels=CUTOUT_PHOTOROOM_CHANNELS,
+            output_size=CUTOUT_PHOTOROOM_SIZE,
+        )
+    except photoroom.PhotoroomError as exc:
+        raise CutoutUnavailableError(f"matting failed (photoroom): {exc}") from exc
+
+
+async def _fetch_mask_fal(
+    upload: bytes, upload_mime: str, src: "pyvips.Image"
+) -> bytes:
+    """fal BiRefNet's mask for one image. The default engine."""
     payload = {
         "image_url": fal.data_uri(upload, upload_mime),
         "model": CUTOUT_FAL_MODEL,
@@ -451,7 +500,7 @@ async def remove_background(image_bytes: bytes) -> bytes:
     try:
         result = await fal.run(CUTOUT_MODEL, payload)
     except fal.FalError as exc:
-        raise CutoutUnavailableError(f"matting failed: {exc}") from exc
+        raise CutoutUnavailableError(f"matting failed (fal): {exc}") from exc
 
     # mask_image FIRST: it is unambiguously the mask. `image` is only the mask
     # if fal honoured mask_only; if it did not, `image` is a cutout whose red
@@ -463,9 +512,37 @@ async def remove_background(image_bytes: bytes) -> bytes:
         )
 
     try:
-        mask_bytes = await fal.fetch_output(ref)
+        return await fal.fetch_output(ref)
     except fal.FalError as exc:
         raise CutoutUnavailableError(f"matting mask fetch failed: {exc}") from exc
+
+
+async def remove_background(image_bytes: bytes, *, engine: str = "fal") -> bytes:
+    """
+    Knock the backdrop out of a finished enhance output. Returns PNG bytes with
+    a real alpha channel, at the SAME dimensions as the input — the caller has
+    already standardised to 2800x2000 and this must not change that.
+
+    `engine` picks the matting vendor ("fal" | "photoroom"). Everything after
+    the mask arrives is IDENTICAL for both: the same island filter, the same
+    local composite onto untouched RGB, the same contract checks. That is what
+    makes the A/B honest — the only variable is the mask.
+
+    Raises CutoutUnavailableError if a usable alpha cannot be produced.
+    Callers must NOT swallow that into "ship it opaque".
+    """
+    src = pyvips.Image.new_from_buffer(image_bytes, "")
+    upload, upload_mime = _downscale_for_upload(image_bytes)
+
+    if engine == "photoroom":
+        mask_bytes = await _fetch_mask_photoroom(upload, upload_mime)
+    elif engine == "fal":
+        mask_bytes = await _fetch_mask_fal(upload, upload_mime, src)
+    else:
+        # Not a silent fallback to fal: an unknown engine means a toggle and
+        # this dispatch disagree, and quietly matting with the wrong vendor
+        # would corrupt an A/B result rather than fail it.
+        raise CutoutUnavailableError(f"unknown matting engine {engine!r}")
 
     try:
         out = _composite_alpha(image_bytes, mask_bytes)

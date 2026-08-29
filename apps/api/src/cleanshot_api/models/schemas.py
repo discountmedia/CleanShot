@@ -318,6 +318,13 @@ class EnhanceToggles(BaseModel):
     # the machine pixels are untouched. Overrides showroom_floor, which is
     # about replacing a floor that is about to be deleted anyway.
     transparent_background: bool = Field(False, alias="transparentBackground")
+    # A/B: route the matting pass through Photoroom instead of fal BiRefNet.
+    # MEANINGLESS unless transparent_background is also on — this picks the
+    # engine, it does not request a cutout. Exists because BiRefNet is a
+    # salient-object detector and Photoroom is trained on product photography,
+    # and which one is better on forklift lattice is unmeasured.
+    # ⚠️ Photoroom's free tier is TEN IMAGES TOTAL.
+    cutout_photoroom: bool = Field(False, alias="cutoutPhotoroom")
     # Identity-preservation flag for 3-wheel forklifts (single rear
     # pivot/steer wheel under the counterweight). When ON, the prompt
     # adds a guardrail telling the AI to preserve the single-rear-wheel
