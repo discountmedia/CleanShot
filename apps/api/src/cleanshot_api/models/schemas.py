@@ -323,18 +323,24 @@ class EnhanceToggles(BaseModel):
     # the machine pixels are untouched. Overrides showroom_floor, which is
     # about replacing a floor that is about to be deleted anyway.
     transparent_background: bool = Field(False, alias="transparentBackground")
-    # A/B: route the matting pass through Photoroom instead of fal BiRefNet.
-    # MEANINGLESS unless transparent_background is also on — this picks the
-    # engine, it does not request a cutout. Exists because BiRefNet is a
-    # salient-object detector and Photoroom is trained on product photography,
-    # and which one is better on forklift lattice is unmeasured.
-    # ⚠️ Photoroom's free tier is TEN IMAGES TOTAL.
+    # RETIRED 2026-08-29 and now IGNORED by the worker. Photoroom won the A/B
+    # and became the only engine, selected by CUTOUT_ENGINE. The field stays so
+    # existing callers that still send it do not start 422-ing, and because the
+    # repo's convention is to park rather than delete — but nothing reads it.
+    # Do not add a code path back here; change CUTOUT_ENGINE instead.
     cutout_photoroom: bool = Field(False, alias="cutoutPhotoroom")
     # AUTO CROP — Florence-2 locates the machine and the image is reframed to
     # the house 7:5 composition (services/autocrop.py). Ported from
     # df-auto-edit, whose framing constants were measured, not chosen.
     # Independent of every other toggle: it changes framing, not pixels.
-    auto_crop: bool = Field(False, alias="autoCrop")
+    #
+    # Defaults TRUE, matching the UI. It was False until 2026-08-29 for one
+    # reason only: df-auto-edit fed the API-key ingest path and had ALREADY
+    # cropped its images, so an omitted flag must not crop them twice. That
+    # caller has been retired, so the exception went with it and the wire and
+    # the UI agree again. If a pre-cropped source ever starts arriving over the
+    # API again, this is the line that has to go back to False.
+    auto_crop: bool = Field(True, alias="autoCrop")
     # Identity-preservation flag for 3-wheel forklifts (single rear
     # pivot/steer wheel under the counterweight). When ON, the prompt
     # adds a guardrail telling the AI to preserve the single-rear-wheel

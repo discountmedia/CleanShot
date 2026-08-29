@@ -107,12 +107,10 @@ class Settings(BaseSettings):
     # Manager (cleanshot-fal-key) on Cloud Run.
     fal_key: str = Field("", alias="FAL_KEY")
 
-    # Photoroom (https://photoroom.com) — background-removal A/B against fal,
-    # selected per-batch by the cutoutPhotoroom toggle. Auth is a bare
-    # `x-api-key` header, NOT Bearer. Mounted from GCP Secret Manager
-    # (cleanshot-photoroom-key). ⚠️ The free tier is TEN IMAGES TOTAL, and
-    # nothing in this codebase meters it — the count lives in Photoroom's
-    # dashboard.
+    # Photoroom (https://photoroom.com) — THE background-removal engine as of
+    # 2026-08-29, selected by CUTOUT_ENGINE rather than by any toggle. Auth is a
+    # bare `x-api-key` header, NOT Bearer. Mounted from GCP Secret Manager
+    # (cleanshot-photoroom-key). Paid plan; the ten-image free tier is history.
     photoroom_api_key: str = Field("", alias="PHOTOROOM_API_KEY")
     # Ideogram (https://api.ideogram.ai) — used for the per-variant
     # Edit-with-prompt tool (POST /v1/edit, text-only sibling to Gemini

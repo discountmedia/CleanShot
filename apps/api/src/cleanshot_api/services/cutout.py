@@ -90,12 +90,19 @@ CUTOUT_MAX_UPLOAD_LONG_EDGE_PX = int(
     os.environ.get("CUTOUT_MAX_UPLOAD_LONG_EDGE_PX", "2048")
 )
 
-# Photoroom request shaping, for the A/B engine (services/photoroom.py).
+# THE matting engine. Photoroom won the A/B and is the only one the UI offers
+# now (2026-08-29). fal BiRefNet remains fully wired and is one env var away —
+# `CUTOUT_ENGINE=fal` — because a vendor rollback should never need a code
+# change. The reason Photoroom won is the reason the island filter exists:
+# BiRefNet is a salient-object detector and kept plants and wall banners,
+# where Photoroom's product-photography prior does not.
+CUTOUT_ENGINE = os.environ.get("CUTOUT_ENGINE", "photoroom")
+
+# Photoroom request shaping (services/photoroom.py).
 # `channels=alpha` should return a bare mask rather than a finished cutout —
 # but `_mask_band` copes with either, so this is a preference, not a
 # requirement. `size=full` keeps the mask at the resolution we uploaded;
-# `preview` is smaller and may bill differently on the free tier, which is
-# worth checking on the dashboard before spending the ten credits.
+# `preview` is smaller and cheaper if per-image cost ever becomes a concern.
 CUTOUT_PHOTOROOM_CHANNELS = os.environ.get("CUTOUT_PHOTOROOM_CHANNELS", "alpha")
 CUTOUT_PHOTOROOM_SIZE = os.environ.get("CUTOUT_PHOTOROOM_SIZE", "full")
 
@@ -442,12 +449,7 @@ def _composite_alpha(image_bytes: bytes, mask_bytes: bytes) -> bytes:
 
 
 async def _fetch_mask_photoroom(upload: bytes, upload_mime: str) -> bytes:
-    """
-    Photoroom's mask for one image. A/B alternative to fal — see photoroom.py.
-
-    ⚠️ SPENDS ONE OF TEN FREE CREDITS PER CALL. There is no metering on this
-    side; the count lives in Photoroom's dashboard.
-    """
+    """Photoroom's mask for one image. The default engine — see photoroom.py."""
     from cleanshot_api.services import photoroom
 
     logger.info(
@@ -517,20 +519,22 @@ async def _fetch_mask_fal(
         raise CutoutUnavailableError(f"matting mask fetch failed: {exc}") from exc
 
 
-async def remove_background(image_bytes: bytes, *, engine: str = "fal") -> bytes:
+async def remove_background(image_bytes: bytes, *, engine: str | None = None) -> bytes:
     """
     Knock the backdrop out of a finished enhance output. Returns PNG bytes with
     a real alpha channel, at the SAME dimensions as the input — the caller has
     already standardised to 2800x2000 and this must not change that.
 
-    `engine` picks the matting vendor ("fal" | "photoroom"). Everything after
-    the mask arrives is IDENTICAL for both: the same island filter, the same
-    local composite onto untouched RGB, the same contract checks. That is what
-    makes the A/B honest — the only variable is the mask.
+    `engine` picks the matting vendor ("fal" | "photoroom"); None takes
+    CUTOUT_ENGINE, which is where the decision actually lives. Everything after
+    the mask arrives is IDENTICAL for both — the same island filter, the same
+    local composite onto untouched RGB, the same contract checks — so switching
+    vendors changes the mask and nothing else.
 
     Raises CutoutUnavailableError if a usable alpha cannot be produced.
     Callers must NOT swallow that into "ship it opaque".
     """
+    engine = engine or CUTOUT_ENGINE
     src = pyvips.Image.new_from_buffer(image_bytes, "")
     upload, upload_mime = _downscale_for_upload(image_bytes)
 

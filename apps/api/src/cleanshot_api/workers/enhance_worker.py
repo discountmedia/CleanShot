@@ -2031,13 +2031,11 @@ async def _run_enhance(
         # file is a wrong answer wearing a success badge — better to fail the
         # job and let the operator see it.
         if payload.toggles.transparent_background:
-            # Engine is per-batch so the operator can A/B the two matting
-            # vendors on identical pixels. Everything downstream of the mask is
-            # the same either way, which is what keeps the comparison honest.
-            output_bytes = await remove_background(
-                output_bytes,
-                engine=("photoroom" if payload.toggles.cutout_photoroom else "fal"),
-            )
+            # Engine comes from CUTOUT_ENGINE (Photoroom). The A/B toggle that
+            # used to choose it here is retired — Photoroom won — so there is
+            # one background-removal control in the UI and one place the vendor
+            # is decided. `CUTOUT_ENGINE=fal` rolls back without a code change.
+            output_bytes = await remove_background(output_bytes)
 
         # Write output to GCS derivatives bucket
         output_gcs_uri = await _write_to_gcs(
@@ -2394,14 +2392,12 @@ async def _run_erase(
         # threaded through the request schema, because a flag on EraseRequest
         # could disagree with the actual stored asset; the pixels cannot.
         if await _input_was_cutout(payload.input_gcs_uri):
-            # DEFAULT ENGINE ON PURPOSE, not an oversight. The erase/tweak
-            # payloads do not carry the enhance toggles, so this path cannot
-            # know which vendor produced the original cutout. Pinning it to the
-            # default keeps a re-matte consistent and predictable; threading
-            # the toggle through two more schemas to make an A/B marginally
-            # purer is not worth it. Worth knowing while comparing: tweaking a
-            # Photoroom cutout re-mattes it with fal.
-            output_bytes = await remove_background(output_bytes, engine="fal")
+            # Same engine as everything else now that CUTOUT_ENGINE is the
+            # single source of truth. This used to be pinned to fal because the
+            # erase/tweak payloads carry no toggles and could not know which
+            # vendor made the original — retiring the toggle removes that
+            # split, so a re-matte no longer changes vendor mid-image.
+            output_bytes = await remove_background(output_bytes)
 
         output_gcs_uri = await _write_to_gcs(
             output_bytes,
@@ -2547,14 +2543,12 @@ async def _run_tweak(
         # the erase path: otherwise the vendor's opaque result reads as a black
         # background.
         if await _input_was_cutout(payload.input_gcs_uri):
-            # DEFAULT ENGINE ON PURPOSE, not an oversight. The erase/tweak
-            # payloads do not carry the enhance toggles, so this path cannot
-            # know which vendor produced the original cutout. Pinning it to the
-            # default keeps a re-matte consistent and predictable; threading
-            # the toggle through two more schemas to make an A/B marginally
-            # purer is not worth it. Worth knowing while comparing: tweaking a
-            # Photoroom cutout re-mattes it with fal.
-            output_bytes = await remove_background(output_bytes, engine="fal")
+            # Same engine as everything else now that CUTOUT_ENGINE is the
+            # single source of truth. This used to be pinned to fal because the
+            # erase/tweak payloads carry no toggles and could not know which
+            # vendor made the original — retiring the toggle removes that
+            # split, so a re-matte no longer changes vendor mid-image.
+            output_bytes = await remove_background(output_bytes)
 
         output_gcs_uri = await _write_to_gcs(
             output_bytes,

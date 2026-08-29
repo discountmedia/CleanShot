@@ -30,10 +30,23 @@ from __future__ import annotations
 
 
 PER_IMAGE_USD: dict[str, float] = {
-    # Gemini Image (AI Studio paid tier). The 3.1-flash-image-preview
-    # is published at the same per-image rate as 2.5-flash-image; if
-    # Google bumps preview rates we may need a separate entry.
-    "gemini-3.1-flash-image-preview": 0.039,
+    # Gemini Image (AI Studio paid tier). ⚠️ PRICE DEPENDS ON OUTPUT RESOLUTION,
+    # so this row is COUPLED TO `GEMINI_IMAGE_SIZE` in enhance_worker.py —
+    # change one and this must change with it. From Google's published pricing
+    # for gemini-3.1-flash-image (image output billed at $60/1M tokens):
+    #
+    #   0.5K   747 tokens   $0.045
+    #   1K    1120 tokens   $0.067      <- the old default
+    #   2K    1680 tokens   $0.101      <- GEMINI_IMAGE_SIZE today
+    #   4K    2520 tokens   $0.151
+    #
+    # The previous 0.039 was wrong twice over: it was the 2.5-flash-image rate
+    # ($30/1M x 1290 tokens) carried across to a model billed at double that,
+    # and it predates the 2K switch. So spend has been UNDER-reported since
+    # 3.1 landed, not merely since today.
+    "gemini-3.1-flash-image-preview": 0.101,
+    # 2.5-flash-image genuinely is $0.039 (1290 tokens at $30/1M). Left alone —
+    # the two models are not the same price and never were.
     "gemini-2.5-flash-image":         0.039,
 
     # OpenAI gpt-5 via Responses API with the image_generation tool
@@ -51,15 +64,20 @@ PER_IMAGE_USD: dict[str, float] = {
     # unlike the enhance rows this fires on every cutout, so it is worth
     # calibrating before reading any spend dashboard.
     "fal-ai/birefnet/v2":             0.002,
-    # Photoroom background removal (A/B against BiRefNet). PLACEHOLDER: the
-    # first ten images are free, so the marginal cost during the A/B is 0 and
-    # the paid rate has not been checked. Fix this before Photoroom carries
-    # real volume, or the spend dashboard will under-report it the same way
-    # the Gemini row does.
-    "photoroom/segment":              0.0,
-    # Florence-2 object detection for auto-crop. PLACEHOLDER — fal bills this
-    # per-request and the rate has not been checked. One call per enhance JOB,
-    # so a 2-provider batch detects twice on the same source.
+    # Photoroom background removal. AMORTISED, not metered: the plan is a flat
+    # $20/month for 1000 images, so $0.02 is the blended cost of a fully-used
+    # allowance rather than a price Photoroom charges per call. Two consequences
+    # worth knowing before reading a total as an invoice line — under-using the
+    # allowance makes the real per-image cost HIGHER than this, and going over
+    # 1000 in a month is not modelled here at all. Revisit if volume approaches
+    # the cap. Fires on every cutout, so it is the highest-frequency row here.
+    "photoroom/segment":              0.02,
+    # Florence-2 object detection for auto-crop. ⚠️ UNVERIFIED. fal's public
+    # model page renders "$0 per compute second", which is far more likely to
+    # be an unauthenticated page failing to fill in a rate than a genuinely
+    # free GPU model — so treat this 0.0 as "not yet known", not as "free", and
+    # check it against a real fal invoice. One call per enhance JOB, so a
+    # 2-provider batch detects twice on the same source.
     "fal-ai/florence-2-large":        0.0,
 
     # xAI Grok image edit (https://docs.x.ai). Public pricing for

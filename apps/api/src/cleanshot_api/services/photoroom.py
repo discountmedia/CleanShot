@@ -1,16 +1,16 @@
 """
 Photoroom background-removal client.
 
-WHY IT EXISTS: an A/B against fal's BiRefNet, not a replacement. BiRefNet is a
-SALIENT OBJECT detector, which is why the first production cutouts came back
-with a potted plant and a wall banner attached. Photoroom is trained on PRODUCT
-photography — one subject on a background — which is a better prior for "the
-machine, not the scenery". Whether that actually shows up on forklift lattice is
-unmeasured, hence the toggle.
+WHY IT EXISTS: it is now THE background-removal engine, chosen over fal's
+BiRefNet. BiRefNet is a SALIENT OBJECT detector, which is why the first
+production cutouts came back with a potted plant and a wall banner attached;
+Photoroom is trained on PRODUCT photography — one subject on a background —
+which is a better prior for "the machine, not the scenery".
 
-⚠️ THE FREE TIER IS TEN IMAGES, TOTAL. Every flip of the Photoroom toggle on a
-batch spends one credit per image. There is no metering here — the count lives
-in Photoroom's dashboard.
+It arrived as an A/B toggle and won, so the toggle is gone and the UI offers a
+single background-removal control. The plan is PAID, so the ten-image free tier
+no longer applies. fal BiRefNet stays fully wired behind `CUTOUT_ENGINE=fal` as
+a one-env-var rollback that needs no code change.
 
 THE CONTRACT
 ------------
@@ -25,10 +25,9 @@ THE CONTRACT
 `channels=alpha` should return a bare alpha mask rather than a finished cutout,
 which is what we want — see cutout.py on why we never take a vendor's composite.
 But we do NOT rely on that: `_mask_band` in cutout.py inspects what actually
-arrived and pulls a mask out of either shape. That is deliberate. This contract
-was written from the vendor's documentation rather than from a live call,
-because a call costs one of ten credits, so the code treats the response shape
-as something to detect rather than something to assume.
+arrived and pulls a mask out of either shape. That is deliberate — the contract
+below was written from the vendor's documentation rather than from a live call,
+so the code detects the response shape instead of assuming it.
 """
 
 from __future__ import annotations
@@ -52,8 +51,8 @@ PHOTOROOM_TIMEOUT_S = 120.0
 class PhotoroomError(RuntimeError):
     """
     A Photoroom call failed. Carries the HTTP status because the difference
-    between 401 (key), 402 (out of credits — very live on a 10-image tier),
-    and 429 (rate limit) is the whole diagnosis.
+    between 401 (key), 402 (billing) and 429 (rate limit) is the whole
+    diagnosis.
     """
 
     def __init__(self, message: str, *, status: int | None = None) -> None:
@@ -101,9 +100,8 @@ async def segment(
         raise PhotoroomError(f"photoroom: transport error: {exc}") from exc
 
     if resp.status_code >= 400:
-        # Body verbatim — Photoroom names the offending field on a 400, and a
-        # 402 says which quota ran out. Summarising it wastes a credit's worth
-        # of diagnosis.
+        # Body verbatim — Photoroom names the offending field on a 400 and the
+        # quota on a 402. Summarising it throws away the diagnosis.
         detail = resp.text[:800] if resp.text else "<empty body>"
         raise PhotoroomError(
             f"photoroom: HTTP {resp.status_code}: {detail}",

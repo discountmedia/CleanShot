@@ -165,17 +165,15 @@ export interface EnhanceToggles {
    */
   transparentBackground: boolean;
   /**
-   * A/B ONLY — routes the matting pass through Photoroom instead of fal
-   * BiRefNet. Does NOT request a cutout on its own: it picks the engine, so
-   * it is a no-op unless transparentBackground is also on.
+   * RETIRED 2026-08-29 — hidden from VISIBLE_TOGGLES and IGNORED by the
+   * backend. It existed to A/B Photoroom against fal BiRefNet; Photoroom won,
+   * so there is one background-removal control again and the engine is chosen
+   * server-side by CUTOUT_ENGINE.
    *
-   * Exists because BiRefNet is a salient-object detector (it returned a
-   * potted plant and a wall banner alongside the forklift) while Photoroom is
-   * trained on product photography. Which is better on mast lattice is
-   * unmeasured — that is the point of the toggle.
-   *
-   * WARNING: Photoroom's free tier is TEN IMAGES TOTAL and nothing in this
-   * app meters it. A batch of 8 with this on spends 8 of them.
+   * Kept rather than deleted per the hidden-not-deleted convention, and so any
+   * caller still sending the key does not start failing validation. Do not put
+   * it back in VISIBLE_TOGGLES expecting it to do something — flip
+   * CUTOUT_ENGINE instead.
    */
   cutoutPhotoroom: boolean;
   /**
@@ -227,7 +225,12 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   showroomFloor: false,
   transparentBackground: false,
   cutoutPhotoroom: false,
-  autoCrop: false,
+  // The ONE exception to the all-off rule above (operator request,
+  // 2026-08-29). Consistent framing is wanted on essentially every
+  // batch, so making operators tick it each time is friction with no
+  // upside — and with df-auto-edit retired from the chain, nothing
+  // upstream crops any more, so this IS the cropping step now.
+  autoCrop: true,
   threeWheel: false,
 };
 
@@ -250,7 +253,6 @@ export const VISIBLE_TOGGLES: ReadonlyArray<keyof EnhanceToggles> = [
   "removePeople",
   "shineTires",
   "transparentBackground",
-  "cutoutPhotoroom",
   "autoCrop",
 ] as const;
 
@@ -266,7 +268,7 @@ export const TOGGLE_LABELS: Record<keyof EnhanceToggles, string> = {
   removeRentalBranding: "Remove Rental-Fleet Branding",
   showroomFloor: "Perfect Showroom Floor",
   transparentBackground: "Remove Background Entirely",
-  cutoutPhotoroom: "— use Photoroom (A/B)",
+  cutoutPhotoroom: "— use Photoroom (retired)",
   autoCrop: "Auto Crop",
   threeWheel: "3-Wheel",
 };
@@ -282,8 +284,8 @@ export const TOGGLE_DESCRIPTIONS: Record<keyof EnhanceToggles, string> = {
   improveLighting: "Extra emphasis on exposure / lighting correction on this image",
   removeRentalBranding: "Strip third-party rental decals (Sunbelt, United Rentals, Herc, etc.) — preserves all OEM manufacturer decals + capacity plates",
   showroomFloor: "Studio / showroom shots only — replaces the floor with a perfect, shiny, middle-gray polished-concrete finish. Preserves the unit's contact shadow. No-op for outdoor / yard photos",
-  transparentBackground: "Cuts the unit out completely — no floor, no walls, no sky. Exports as a transparent PNG with no watermark, for the new-equipment site. Overrides Perfect Showroom Floor",
-  cutoutPhotoroom: "A/B test only — does the background removal with Photoroom instead of the default engine. Only does anything when Remove Background Entirely is also on. ⚠️ Free tier is 10 images TOTAL, and a batch of 8 spends 8 of them.",
+  transparentBackground: "Cuts the unit out completely — no floor, no walls, no sky, and any plants or clutter beside the unit go with them. Exports as a transparent PNG with no watermark, for the new-equipment site. Overrides Perfect Showroom Floor",
+  cutoutPhotoroom: "RETIRED — Photoroom won the A/B and is now the only background-removal engine, selected server-side by CUTOUT_ENGINE. This toggle is hidden and ignored.",
   autoCrop: "Finds the machine and reframes to a consistent 7:5 crop, so a whole set matches instead of some tight and some wide. Skips itself (ships uncropped) if the machine can't fit without clipping the mast.",
   threeWheel: "This is a 3-wheel forklift (single rear pivot/steer wheel under the counterweight) — tells the AI to preserve the single-rear-wheel layout instead of hallucinating a second rear wheel. Forklift only.",
 };
