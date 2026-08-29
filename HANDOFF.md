@@ -20,9 +20,10 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 - **The ZIP auto-downloads** when 7x5 EXPORT finishes. The Download ZIP button
   stays as the fallback. Not yet tested in a real browser.
 - Not run: the DB-backed `test_api.py` (needs local Postgres).
-- **The 27 Aug warning below is stale.** `dd2b8e7` and everything before it
-  are pushed and live. `421f166` (was `802e1bc`; Auto Crop default + Photoroom-only) is still
-  HELD locally, with the 28 Aug rewrite of this file on top of it.
+- **Pushed alone as `2abf213` on 1 Oct.** The held Auto Crop + Photoroom commit
+  was NOT released: local `main` was rebuilt as `2abf213` → `a487aab` (held,
+  was `802e1bc`) → this docs commit (was `cfc0bb6`). So origin/main is now
+  `2abf213`, not `dd2b8e7`, and the 28 Aug "live revision" line below is history.
 
 ## 2026-10-02: Color, dropdowns, equipment type
 
@@ -62,95 +63,84 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 
 ---
 
-## ⚠️ 2026-08-27 — read this first
+## ⚠️ 2026-08-28 — read this first
 
-**The branch is NOT `main` and nothing from today is pushed or deployed.**
+**Everything below is pushed and deployed EXCEPT one held commit.** That reverses
+the 27 Aug warning this file used to open with; the branch is `main`, it is
+current with the remote, and the API has served real batches all day.
 
-- **Branch:** `fix/enhance-inline-cpu-throttling`, being renamed to `main`
-  with the old `main` preserved as `old_main`. It exists only on this
-  machine — there is no remote branch yet.
-- **Commit history is `15b233c` (inline enhance) → `8a0a24c` → `1f698db`
-  (removal + docs) → the docs pass that wrote this line.** An earlier version
-  of this file said "`15b233c` plus one docs commit", which was never true.
-  Read `git log`, not this bullet.
-- **`main` on the remote is at `e49b7c6`.** Everything below dated 27 Aug is
-  local-only.
-- **The API is still running the pre-27-Aug revision.** Nothing today has been
-  seen by a real batch.
+- **Live API revision: `cleanshot-api-00178-jhr`**, running commit `dd2b8e7`
+  (HEIC ingest), at `cpu=2 / memory=4Gi`.
+- **HELD, NOT PUSHED — `a487aab`** (was `802e1bc`, then `421f166`; re-IDed by the 1 and 2 Oct reorders) "Auto Crop on by default, and Photoroom as the
+  only cutout engine". Committed locally at the operator's instruction. It also
+  carries the corrected pricing rows. **Pushing it deploys both API and web.**
+- Today's pushed run, oldest first: `d0cf4b0` → `25837ee` → `acdc2e2` → `4040563`
+  (Grok dormant again) → `9969b0a` → `c67a6c7` (fal matting) → `c953dbc` →
+  `835cf58` → `7db1700` → `e3615f0` → `4dc558d` → `e4f4731` → `ad540ef` →
+  `dd2b8e7`.
 
-### What is on this branch
+### What today actually changed, in dependency order
 
-1. **`15b233c` — enhance runs INLINE instead of in a FastAPI BackgroundTask.**
-   Three fixes for jobs that hang rather than fail. Cloud Run deploys this
-   service without `--no-cpu-throttling`, so the post-response window is exactly
-   where CPU is throttled to near zero; two Gemini images with the cutout toggle
-   on took over five minutes. Also caps OpenAI input at 2048px (per-provider, on
-   purpose — the global downsize must stay removed for Gemini) and drops OpenAI
-   `max_retries` 8 → 2. Full reasoning in `CLAUDE.md`.
+1. **Matting moved to a vendor, then to a different vendor.** fal BiRefNet v2
+   replaced the in-container ONNX model, and then Photoroom replaced *it* in the
+   held commit. BiRefNet is a SALIENT OBJECT detector — the first production
+   cutouts kept a potted plant and a "Discount Forklift" wall banner alongside
+   the machine. `CUTOUT_ENGINE` (default `photoroom`) is now the single place the
+   vendor is chosen; `CUTOUT_ENGINE=fal` is a full rollback with no code change.
+2. **Two fixes for the distractors, split by what each can reach.** Physical
+   objects come out of the MASK (`_isolate_principal_subject`); printed signage
+   comes out of the PIXELS, because a banner measured ~36% of the machine's
+   masked area and no island filter can drop something that size without also
+   being able to amputate a split machine.
+3. **The "blurry / JPEG-artifacted" complaint was never fal.** Nothing had ever
+   set Gemini's `image_config`, so every stored asset was a **x2.32 lanczos
+   upscale of a 1 MP generation**. `GEMINI_IMAGE_SIZE=2K` takes that to x1.16.
+   The busy background had always hidden it; the cutout removed the camouflage.
+4. **That OOM'd the container within 16 minutes** — 1 GiB was never sized for
+   ten concurrent inline jobs. Now `cpu=2 / memory=4Gi`, plus the fal upload
+   dropped from a 7 MB PNG to a 0.71 MB JPEG.
+5. **Auto Crop**, ported from df-auto-edit rather than reinvented, and **HEIC
+   ingest**, decoded in the browser because `createImageBitmap` cannot read it
+   in Chrome or Firefox.
 
-   ⚠️ **The CPU-throttling diagnosis was read from deploy config, not from Cloud
-   Run metrics.** If enhance still hangs after this deploys, get the metrics
-   before changing anything else.
+### Two regressions I shipped and fixed the same day
 
-2. **The BFL/Flux/Reve removal** — which `15b233c` explicitly listed as *not
-   included*, and which is now done. `_erase_with_flux`, `_enhance_with_kontext`
-   and `_enhance_with_reve` are deleted; the erase tool routes to Ideogram
-   inpaint; `EraseRequest.tool` is `Literal["ideogram"]`.
+Both are written up in CLAUDE.md because the mistakes generalise:
 
-   ⚠️ **This narrows the dormant-code convention and should be a conscious
-   call.** The standing rule in this repo is that unreachable provider code is
-   parked on purpose and restoring it is a one-line change. That is still true of
-   **grok**; it is **no longer true of kontext or reve**, where restoring means a
-   `git revert`. The endpoint shapes are kept in `CLAUDE.md`'s provider table,
-   marked DELETED, because rediscovering them is the expensive part.
+- **The island filter crashed every cutout job** (`unable to call getpoint`).
+  `hist_find` on a ushort image sizes the histogram to `max value + 1`, not a
+  fixed 65536, and `labelregions` numbers background regions too — so the
+  histogram can be shorter than the label range. Six hand-built tests all passed;
+  **sweeping island counts 0→312 is the test that would have caught it.**
+- **The 2K change OOM-killed the container.** I predicted the ceiling would bite
+  at 4K and was wrong about the margin, because I counted only the decoded image
+  and not the pipeline's transient buffers.
 
-   The removal is thorough — `config.py` (BFL/RunComfy/Reve keys and
-   `KONTEXT_SEED`), `pricing.py`, `master_prompts.py`, the Reve rate limiter in
-   `main.py`, the `RegenRequest` provider Literal, and the frontend
-   `EraseDialog` / `SourceCompareCard` / `EnhancePanel` erase wiring all went
-   with it.
+The shared lesson, and the reason both were caught quickly: **every one of
+today's diagnoses came from a log line or a measurement, and the wrong guesses
+(fal degrading the image, a fal concurrency limit, a 10-image cap) all came from
+reasoning.** The `sizing:` and `cutout:` log lines added today are what made the
+difference — keep them.
 
-   ✅ **The two missed files are fixed (2026-08-27).**
-   `apps/web/app/api/enhance/erase/route.ts` now defaults `tool` to
-   `"ideogram"` and `apps/web/lib/api.ts` types it `"ideogram"`, matching the
-   backend Literal. The 422 that would have hit any caller omitting `tool`
-   can no longer fire.
+### The one thing that is broken right now
 
-   ✅ **Historic spend is safe.** `flux-erase-v1`, `flux-1-kontext-max-edit` and
-   `reve-edit-fast-latest` left `PER_IMAGE_USD`, but `cost_estimate_usd` is
-   computed and stored on the usage_event row at write time, so old rows keep
-   their real figures. Don't restore the entries to "fix" the dashboard.
-
-3. **The Grok re-enable — done 2026-08-27, REVERTED 2026-08-28.** Live for one day, then made dormant again at the operator's call: it bled the fork red onto the mast/guard/body and re-posed the camera versus a Gemini render that passed scan 3/3. `_build_grok_prompt` (`acdc2e2`) was written to fix exactly that and **was never evaluated** — test it before re-deriving anything. Original notes: `"grok"` is back in
-   `ENHANCE_PROVIDERS`. Everything else it needed was already in place. It is
-   deliberately **not ticked by default**; the initial fan-out set in
-   `EnhancePanel.tsx` stays `["gemini", "openai"]` because Grok's ~6/min
-   limiter would slow every batch. The operator confirmed `cleanshot-xai-key`
-   is still valid.
-
-### Before this branch goes anywhere
-
-1. ~~Decide whether the kontext/reve deletion is wanted~~ — confirmed wanted
-   by the operator, who asked for it explicitly.
-2. ~~Fix the BFF default and the `lib/api.ts` type~~ — both done.
-3. **Deploy and run a real batch.** Still the open item, and the important
-   one. The inline-enhance fix is unverified: the CPU-throttling diagnosis was
-   read from `deploy-api.yml`, not from Cloud Run metrics. The test is two
-   Gemini photos with the cutout toggle — well under a minute means the
-   diagnosis was right; still hanging means get the metrics before changing
-   anything else.
-4. **Delete the unmounted secrets** once the deploy lands: `cleanshot-bfl-key`,
-   `cleanshot-reve-key`, `cleanshot-runcomfy-key`.
+**The per-image Retry button silently drops every toggle**, so a retry produces
+no cutout and, once the held commit lands, no crop either. It is not a plumbing
+bug — the batch auto-reset wipes toggles before a Retry button is even
+clickable. Diagnosed, unfixed, and the recommended fix (a per-batch toggle
+snapshot that Retry reuses) is in CLAUDE.md. **This is the first thing to pick
+up.**
 
 ---
 
 ## Repo state
 
 - **Branch:** `main`. Direct-to-main is the norm (no PR review).
-- **Everything below is PUSHED and DEPLOYED.** Head is `44b613d`. The API is on
-  revision `cleanshot-api-00162-gps`; the raised prompt cap was verified live by
-  reading `maxLength` back off the running service's `/openapi.json` rather than
-  trusting the revision number.
+- ⚠️ **STALE FROM HERE DOWN — this section and the ones after it describe the
+  2026-08-26/27 batches.** For current state read the 2026-08-28 section at the
+  top of this file: head is `dd2b8e7` pushed (`a487aab` held locally, was `802e1bc`), and the
+  API is on `cleanshot-api-00178-jhr`. The revision and commit named just below
+  are historical, kept because the reasoning around them is still useful.
 - **This batch is the shared prompt-template library** — saved prompts stopped being private and became one company-wide, rateable library. It is a schema change plus a behaviour change to data that already exists in prod.
 - **It ships a schema change**, applied by `db/migrate.py` on API startup, so the deploy applies it. Three parts: the unique index moves from `(user_email, lower(title))` to `lower(title)`, a `use_count` column is added, and a `saved_prompt_votes` table is created. **Watch the first API revision** — a guarded one-time `DO` block de-duplicates any cross-user title collisions (suffixing `(2)`, `(3)`) *before* building the new unique index. If that block fails, the index never builds and the migration wedges.
 - **Untracked:** `AGENTS.md` (a Codex-facing pointer to CLAUDE.md) is present but not committed, as found.
