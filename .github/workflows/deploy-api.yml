@@ -64,8 +64,8 @@ jobs:
             --region="${{ env.REGION }}" \
             --platform=managed \
             --execution-environment=gen2 \
-            --cpu=1 \
-            --memory=1Gi \
+            --cpu=2 \
+            --memory=4Gi \
             --concurrency=80 \
             --min-instances=1 \
             --max-instances=50 \

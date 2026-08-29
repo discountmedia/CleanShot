@@ -90,6 +90,12 @@ CUTOUT_MAX_UPLOAD_LONG_EDGE_PX = int(
     os.environ.get("CUTOUT_MAX_UPLOAD_LONG_EDGE_PX", "2048")
 )
 
+# Below this, an already-small upload is sent as-is rather than re-encoded.
+# Re-encoding a small JPEG would cost a generation of quality for nothing.
+CUTOUT_UPLOAD_REENCODE_MIN_BYTES = int(
+    os.environ.get("CUTOUT_UPLOAD_REENCODE_MIN_BYTES", "1500000")
+)
+
 # Keep only the principal subject in the mask. BiRefNet "General Use" is a
 # SALIENT OBJECT detector, not a subject segmenter: on a real showroom photo it
 # returned the forklift AND a potted plant AND a wall banner, each with its own
@@ -161,14 +167,56 @@ def has_alpha(image_bytes: bytes) -> bool:
         return False
 
 
-def _downscale_for_upload(image_bytes: bytes) -> bytes:
-    """Shrink a copy to the upload cap. Never touches the caller's bytes."""
+def _downscale_for_upload(image_bytes: bytes) -> tuple[bytes, str]:
+    """
+    Shrink a copy to the upload cap. Never touches the caller's bytes.
+    Returns (bytes, mime_type).
+
+    JPEG, NOT PNG — and this is a memory fix, not a bandwidth nicety. A
+    lossless 2048px PNG of a photo measured **5.1 MB** in production, and
+    `fal.data_uri` then base64-encodes it into a ~6.8 MB string, with httpx
+    holding another copy of the JSON body. That is ~12 MB of transient
+    allocation per concurrent job before any pixel work, and Cloud Tasks can
+    put ten of those on one instance.
+
+    Lossless buys nothing here. We ask fal for a MASK and throw its RGB away,
+    so the encode is a TRANSPORT format for a segmentation model, not output.
+    The finished cutout's pixels are the caller's untouched originals either
+    way — this cannot degrade what ships, only what the model looks at while
+    deciding where the edges are, and Q92 at 2048px is far above what changes
+    that decision.
+
+    Alpha keeps PNG. JPEG has no alpha channel, and libvips would composite it
+    onto BLACK rather than dropping it — handing the matting model a black
+    background to find edges against. Only the re-matte paths (tweak/erase on
+    an existing cutout) can arrive with alpha, and they are rare enough that
+    the bigger payload does not matter.
+    """
     img = pyvips.Image.new_from_buffer(image_bytes, "")
     long_edge = max(img.width, img.height)
-    if long_edge <= CUTOUT_MAX_UPLOAD_LONG_EDGE_PX:
-        return image_bytes
-    scale = CUTOUT_MAX_UPLOAD_LONG_EDGE_PX / long_edge
-    return img.resize(scale, kernel="lanczos3").write_to_buffer(".png")
+
+    if long_edge > CUTOUT_MAX_UPLOAD_LONG_EDGE_PX:
+        img = img.resize(
+            CUTOUT_MAX_UPLOAD_LONG_EDGE_PX / long_edge, kernel="lanczos3"
+        )
+    elif not img.hasalpha():
+        # Already small enough, but still worth re-encoding if the source is a
+        # big PNG — the point is the payload, not the pixel count.
+        if len(image_bytes) <= CUTOUT_UPLOAD_REENCODE_MIN_BYTES:
+            return image_bytes, _sniff_mime(image_bytes)
+
+    if img.hasalpha():
+        return img.write_to_buffer(".png"), "image/png"
+    return img.write_to_buffer(".jpg", Q=92, strip=True), "image/jpeg"
+
+
+def _sniff_mime(data: bytes) -> str:
+    """Magic-byte mime sniff, so an untouched buffer is labelled correctly."""
+    if data[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if data[:4] == b"RIFF":
+        return "image/webp"
+    return "image/jpeg"
 
 
 def _isolate_principal_subject(mask: "pyvips.Image") -> "pyvips.Image":
@@ -369,10 +417,10 @@ async def remove_background(image_bytes: bytes) -> bytes:
     Callers must NOT swallow that into "ship it opaque".
     """
     src = pyvips.Image.new_from_buffer(image_bytes, "")
-    upload = _downscale_for_upload(image_bytes)
+    upload, upload_mime = _downscale_for_upload(image_bytes)
 
     payload = {
-        "image_url": fal.data_uri(upload, "image/png"),
+        "image_url": fal.data_uri(upload, upload_mime),
         "model": CUTOUT_FAL_MODEL,
         "operating_resolution": CUTOUT_OPERATING_RESOLUTION,
         "output_format": "png",
@@ -390,13 +438,14 @@ async def remove_background(image_bytes: bytes) -> bytes:
     }
 
     logger.info(
-        "cutout: fal %s (%s @ %s), source %dx%d, upload %d bytes",
+        "cutout: fal %s (%s @ %s), source %dx%d, upload %d bytes (%s)",
         CUTOUT_MODEL,
         CUTOUT_FAL_MODEL,
         CUTOUT_OPERATING_RESOLUTION,
         src.width,
         src.height,
         len(upload),
+        upload_mime,
     )
 
     try:
