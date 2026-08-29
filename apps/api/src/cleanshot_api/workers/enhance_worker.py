@@ -532,7 +532,14 @@ def _build_enhance_prompt(
             "pavement, showroom flooring), matching the surrounding "
             "environment."
         )
-    if toggles.remove_background_signage:
+    # Forced ON under a cutout (2026-08-29). Printed signage is the one
+    # distractor the matting pass cannot fix downstream: a wall banner can be a
+    # third of the machine's masked area, so the mask-island filter in
+    # services/cutout.py keeps it rather than risk deleting a split machine. The
+    # only reliable place to remove it is here, before the pixels reach the mask.
+    # Physical objects (plants, cones, pallets) go the other way — the island
+    # filter deletes those for free, with no regeneration.
+    if toggles.remove_background_signage or toggles.transparent_background:
         extras.append(
             "ADDITIONAL ACTION — clean up background signage. Remove from "
             "the surrounding environment: exit signs, fire-exit signs, "
@@ -794,7 +801,8 @@ def _build_grok_prompt(
             "Remove every person, operator, and hand from the frame, "
             "filling the vacated space with the background behind them."
         )
-    if toggles.remove_background_signage:
+    # Forced ON under a cutout — same reasoning as the Gemini builder above.
+    if toggles.remove_background_signage or toggles.transparent_background:
         lines.append(
             "Remove background signs, posters, logos, and wall text "
             "(replace each with the plain surface behind it), but keep all "
@@ -2099,7 +2107,10 @@ def _describe_intended_edits(
         )
     if toggles.remove_people:
         edits.append("People may have been removed from the scene.")
-    if toggles.remove_background_signage:
+    # Mirrors the forced-ON in the prompt builders: if the cutout made us ask
+    # for signage removal, the scan has to be told it was intended, or the
+    # whitelist and the prompt disagree.
+    if toggles.remove_background_signage or toggles.transparent_background:
         edits.append("Background signage may have been removed.")
     if toggles.shine_tires:
         edits.append(

@@ -89,6 +89,49 @@ CUTOUT_MAX_UPLOAD_LONG_EDGE_PX = int(
     os.environ.get("CUTOUT_MAX_UPLOAD_LONG_EDGE_PX", "2048")
 )
 
+# Keep only the principal subject in the mask. BiRefNet "General Use" is a
+# SALIENT OBJECT detector, not a subject segmenter: on a real showroom photo it
+# returned the forklift AND a potted plant AND a wall banner, each with its own
+# alpha. This drops every mask island that is not the machine. Off switch is an
+# env var because it is a behaviour change on a live pass, not because it is
+# expected to be wrong.
+CUTOUT_ISOLATE_SUBJECT = os.environ.get("CUTOUT_ISOLATE_SUBJECT", "1") != "0"
+
+# Islands are grouped through gaps this wide (px, at MASK resolution) before
+# they are counted. A machine is one object but its mask is not reliably one
+# island — a fork tip or a mirror can be split off by a hairline of background.
+# Bridging first means such a part is grouped WITH the machine instead of being
+# deleted as a distractor. It only affects grouping: the alpha that ships is
+# always the untouched original inside whatever is kept.
+CUTOUT_BRIDGE_PX = int(os.environ.get("CUTOUT_BRIDGE_PX", "6"))
+
+# An island this big relative to the largest one is kept too, on the assumption
+# that it is a real detached part rather than scenery. Set from measurement, not
+# taste: on the 2026-08-29 sample the plant was ~9% of the machine's masked area
+# and the "Discount Forklift" wall banner was ~36%, so anything under ~0.4 keeps
+# the banner. 0.5 drops both while still keeping a mask that has genuinely split
+# a machine into two large pieces — the failure that actually ruins an asset.
+# Distractors bigger than half the machine are not reachable from here; those
+# need removeBackgroundSignage at enhance time, before the pixels ever reach the
+# mask.
+CUTOUT_KEEP_AREA_RATIO = float(os.environ.get("CUTOUT_KEEP_AREA_RATIO", "0.5"))
+
+# Safety valve for masks where "one dominant subject plus scenery" is simply
+# false — nothing dominates, so picking a winner is guesswork. Tripping it keeps
+# the ORIGINAL mask and logs loudly: a retained plant is a complaint, an
+# amputated machine on a product page is not recoverable from.
+#
+# The line is drawn at "the subject must be the MAJORITY of what was masked".
+# That is the honest test of the premise, and it is deliberately not tighter:
+# a first pass used 0.35 and it fired on the very image this was written for
+# (banner 14k px + plant 9k px against a 39k px machine = 37.2% dropped),
+# abandoning the fix on the one case that needed it. Anything under 0.5 is
+# tuned to a guess about how much scenery a photo contains; 0.5 is tuned to
+# whether we can still identify the subject at all. Note the ratio rule above
+# is what actually protects a split machine — no island within half the size of
+# the largest is ever dropped, whatever this is set to.
+CUTOUT_MAX_DROP_FRACTION = float(os.environ.get("CUTOUT_MAX_DROP_FRACTION", "0.5"))
+
 
 class CutoutUnavailableError(RuntimeError):
     """
@@ -127,6 +170,104 @@ def _downscale_for_upload(image_bytes: bytes) -> bytes:
     return img.resize(scale, kernel="lanczos3").write_to_buffer(".png")
 
 
+def _isolate_principal_subject(mask: "pyvips.Image") -> "pyvips.Image":
+    """
+    Zero every mask island that is not the machine. Returns a single-band mask.
+
+    WHY THIS IS NEEDED AT ALL. BiRefNet returns everything SALIENT, not "the
+    subject". The first production cutout came back with the forklift matted
+    correctly — lattice, fork gaps and overhead-guard openings all clean — and a
+    potted plant and a wall banner matted just as correctly beside it. Raising
+    CUTOUT_FAL_MODEL or CUTOUT_OPERATING_RESOLUTION does not help: those buy edge
+    PRECISION, and precision was never what failed. This is a selection problem
+    and it is solved in the mask, for free, with no vendor involved — which also
+    means it keeps working if the matting vendor is swapped.
+
+    THE ALPHA IS NEVER REDRAWN. Grouping happens on a bridged binary copy; the
+    value that ships is the ORIGINAL soft mask wherever a kept island covers it.
+    So anti-aliased edges survive exactly as the vendor computed them, and the
+    only possible effect of this function is turning some pixels transparent.
+    """
+    if not CUTOUT_ISOLATE_SUBJECT:
+        return mask
+
+    total = mask.avg() / 255.0 * mask.width * mask.height
+    if total <= 0:
+        # An empty mask is a matting failure, not something to isolate. Leave it
+        # for the caller's has_alpha/coverage checks to report properly.
+        return mask
+
+    binary = (mask > 127).ifthenelse(255, 0)
+
+    # Bridge hairline gaps so one machine reads as one island. A blur-then-
+    # threshold is a cheap dilation and precise enough for grouping — morph()
+    # with a real structuring element costs far more for no better an answer.
+    bridged = binary
+    if CUTOUT_BRIDGE_PX > 0:
+        bridged = (binary.gaussblur(CUTOUT_BRIDGE_PX) > 8).ifthenelse(255, 0)
+
+    # labelregions numbers regions of EQUAL value, so background regions get
+    # labels too. Shifting foreground labels up by one and forcing background to
+    # zero means the histogram below is indexed by foreground island directly.
+    labels = bridged.labelregions()
+    n_labels = int(labels.max())
+    if n_labels < 1 or n_labels > 60000:
+        # One island (nothing to drop) or pathological fragmentation, where the
+        # premise does not hold and the histogram would be meaningless anyway.
+        logger.info("cutout: isolate skipped, %d label(s)", n_labels + 1)
+        return mask
+
+    marked = (bridged > 127).ifthenelse(labels + 1, 0).cast("ushort")
+    hist = marked.hist_find()
+    # Index 0 is every background pixel lumped together — never a candidate.
+    areas = {i: int(hist(i, 0)[0]) for i in range(1, n_labels + 2)}
+    areas = {label: area for label, area in areas.items() if area > 0}
+    if len(areas) <= 1:
+        return mask
+
+    largest = max(areas.values())
+    keep = {
+        label
+        for label, area in areas.items()
+        if area >= largest * CUTOUT_KEEP_AREA_RATIO
+    }
+    dropped = {label: area for label, area in areas.items() if label not in keep}
+    if not dropped:
+        return mask
+
+    # OR the kept labels together. There are only ever a handful, so equality
+    # tests beat building a 65536-entry maplut.
+    keep_mask = None
+    for label in keep:
+        hit = marked == label
+        keep_mask = hit if keep_mask is None else (keep_mask | hit)
+
+    isolated = keep_mask.ifthenelse(mask, 0)
+
+    kept_total = isolated.avg() / 255.0 * mask.width * mask.height
+    drop_fraction = 1.0 - (kept_total / total)
+    if drop_fraction > CUTOUT_MAX_DROP_FRACTION:
+        logger.warning(
+            "cutout: isolate would drop %.1f%% of the mask (>%.0f%% limit) across "
+            "%d island(s) — keeping the original mask. This image is not "
+            "'one subject plus scenery'; check it by hand.",
+            drop_fraction * 100,
+            CUTOUT_MAX_DROP_FRACTION * 100,
+            len(dropped),
+        )
+        return mask
+
+    logger.info(
+        "cutout: isolate kept %d/%d island(s), dropped %.2f%% of masked area "
+        "(dropped island px: %s)",
+        len(keep),
+        len(areas),
+        drop_fraction * 100,
+        sorted(dropped.values(), reverse=True)[:8],
+    )
+    return isolated
+
+
 def _composite_alpha(image_bytes: bytes, mask_bytes: bytes) -> bytes:
     """
     Attach `mask_bytes` to `image_bytes` as an alpha channel, at the image's
@@ -149,6 +290,10 @@ def _composite_alpha(image_bytes: bytes, mask_bytes: bytes) -> bytes:
         mask = mask.flatten(background=[0, 0, 0])
     if mask.bands > 1:
         mask = mask[0]
+
+    # Isolate BEFORE the resize: islands are cleanest at the mask's native
+    # resolution, and it is cheaper on fewer pixels.
+    mask = _isolate_principal_subject(mask)
 
     if mask.width != img.width or mask.height != img.height:
         mask = mask.resize(
