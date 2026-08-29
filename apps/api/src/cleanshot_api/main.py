@@ -92,6 +92,29 @@ async def lifespan(app: FastAPI):
     )
     logger.info("Gemini Vertex client initialised (Vertex AI ADC)")
 
+    # Report whether this container can decode HEIC, because we cannot tell
+    # from the Dockerfile. It installs Debian's libvips42, and whether that
+    # build carries the libheif loader is a property of the package, not of
+    # anything in this repo — so it is checked at boot rather than assumed.
+    #
+    # The BROWSER path does not depend on this: apps/web/lib/compress.ts
+    # decodes HEIC client-side and uploads JPEG, so iPhone photos work either
+    # way. What this decides is the API-KEY INGEST path (df-auto-edit and
+    # media-auditor POST bytes straight to a signed URL, with no browser in
+    # between). If a caller ever sends HEIC there, this line is the difference
+    # between "add a conversion step" and "it already works".
+    try:
+        import pyvips
+
+        _heif = pyvips.type_find("VipsOperation", "heifload") != 0
+    except Exception:  # pragma: no cover - diagnostic only, never fatal
+        _heif = False
+    logger.info(
+        "image codecs: HEIC/HEIF decode %s (browser uploads are converted "
+        "client-side regardless; this governs the API-key ingest path)",
+        "AVAILABLE" if _heif else "NOT available",
+    )
+
     # --- Gemini via AI Studio (static API key) ---
     # Used by the enhance / cleanup workers. Image-gen preview models
     # like gemini-3.1-flash-image-preview ship to AI Studio first and may

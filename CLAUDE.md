@@ -211,6 +211,36 @@ makes the 2800x2000 standard meaningful rather than an upscale of a 1024px
 frame. Watch for the thing that originally justified the cap: OpenAI
 `/v1/responses` timeouts on large uploads.
 
+- **HEIC ingest is handled in the BROWSER, not the backend (2026-08-29).**
+  iPhones shoot HEIC by default and `createImageBitmap` cannot decode it in
+  Chrome or Firefox — only Safari can, being the only browser with a system
+  HEIC codec. Since `convertToJpeg` runs on EVERY upload (Enhance, Scan and
+  Modify all call it), an iPhone photo previously threw there and the upload
+  failed with an error that read like a corrupt file. `decodeToBitmap` in
+  `lib/compress.ts` is now the single place format support is decided, so the
+  three panels cannot drift apart on what they accept.
+  - **Detection is by MAGIC BYTES, never `file.type` or the extension.**
+    Chrome on Windows routinely reports an EMPTY type for `.heic`, and a file
+    can be named `.jpg` and still be HEIC. The test is the ISO-BMFF `ftyp` box
+    plus a brand in {heic, heix, hevc, hevx, heim, heis, hevm, hevs, mif1,
+    msf1} — note an `.mp4` is also ISO-BMFF, so the brand check is what keeps
+    a video out. Nine cases covered, including a HEIC with a lying `.jpg` name
+    and an mp4 correctly rejected.
+  - **`heic-to` is DYNAMICALLY imported.** It carries a libheif WASM build of a
+    couple of megabytes; loading that on every JPEG upload to serve the
+    occasional iPhone photo would be a bad trade, so nothing is fetched until a
+    HEIC actually arrives. Keep the import dynamic.
+  - **HEIC decodes straight to a bitmap, not via an intermediate JPEG** —
+    HEIC → JPEG → canvas → JPEG would put two lossy generations on every iPhone
+    photo before the model sees it, which is exactly the detail the
+    uncapped-resolution change exists to preserve.
+  - ⚠️ **The API-KEY INGEST path has no browser and is therefore NOT covered.**
+    df-auto-edit and media-auditor PUT bytes straight to a signed URL. Whether
+    the container could decode HEIC there depends on whether Debian's
+    `libvips42` was built with libheif, which is a property of the package and
+    not visible from the Dockerfile — so `main.py` now logs
+    `image codecs: HEIC/HEIF decode AVAILABLE|NOT available` at boot. Read that
+    line before adding a server-side conversion step; it may already work.
 - **Byte compression stays on the client, and the reason in the old comment was
   wrong.** Uploads go straight to GCS via a signed PUT, so Vercel's 4.5 MB
   serverless body limit never applied to image bytes. The quality loop is now

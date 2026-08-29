@@ -28,6 +28,68 @@
 // resolution a large photo may not reach the target even at minimum quality,
 // and failing the upload over that is worse than uploading a bigger file to a
 // bucket that does not care.
+// ─── HEIC ─────────────────────────────────────────────────────────────────────
+//
+// iPhones shoot HEIC by default, and `createImageBitmap` CANNOT decode it in
+// Chrome or Firefox — only Safari can, because it is the only browser with a
+// system HEIC codec. So without this an iPhone upload throws inside
+// convertToJpeg and the upload fails outright, with an error that reads like a
+// corrupt file rather than an unsupported format.
+//
+// Detection is by MAGIC BYTES, not `file.type` or the extension. Browsers
+// frequently report an EMPTY type for .heic (notably Chrome on Windows), and an
+// extension can lie, so sniffing the container is the only reliable test.
+//
+// The decoder is DYNAMICALLY IMPORTED. heic-to carries a libheif WASM build of
+// a couple of megabytes; loading that on every JPEG upload to serve the
+// occasional iPhone photo would be a bad trade, so nothing is fetched until a
+// HEIC actually arrives.
+
+const HEIC_BRANDS = new Set([
+  "heic", "heix", "hevc", "hevx", "heim", "heis", "hevm", "hevs", "mif1", "msf1",
+]);
+
+/**
+ * True when these bytes are an HEIC/HEIF container.
+ *
+ * HEIC is ISO base media format: a 4-byte box size, then the literal "ftyp",
+ * then a 4-character brand. Reading the first 12 bytes is enough and costs
+ * nothing, which is what lets the WASM decoder stay behind a dynamic import.
+ */
+async function isHeic(file: File): Promise<boolean> {
+  try {
+    const head = new Uint8Array(await file.slice(0, 12).arrayBuffer());
+    if (head.length < 12) return false;
+    const ascii = (from: number, to: number) =>
+      String.fromCharCode(...head.subarray(from, to));
+    if (ascii(4, 8) !== "ftyp") return false;
+    return HEIC_BRANDS.has(ascii(8, 12).toLowerCase());
+  } catch {
+    // An unreadable slice is not this function's problem to report; the decode
+    // below will fail far more informatively.
+    return false;
+  }
+}
+
+/**
+ * Decode any supported image File to an ImageBitmap.
+ *
+ * The single place format support is decided, so Enhance, Scan and Modify
+ * cannot drift apart on which files they accept.
+ *
+ * HEIC is decoded straight to a bitmap rather than via an intermediate JPEG.
+ * Converting HEIC -> JPEG -> canvas -> JPEG would put two lossy generations on
+ * every iPhone photo before the AI ever sees it, which is exactly the detail
+ * the uncapped-resolution change exists to preserve.
+ */
+export async function decodeToBitmap(file: File): Promise<ImageBitmap> {
+  if (await isHeic(file)) {
+    const { heicTo } = await import("heic-to");
+    return heicTo({ blob: file, type: "bitmap" });
+  }
+  return createImageBitmap(file);
+}
+
 export const MAX_BYTES = 4.5 * 1024 * 1024; // 4.5 MB
 const TARGET_BYTES = 4.0 * 1024 * 1024;     // 4.0 MB target after compression
 
@@ -39,7 +101,7 @@ const TARGET_BYTES = 4.0 * 1024 * 1024;     // 4.0 MB target after compression
 export async function compressIfNeeded(file: File): Promise<File> {
   if (file.size <= MAX_BYTES) return file;
 
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await decodeToBitmap(file);
 
   // Native resolution — no downscale. Only the JPEG quality is reduced below.
   const { width, height } = bitmap;
@@ -93,7 +155,7 @@ export function formatBytes(bytes: number): string {
  *   • Iterative quality reduction toward TARGET_BYTES (best effort)
  */
 export async function convertToJpeg(file: File, targetFilename: string): Promise<File> {
-  const bitmap = await createImageBitmap(file);
+  const bitmap = await decodeToBitmap(file);
 
   // Native resolution — the long-edge cap is gone. Enhancement standardises
   // the OUTPUT at 2800x2000; the input should carry as much real detail into

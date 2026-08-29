@@ -19,6 +19,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "better-auth": "1.6.11",
     "flags": "^4.0.6",
+    "heic-to": "^1.5.2",
     "next": "16.2.6",
     "pg": "^8.13.0",
     "react": "19.2.6",
