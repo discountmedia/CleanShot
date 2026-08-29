@@ -57,6 +57,10 @@ PER_IMAGE_USD: dict[str, float] = {
     # real volume, or the spend dashboard will under-report it the same way
     # the Gemini row does.
     "photoroom/segment":              0.0,
+    # Florence-2 object detection for auto-crop. PLACEHOLDER — fal bills this
+    # per-request and the rate has not been checked. One call per enhance JOB,
+    # so a 2-provider batch detects twice on the same source.
+    "fal-ai/florence-2-large":        0.0,
 
     # xAI Grok image edit (https://docs.x.ai). Public pricing for
     # /v1/images/edits isn't published yet — placeholder of $0.07 per

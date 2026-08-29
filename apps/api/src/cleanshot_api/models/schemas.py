@@ -325,6 +325,11 @@ class EnhanceToggles(BaseModel):
     # and which one is better on forklift lattice is unmeasured.
     # ⚠️ Photoroom's free tier is TEN IMAGES TOTAL.
     cutout_photoroom: bool = Field(False, alias="cutoutPhotoroom")
+    # AUTO CROP — Florence-2 locates the machine and the image is reframed to
+    # the house 7:5 composition (services/autocrop.py). Ported from
+    # df-auto-edit, whose framing constants were measured, not chosen.
+    # Independent of every other toggle: it changes framing, not pixels.
+    auto_crop: bool = Field(False, alias="autoCrop")
     # Identity-preservation flag for 3-wheel forklifts (single rear
     # pivot/steer wheel under the counterweight). When ON, the prompt
     # adds a guardrail telling the AI to preserve the single-rear-wheel

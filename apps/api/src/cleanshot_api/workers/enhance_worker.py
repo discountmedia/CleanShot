@@ -35,6 +35,7 @@ from cleanshot_api.services.image_processing import (
     upscale_to_standard,
 )
 from cleanshot_api.services.cutout import has_alpha, remove_background
+from cleanshot_api.services.autocrop import AutoCropUnavailableError, auto_crop
 from cleanshot_api.services.pricing import estimate_cost_usd
 from cleanshot_api.models.schemas import (
     EnhanceTaskPayload,
@@ -2000,6 +2001,23 @@ async def _run_enhance(
         # composite, export, the copies written to the user's project) then
         # operates on an image that is already the final size and never
         # resamples it again.
+        # AUTO CROP runs BEFORE standardisation, deliberately. It emits a 7:5
+        # rect, so upscale_to_standard is then a pure scale with nothing left to
+        # crop — the "every output is exactly 2800x2000" guarantee is untouched.
+        # Doing it after would mean cropping the standard size and having to
+        # re-expand, which is two resamples for one framing decision.
+        #
+        # A failure here does NOT fail the job. Unlike a cutout, an uncropped
+        # image is still a correct, shippable listing photo — it is merely not
+        # reframed — so this degrades where the cutout refuses to.
+        if payload.toggles.auto_crop:
+            try:
+                output_bytes = await auto_crop(output_bytes)
+            except AutoCropUnavailableError as exc:
+                logger.warning("auto-crop skipped, shipping uncropped: %s", exc)
+            except Exception:
+                logger.exception("auto-crop errored, shipping uncropped")
+
         output_bytes = await asyncio.to_thread(upscale_to_standard, output_bytes)
 
         # TOTAL BACKGROUND REMOVAL. Runs AFTER standardisation and after the
