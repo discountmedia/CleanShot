@@ -1,6 +1,28 @@
-# Session handoff — updated 2026-08-27
+# Session handoff — updated 2026-10-01
 
 Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. "Enhance tab — current shape"). This file is the "where we are right now / what's pending" snapshot.
+
+---
+
+## 2026-10-01: export naming and ZIP auto-download
+
+- **Export names** now come from one function, `build_export_name`
+  (`apps/api/src/cleanshot_api/services/export_naming.py`, 82 unit tests in
+  `tests/test_export_naming.py`). ZIP, Library folder and images are all
+  `MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL`, images add `_NN.ext`. The provider
+  suffix (`_Gemini`) is gone; the sequence number alone keeps names unique.
+- **Blank fields are filled from the inventory CSV** only when every matching
+  make + model row agrees. The CSV has no header and no tire column, so it can
+  never supply a tire. **Two copies exist:** `reference/title-inference-csv.csv`
+  (untracked, the operator's file) and `apps/api/src/cleanshot_api/data/`
+  (the one the API reads; the Dockerfile ships only `src/`). Edit one, copy to
+  the other.
+- **The ZIP auto-downloads** when 7x5 EXPORT finishes. The Download ZIP button
+  stays as the fallback. Not yet tested in a real browser.
+- Not run: the DB-backed `test_api.py` (needs local Postgres).
+- **The 27 Aug warning below is stale.** `dd2b8e7` and everything before it
+  are pushed and live. `802e1bc` (Auto Crop default + Photoroom-only) is still
+  HELD locally, with the 28 Aug rewrite of this file on top of it.
 
 ---
 

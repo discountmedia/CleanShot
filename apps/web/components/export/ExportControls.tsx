@@ -33,6 +33,23 @@ import {
 import { formatBytes } from "../../lib/compress";
 import { type ForkliftMeta } from "../../lib/types";
 
+/**
+ * Save a file without a second click. The signed GCS URL carries
+ * `response-content-disposition: attachment`, so following it downloads
+ * rather than navigates; the `download` attribute alone would be ignored on a
+ * cross-origin href.
+ */
+function startDownload(url: string, filename: string) {
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.rel = "noopener";
+  a.style.display = "none";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 // Watermark string burnt into the bottom-right corner of every exported JPEG
 // when the disclaimer checkbox is on. Briefly unconditional (2026-08-21), now
 // back to a checkbox pending a final decision on how the watermark gets
@@ -291,6 +308,9 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             setZipUrl(resp.zipUrl);
             setZipFilename(resp.zipFilename);
             setZipSizeBytes(resp.zipSizeBytes);
+            // The ZIP starts downloading on its own; the Download ZIP button
+            // below stays as the fallback if the browser blocks it.
+            if (resp.zipUrl) startDownload(resp.zipUrl, resp.zipFilename);
           },
         },
       );

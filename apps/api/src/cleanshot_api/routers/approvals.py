@@ -64,22 +64,32 @@ def _build_gcs_dir(
     make: str,
     model: str,
     session_id: uuid.UUID,
+    *,
+    label: str | None = None,
 ) -> str:
     """
     Build the human-readable GCS directory path for an approval set.
     Format: approved/{email}/{YYYY-MM-DD}_{make}_{model}_{session-short}
+
+    Export passes `label` — the already-safe build_export_name base
+    (LIFT_HERO_2024_CPD30_P-6K_E) — which replaces {make}_{model} so the
+    Library folder matches the ZIP and its files. This route keeps make_model.
 
     The {session-short} suffix is the first hex segment of the session UUID
     (8 chars) and guarantees uniqueness when the same user approves multiple
     sessions of the same make/model on the same day.
     """
     today = datetime.date.today().strftime("%Y-%m-%d")
-    safe_make  = _sanitize(make)  or "unknown"
-    safe_model = _sanitize(model) or "unknown"
+    if label:
+        name = label
+    else:
+        safe_make  = _sanitize(make)  or "unknown"
+        safe_model = _sanitize(model) or "unknown"
+        name = f"{safe_make}_{safe_model}"
     # Email: replace @ and . with _ for path safety
     safe_email = re.sub(r"[^a-z0-9_\-]", "_", user_email.lower())
     session_short = str(session_id).split("-", 1)[0]  # first 8 hex chars
-    dir_name   = f"{today}_{safe_make}_{safe_model}_{session_short}"
+    dir_name   = f"{today}_{name}_{session_short}"
     return f"{APPROVED_PREFIX}/{safe_email}/{dir_name}"
 
 

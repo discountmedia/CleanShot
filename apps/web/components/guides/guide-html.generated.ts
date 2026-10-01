@@ -652,7 +652,21 @@ export const GUIDE_HTML: GuideHtml[] = [
       <li>The disclaimer watermark is <strong>on by default</strong>.</li>
       <li>A transparent-background export comes out as a PNG and carries no watermark.</li>
       <li>Exported images land in <strong>Your Photo Library</strong> alongside their originals.</li>
+      <li><strong>The ZIP downloads by itself</strong> when the export finishes. The <strong>Download ZIP</strong> button stays as a backup if your browser blocks it; clicking it as well saves a second copy. If the browser asks to allow multiple downloads, say yes once.</li>
       <li>Download links expire after an hour. Re-export if one goes stale.</li>
+    </ul>
+    <p>
+      Exported files are renamed from the equipment details, in capitals:
+      <strong>MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL</strong>. The ZIP and the
+      Photo Library folder use that name, and each image adds a number, for
+      example <strong>LIFT_HERO_2024_CPD30_P-6K_E_01.jpg</strong>.
+    </p>
+    <ul class="bullets">
+      <li><strong>Tire</strong> is P (pneumatic) or C (cushion). Anything else, such as non-marking, is left out.</li>
+      <li><strong>Capacity</strong> is in thousands of pounds: 5500 becomes 5.5K, 500 becomes .5K. A capacity in kg is left out.</li>
+      <li><strong>Fuel</strong> is D, G, LP, DUAL or E. You can type the full word or the letters.</li>
+      <li>A blank field is filled from the inventory list when that model has only one possible value there. If it doesn&rsquo;t, the field is left out of the name. The year is only filled when every unit of that model in the list has the same year.</li>
+      <li>Blank fields never stop an export.</li>
     </ul>
   </div>
 

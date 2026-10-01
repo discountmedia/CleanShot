@@ -36,6 +36,7 @@ from cleanshot_api.models.schemas import (
 # directory conventions for the same Photo Library.
 from cleanshot_api.routers.approvals import _build_gcs_dir as build_approved_dir
 from cleanshot_api.services import gcs as gcs_service
+from cleanshot_api.services.export_naming import build_export_name
 from cleanshot_api.services.image_processing import (
     export_custom,
     export_pro,
@@ -55,81 +56,6 @@ def _require_saved_project(project):
         )
 
 
-_FILENAME_PART_RE = __import__("re").compile(r"[^a-zA-Z0-9_-]+")
-
-
-def _sanitize_filename_part(s: str) -> str:
-    """
-    Filesystem-safe version of a free-text field. Mirrors the
-    `sanitize` helper in apps/web/lib/compress.buildEnhanceFilename
-    so resize output filenames feel like a natural successor to the
-    upload filenames the operator already sees on the Enhance tab.
-    """
-    import re
-    s = (s or "").strip()
-    s = _FILENAME_PART_RE.sub("_", s)
-    s = re.sub(r"_+", "_", s)
-    return s.strip("_")
-
-
-def _build_pro_filename(
-    *,
-    make: str,
-    model: str,
-    year: int | None,
-    index: int,
-    total: int,
-    provider: str | None = None,
-    ext: str = "jpg",
-) -> str:
-    """
-    Deterministic PRO-export filename built from the saved project
-    metadata + a 1-indexed sequence number, optionally suffixed with
-    the AI provider that produced the output. Examples:
-
-      Toyota_8FGU25_2019_01.jpg               (single-provider batch)
-      Toyota_8FGU25_2019_01_Gemini.jpg        (multi-provider; Gemini variant)
-      Toyota_8FGU25_2019_01_Openai.jpg        (multi-provider; OpenAI variant)
-      Toyota_8FGU25_2019_01.png               (transparent-background cutout)
-
-    The padding width grows with the batch size so sequencing sorts
-    correctly in any file explorer (1-9 → 1-digit, 10-99 → 2-digit, etc.).
-    Provider suffix lets the operator tell duplicate variants apart in
-    the ZIP — see ExportProRequest.providers (parallel to asset_ids).
-    Falls back to 'forklift_NN[.jpg|_Provider.jpg]' if every meta part
-    sanitizes to empty.
-
-    `ext` must match what export_pro actually produced. Cutouts come back as
-    PNG (JPEG has no alpha channel), and a .jpg name on PNG bytes is the kind
-    of mismatch that survives all the way to someone's CMS rejecting the
-    upload — so the caller passes the extension derived from the real
-    content type rather than assuming.
-    """
-    parts = [
-        _sanitize_filename_part(make),
-        _sanitize_filename_part(model),
-        # `if year else ""` matters: an unknown year is None, and str(None)
-        # would put the literal text "None" in every exported filename.
-        _sanitize_filename_part(str(year) if year else ""),
-    ]
-    parts = [p for p in parts if p]
-    base = "_".join(parts) if parts else "forklift"
-    if total >= 100:
-        width = 3
-    elif total >= 10:
-        width = 2
-    else:
-        width = 1
-    seq = str(index + 1).zfill(width)
-    provider_part = ""
-    if provider:
-        # Capitalise just the first letter — easier to read in a file
-        # explorer than ALL CAPS, and consistent with the brand chips
-        # in the Enhance tab UI.
-        provider_part = f"_{_sanitize_filename_part(provider).capitalize()}"
-    return f"{base}_{seq}{provider_part}.{ext.lstrip('.')}"
-
-
 def _ext_for(content_type: str) -> str:
     """
     File extension for what export_pro actually encoded.
@@ -141,25 +67,6 @@ def _ext_for(content_type: str) -> str:
     content_type instead of taking a flag.
     """
     return {"image/png": "png", "image/jpeg": "jpg"}.get(content_type, "jpg")
-
-
-def _build_zip_filename(*, make: str, model: str, year: int | None) -> str:
-    """
-    Meta-derived name for the bundled ZIP so the operator's download is
-    labelled with the unit instead of a generic 'cleanshot_pro_export.zip'.
-    Mirrors the base of `_build_pro_filename`. Example:
-
-      Toyota_8FGU25_2019.zip
-
-    Falls back to 'cleanshot_pro_export.zip' if every meta part is empty.
-    """
-    parts = [
-        _sanitize_filename_part(make),
-        _sanitize_filename_part(model),
-        _sanitize_filename_part(str(year) if year else ""),
-    ]
-    parts = [p for p in parts if p]
-    return f"{'_'.join(parts)}.zip" if parts else "cleanshot_pro_export.zip"
 
 
 @router.post(
@@ -417,8 +324,9 @@ async def export_pro_preview(
       {"event": "result",   "items": [...], "zip_url": "...", ...}
       {"event": "error",    "message": "..."}
 
-    Filenames are built deterministically from the saved project's
-    make / model / year + a 1-indexed sequence number — no AI captioning.
+    Filenames come from `build_export_name` (services/export_naming.py):
+    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_NN.ext from the saved project, blank
+    fields filled from the inventory CSV where unambiguous — no AI captioning.
     Captioning was tried but added ~2s per image of Vertex Gemini round-
     trips for no operator-visible benefit; the saved project metadata is
     the canonical source for naming anyway, and the operator has already
@@ -438,7 +346,7 @@ async def export_pro_preview(
     never sent here and are therefore never persisted.
 
     GCS layout (cleanshot-derivatives-prod):
-      approved/{email}/{date}_{make}_{model}_{session-short}/{filename}.jpg
+      approved/{email}/{date}_{export name}_{session-short}/{filename}.jpg
                                                 ← exported files + originals
       session/{session_id}/pro/export_pro.zip   ← bundle (overwritten per call)
     """
@@ -452,6 +360,19 @@ async def export_pro_preview(
     gcs_client = gcs_lib.Client(project=settings.gcp_project)
     derivatives_bucket = gcs_client.bucket(settings.gcs_bucket_derivatives)
 
+    # One set of naming fields for the folder, the ZIP and every image, so the
+    # three can never disagree. `body.providers` no longer reaches the name:
+    # the sequence number alone keeps two variants of one photo distinct.
+    name_fields = dict(
+        make=project.make,
+        year=project.year,
+        model=project.model,
+        tire=project.tire_type,
+        capacity=project.capacity,
+        fuel=project.fuel_type,
+    )
+    export_name = build_export_name(**name_fields)
+
     # Destination for the saved set. Same builder the approvals route uses, so
     # the Photo Library reads these rows without knowing they came from export.
     user_email = x_user_email.lower()
@@ -460,16 +381,8 @@ async def export_pro_preview(
         project.make or "",
         project.model or "",
         body.session_id,
+        label=export_name,
     )
-
-    # Build a per-asset_id → provider lookup before the stream starts.
-    # `body.providers` is a parallel list to `body.asset_ids`; missing /
-    # short / None entries default to None so the filename builder
-    # falls back to the un-suffixed form.
-    provider_by_asset_id: dict[uuid.UUID, str | None] = {}
-    if body.providers is not None:
-        for aid, p in zip(body.asset_ids, body.providers):
-            provider_by_asset_id[aid] = p if p else None
 
     async def event_stream():
         try:
@@ -496,7 +409,7 @@ async def export_pro_preview(
             # ── Phase 1: per-image resize + write (sequential — ZIP is
             # single-writer and pyvips is CPU-bound; parallelising would
             # only fight the GIL). Captioning is gone — filenames are
-            # built from project.make / .model / .year + sequence number.
+            # built by build_export_name from the saved project fields.
             items: list[dict] = []
             saved_exports: list[dict] = []
             zip_buf = io.BytesIO()
@@ -517,13 +430,10 @@ async def export_pro_preview(
                     if result.size_warning:
                         any_warning = True
 
-                    out_filename = _build_pro_filename(
-                        make=project.make,
-                        model=project.model,
-                        year=project.year,
-                        index=i,
+                    out_filename = build_export_name(
+                        **name_fields,
+                        sequence=i + 1,
                         total=total,
-                        provider=provider_by_asset_id.get(asset_id),
                         ext=_ext_for(result.content_type),
                     )
                     # The ONLY copy of this exported image. It goes directly
@@ -545,7 +455,7 @@ async def export_pro_preview(
                     )
 
                     # download_filename so the per-image "Download" link
-                    # saves under the meta name (Toyota_8FGU25_2019_01.jpg)
+                    # saves under the meta name (LIFT_HERO_2024_CPD30_P-6K_E_01.jpg)
                     # instead of the raw {asset_id}.jpg object name — the
                     # HTML download attr can't override a cross-origin href.
                     preview_url, _ = gcs_service.mint_read_url(
@@ -604,11 +514,7 @@ async def export_pro_preview(
                 zip_bytes,
                 content_type="application/zip",
             )
-            zip_download_name = _build_zip_filename(
-                make=project.make,
-                model=project.model,
-                year=project.year,
-            )
+            zip_download_name = f"{export_name}.zip"
             zip_url, _ = gcs_service.mint_read_url(
                 zip_uri,
                 download_filename=zip_download_name,

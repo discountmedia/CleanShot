@@ -81,7 +81,7 @@ Cloud Infrastructure (GCP — cleanshot-493512, us-central1)
   └── GCS (2 buckets)
         ├── cleanshot-originals-493512    ← uploads, versioned, indefinite retention
         └── cleanshot-derivatives-493512  ← enhanced/scanned/approved, lifecycle rules
-              └── approved/{email}/{YYYY-MM-DD}_{make}_{model}/   ← 30-day lifecycle
+              └── approved/{email}/{YYYY-MM-DD}_{export name}_{session-short}/   ← 30-day lifecycle
 ```
 
 **Key design decisions:**
@@ -575,7 +575,8 @@ Because a standalone upload has no pre-enhance original to compare against, it g
 2. **Crop to fill, never pad or stretch.** A source that isn't 7:5 is scaled to cover 2800x2000 and the overflow is cropped from the centre. Stretching would distort the machine and make the photo inaccurate, so it never happens; a portrait source loses roughly 30% of its height.
 3. Exported images are **upscaled**, so they must go through the image optimizer in PRO after upload — the button says so.
 4. An optional **AI disclaimer watermark** checkbox, **on by default**. This was briefly mandatory and is back to a checkbox pending a final decision on how the watermark gets applied; the rendering code is unchanged either way.
-5. Clicking export saves the project, writes the finished files and their originals to your Photo Library, and gives you per-image downloads plus a ZIP.
+5. Clicking export saves the project, writes the finished files and their originals to your Photo Library, and gives you per-image downloads plus a ZIP. **The ZIP downloads automatically** when the export finishes; the Download ZIP button remains as a fallback if the browser blocks it.
+6. **Naming.** `build_export_name` (`apps/api/src/cleanshot_api/services/export_naming.py`) names the ZIP, the Library folder and every image: `MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL`, plus `_NN.ext` per image, e.g. `LIFT_HERO_2024_CPD30_P-6K_E_01.jpg`. Tire is `P`/`C`, fuel `D`/`G`/`LP`/`DUAL`/`E` (full words accepted), capacity is lbs in thousands (`5500` → `5.5K`, `500` → `.5K`). Blank fields are filled from the packaged inventory CSV only when every matching make + model row agrees; anything still blank is dropped with its separator, so export never blocks. The year is never inferred.
 
 ---
 
@@ -586,14 +587,14 @@ Exporting is what writes to the library. The stored copy **is the exported file*
 Files land under:
 
 ```
-gs://cleanshot-derivatives-493512/approved/{email}/{YYYY-MM-DD}_{make}_{model}/{filename}
+gs://cleanshot-derivatives-493512/approved/{email}/{YYYY-MM-DD}_{export name}_{session-short}/{filename}
 ```
 
 Examples:
 ```
-approved/john_acme_com/2026-05-14_toyota_8fgu25/forklift_01.jpg
-approved/john_acme_com/2026-05-14_toyota_8fgu25/forklift_02.jpg
-approved/sarah_partner_org/2026-05-15_hyster_h50ft/unit_front.jpg
+approved/john_acme_com/2026-10-01_LIFT_HERO_2024_CPD30_P-6K_E_1a2b3c4d/LIFT_HERO_2024_CPD30_P-6K_E_01.jpg
+approved/john_acme_com/2026-10-01_LIFT_HERO_2024_CPD30_P-6K_E_1a2b3c4d/LIFT_HERO_2024_CPD30_P-6K_E_02.jpg
+approved/john_acme_com/2026-10-01_LIFT_HERO_2024_CPD30_P-6K_E_1a2b3c4d/original_{upload}.jpg
 ```
 
 Images are stored for **30 days** then deleted automatically via a GCS lifecycle rule. The `/history` page shows all sets from the last 30 days with thumbnails, download links, and days-remaining indicators (yellow warning at ≤5 days).
