@@ -102,6 +102,9 @@ class ProjectRecord(BaseModel):
     fuel_type: str
     # Optional paint colour; the last part of the export name. NULL = none.
     color: str | None = None
+    # Optional checkboxes; part of the export name only when True.
+    dual_drive: bool = False
+    cab: bool = False
     username: str
     photo_type: PhotoTypeEnum
     saved_at: datetime | None = None
@@ -555,6 +558,9 @@ class SaveProjectRequest(BaseModel):
     # OPTIONAL with no default value beyond None, same rule as year: a colour
     # nobody typed is absent, never guessed. Older web builds omit it.
     color: str | None = Field(default=None, max_length=100)
+    # Unchecked unless the operator ticks them. Older web builds omit both.
+    dual_drive: bool = False
+    cab: bool = False
     username: str = Field(min_length=1, max_length=100)
     photo_type: PhotoTypeEnum
 

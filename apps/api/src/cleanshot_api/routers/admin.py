@@ -474,3 +474,66 @@ async def update_ticket(
         from fastapi import HTTPException, status as http_status
         raise HTTPException(status_code=http_status.HTTP_404_NOT_FOUND, detail="Ticket not found")
     return SupportTicketRecord(**row)
+
+
+# ─── Known makes & models (the Make / Model dropdown list) ────────────────────
+# Admins rename or hide entries; there is no delete, because the inventory
+# seed runs on every start and would bring a deleted inventory row back. See
+# services/known_models.py.
+
+from pydantic import BaseModel, Field  # noqa: E402
+
+from cleanshot_api.services import known_models  # noqa: E402
+
+
+class KnownModelUpdate(BaseModel):
+    make: str | None = Field(default=None, max_length=100)
+    model: str | None = Field(default=None, max_length=100)
+    hidden: bool | None = None
+
+
+def _known_model_out(r: dict) -> dict[str, Any]:
+    return {
+        "id": str(r["id"]),
+        "make": r["make"],
+        "model": r["model"],
+        "source": r["source"],
+        "hidden": r["hidden"],
+        "createdBy": r["created_by"],
+        "createdAt": r["created_at"].isoformat() if r["created_at"] else None,
+        "updatedAt": r["updated_at"].isoformat() if r["updated_at"] else None,
+        "firstEntered": {
+            "year": r["year"], "tireType": r["tire_type"], "capacity": r["capacity"],
+            "fuelType": r["fuel_type"], "color": r["color"],
+            "dualDrive": r["dual_drive"], "cab": r["cab"],
+        },
+    }
+
+
+@router.get("/known-models", dependencies=[Depends(require_api_key)])
+async def admin_list_known_models(pool: asyncpg.Pool = Depends(get_pool)) -> dict[str, Any]:
+    async with pool.acquire() as conn:
+        rows = await known_models.list_all(conn)
+    return {"models": [_known_model_out(r) for r in rows]}
+
+
+@router.patch("/known-models/{entry_id}", dependencies=[Depends(require_api_key)])
+async def admin_update_known_model(
+    entry_id: uuid.UUID,
+    body: KnownModelUpdate,
+    pool: asyncpg.Pool = Depends(get_pool),
+) -> dict[str, Any]:
+    async with pool.acquire() as conn:
+        try:
+            row = await known_models.update(
+                conn, entry_id, make=body.make, model=body.model, hidden=body.hidden,
+            )
+        except known_models.DuplicateEntry as exc:
+            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
+        except ValueError as exc:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc),
+            ) from exc
+    if row is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Entry not found")
+    return _known_model_out(row)

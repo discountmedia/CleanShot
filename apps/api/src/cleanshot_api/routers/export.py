@@ -371,6 +371,8 @@ async def export_pro_preview(
         capacity=project.capacity,
         fuel=project.fuel_type,
         color=project.color,
+        dual_drive=project.dual_drive,
+        cab=project.cab,
     )
     export_name = build_export_name(**name_fields)
 

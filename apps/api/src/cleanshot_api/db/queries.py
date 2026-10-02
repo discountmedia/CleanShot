@@ -676,21 +676,26 @@ async def save_project(
     photo_type: str,
     # Optional paint colour. None clears a colour saved earlier on re-save.
     color: str | None = None,
+    dual_drive: bool = False,
+    cab: bool = False,
 ) -> ProjectRecord:
     row = await conn.fetchrow(
         """
         INSERT INTO projects
             (session_id, title, make, year, model, tire_type,
-             capacity, fuel_type, username, photo_type, color, saved_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11, now())
+             capacity, fuel_type, username, photo_type, color,
+             dual_drive, cab, saved_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13, now())
         ON CONFLICT (session_id, title) DO UPDATE
           SET make=$3, year=$4, model=$5, tire_type=$6,
               capacity=$7, fuel_type=$8, username=$9,
-              photo_type=$10, color=$11, saved_at=now()
+              photo_type=$10, color=$11, dual_drive=$12, cab=$13,
+              saved_at=now()
         RETURNING *
         """,
         session_id, title, make, year, model,
         tire_type, capacity, fuel_type, username, photo_type, color,
+        dual_drive, cab,
     )
     assert row is not None
     return ProjectRecord(**dict(row))

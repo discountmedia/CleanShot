@@ -40,6 +40,9 @@ import {
   yearOptions,
   type FieldOption,
 } from "../../lib/equipment-fields";
+import { isListed, makesOf, modelsFor, useKnownModels } from "../../lib/known-models";
+import { CheckField } from "../ui/CheckField";
+import { OptionOrOther } from "../ui/OptionOrOther";
 import { SelectField } from "../ui/SelectField";
 import { type ForkliftMeta } from "../../lib/types";
 
@@ -103,11 +106,13 @@ interface ProjectForm {
   capacity:  string;
   fuelType:  string;
   color:     string;
+  dualDrive: boolean;
+  cab:       boolean;
   username:  string;
 }
 
 const EMPTY_FORM: ProjectForm = {
-  make: "", year: "", model: "", tireType: "", capacity: "", fuelType: "", color: "", username: "",
+  make: "", year: "", model: "", tireType: "", capacity: "", fuelType: "", color: "", dualDrive: false, cab: false, username: "",
 };
 
 function validateForm(form: ProjectForm): { valid: boolean; yearNum: number | null } {
@@ -228,6 +233,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
     capacity: meta.capacity ?? "",
     fuelType: meta.fuelType ?? "",
     color:    meta.color    ?? "",
+    dualDrive: meta.dualDrive === true,
+    cab:       meta.cab === true,
     username: userEmail && userEmail !== "dev@local" ? userEmail : "",
   }));
 
@@ -243,6 +250,10 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       capacity: prev.capacity || (meta.capacity ?? ""),
       fuelType: prev.fuelType || (meta.fuelType ?? ""),
       color:    prev.color    || (meta.color    ?? ""),
+      // Same rule as the text fields above: a tick from the Enhance card
+      // carries down, and nothing upstream clears one made here.
+      dualDrive: prev.dualDrive || meta.dualDrive === true,
+      cab:       prev.cab       || meta.cab === true,
       username: prev.username || (userEmail && userEmail !== "dev@local" ? userEmail : ""),
     }));
   }, [meta, userEmail]);
@@ -272,6 +283,18 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
 
   const updateField = <K extends keyof ProjectForm>(key: K, value: ProjectForm[K]) => {
     setForm((prev) => ({ ...prev, [key]: value }));
+  };
+
+  /* The known Make + Model list. Same rule as the Enhance card: a model picked
+     from the old make's list is cleared when the make changes; a model typed
+     through Other is kept. */
+  const { models: known, refresh: refreshKnown } = useKnownModels();
+  const changeMake = (v: string) => {
+    setForm((prev) => {
+      const pickedForOld = isListed(modelsFor(known, prev.make), prev.model);
+      const fitsNew = isListed(modelsFor(known, v), prev.model);
+      return { ...prev, make: v, model: pickedForOld && !fitsNew ? "" : prev.model };
+    });
   };
 
   // ─── Save (no longer a button — the first half of Export) ────────────────
@@ -305,6 +328,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       // Optional and nullable in the DB, so blank is null rather than the
       // "unknown" placeholder the three NOT NULL fields above still need.
       color:     form.color.trim() || null,
+      dualDrive: form.dualDrive,
+      cab:       form.cab,
       username:  usernameOut,
       photoType: "auction",
     });
@@ -326,6 +351,8 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       // Save first — export is gated on it server-side, and this is the click
       // that replaces the removed Save Project button.
       await saveProjectMetadata();
+      // The save may have added a new make + model; pick it up for next time.
+      refreshKnown();
 
       await exportProPreviewStream(
         {
@@ -486,10 +513,25 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
         </header>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-5">
-          <TextField label="Make *" value={form.make} onChange={(v) => updateField("make", v)}
-            placeholder="Toyota" hint="OEM brand — Toyota, Hyster, Yale, Crown, etc." />
-          <TextField label="Model *" value={form.model} onChange={(v) => updateField("model", v)}
-            placeholder="8FGU25" hint="Model number from the data plate." />
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="export-make" className="text-sm uppercase tracking-[0.16em] text-ink font-bold">Make *</label>
+            <OptionOrOther id="export-make" value={form.make} onChange={changeMake}
+              options={makesOf(known)} emptyLabel="Choose a make" newLabel="New make"
+              placeholder="e.g. Toyota" ringClass="focus:ring-cta" required />
+            <span className="text-base text-accent font-semibold leading-relaxed">
+              Not listed? Choose Other. A new make joins the list when you export.
+            </span>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="export-model" className="text-sm uppercase tracking-[0.16em] text-ink font-bold">Model *</label>
+            <OptionOrOther id="export-model" value={form.model} onChange={(v) => updateField("model", v)}
+              options={modelsFor(known, form.make)}
+              emptyLabel="Choose a model"
+              newLabel="New model" placeholder="e.g. 8FGU25" ringClass="focus:ring-cta" required />
+            <span className="text-base text-accent font-semibold leading-relaxed">
+              Model number from the data plate.
+            </span>
+          </div>
           <SelectRow id="export-year" label="Year" value={form.year}
             onChange={(v) => updateField("year", v)}
             options={yearOptions()} emptyLabel="Unknown" canonical={(v) => canonicalYear(v)}
@@ -508,6 +550,11 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             hint="The letter in brackets goes in the file name." />
           <TextField label="Color" value={form.color} onChange={(v) => updateField("color", v)}
             placeholder="e.g. Luminous Yellow" hint="Optional. Goes at the end of the file name." />
+          <CheckField id="export-dualDrive" label="Dual Drive"
+            hint="2 wheels in the rear, 4 in the front. Adds DUAL_DRIVE to the file name."
+            checked={form.dualDrive} onChange={(v) => updateField("dualDrive", v)} />
+          <CheckField id="export-cab" label="Cab" hint="Adds CAB to the file name."
+            checked={form.cab} onChange={(v) => updateField("cab", v)} />
         </div>
       </section>
 

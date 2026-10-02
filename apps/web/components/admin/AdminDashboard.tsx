@@ -12,7 +12,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 
 import { KpiCard } from "../workspace/KpiCard";
 
-type TabId = "users" | "projects" | "usage" | "support";
+type TabId = "users" | "projects" | "usage" | "support" | "models";
 
 interface SupportTicket {
   id:         string;
@@ -788,6 +788,180 @@ function SupportTab() {
 
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
+// ─── Makes & Models (the Make / Model dropdown list) ─────────────────────────
+// Seeded from the inventory CSV; operators add to it through "Other" on every
+// export. This is where a typo ("Toyta") gets fixed or hidden. There is no
+// delete on purpose: the inventory seed runs on every API start and would put
+// a deleted inventory row straight back, so Hide is the removal.
+
+interface KnownModelRow {
+  id:        string;
+  make:      string;
+  model:     string;
+  source:    "inventory" | "operator";
+  hidden:    boolean;
+  createdBy: string | null;
+  createdAt: string | null;
+}
+
+function KnownModelsTab() {
+  const [rows,       setRows]       = useState<KnownModelRow[] | null>(null);
+  const [error,      setError]      = useState<string | null>(null);
+  const [query,      setQuery]      = useState("");
+  const [showHidden, setShowHidden] = useState(false);
+  const [editing,    setEditing]    = useState<string | null>(null);
+  const [draft,      setDraft]      = useState<{ make: string; model: string }>({ make: "", model: "" });
+  const [rowError,   setRowError]   = useState<{ id: string; message: string } | null>(null);
+  const [busy,       setBusy]       = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch("/api/admin/known-models", { cache: "no-store" })
+      .then((r) => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then((j: { models: KnownModelRow[] }) => setRows(j.models))
+      .catch((e: Error) => setError(e.message));
+  }, []);
+
+  const save = async (id: string, patch: Partial<Pick<KnownModelRow, "make" | "model" | "hidden">>) => {
+    setBusy(id);
+    setRowError(null);
+    try {
+      const r = await fetch(`/api/admin/known-models/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      });
+      if (!r.ok) {
+        // FastAPI's message ("Toyota 8FGU25 is already in the list.") arrives
+        // wrapped as {detail: "<json text>"} by the BFF's forwardError.
+        const raw = (await r.json().catch(() => ({ detail: `HTTP ${r.status}` }))) as { detail?: unknown };
+        let message = String(raw.detail ?? `HTTP ${r.status}`);
+        try { message = String((JSON.parse(message) as { detail?: unknown }).detail ?? message); } catch { /* plain text */ }
+        setRowError({ id, message });
+        return;
+      }
+      const updated = (await r.json()) as KnownModelRow;
+      setRows((prev) => prev?.map((x) => (x.id === id ? { ...x, ...updated } : x)) ?? prev);
+      setEditing(null);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const shown = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return (rows ?? []).filter((r) =>
+      (showHidden || !r.hidden) &&
+      (!q || `${r.make} ${r.model} ${r.createdBy ?? ""}`.toLowerCase().includes(q)));
+  }, [rows, query, showHidden]);
+
+  if (error) return <p className="text-sm text-attn">{error}</p>;
+  if (!rows) return <p className="text-sm text-ink-faint">Loading makes and models…</p>;
+
+  const hiddenCount = rows.filter((r) => r.hidden).length;
+  const field = "bg-panel border border-line rounded-lg px-2.5 py-1.5 text-sm text-ink focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent w-full";
+  const ghost = "px-3 py-1.5 rounded-lg border border-line bg-panel hover:bg-panel-hi text-ink font-semibold disabled:opacity-50";
+
+  return (
+    <section className="space-y-4">
+      <div className="flex flex-wrap items-end gap-4">
+        <label className="flex flex-col gap-1.5 min-w-64 flex-1 max-w-md">
+          <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">Search</span>
+          <input id="known-models-search" type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+            placeholder="Make, model, or who added it" className={field} />
+        </label>
+        <label className="flex items-center gap-2 text-sm text-ink-soft cursor-pointer select-none pb-2">
+          <input id="known-models-show-hidden" type="checkbox" checked={showHidden}
+            onChange={(e) => setShowHidden(e.target.checked)} className="w-4 h-4 accent-accent" />
+          Show hidden ({hiddenCount})
+        </label>
+        <p className="text-sm text-ink-soft pb-2 ml-auto">
+          {rows.length - hiddenCount} in the dropdowns. Hide removes an entry for everyone.
+        </p>
+      </div>
+
+      <div className="overflow-x-auto rounded-xl border border-line">
+        <table className="w-full text-sm">
+          <thead className="bg-panel/60 text-xs uppercase tracking-[0.16em] text-ink">
+            <tr>
+              <th className="px-3 py-2 text-left font-semibold">Make</th>
+              <th className="px-3 py-2 text-left font-semibold">Model</th>
+              <th className="px-3 py-2 text-left font-semibold">From</th>
+              <th className="px-3 py-2 text-left font-semibold">Added</th>
+              <th className="px-3 py-2"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {shown.map((r) => {
+              const isEditing = editing === r.id;
+              return (
+                <Fragment key={r.id}>
+                  <tr className={`border-t border-line ${r.hidden ? "opacity-60" : "hover:bg-panel/40"}`}>
+                    <td className="px-3 py-2 text-ink">
+                      {isEditing
+                        ? <input aria-label="Make" className={field} value={draft.make}
+                            onChange={(e) => setDraft((d) => ({ ...d, make: e.target.value }))} />
+                        : r.make}
+                    </td>
+                    <td className="px-3 py-2 text-ink">
+                      {isEditing
+                        ? <input aria-label="Model" className={field} value={draft.model}
+                            onChange={(e) => setDraft((d) => ({ ...d, model: e.target.value }))} />
+                        : r.model}
+                    </td>
+                    <td className="px-3 py-2 text-ink-soft">
+                      {r.source === "inventory" ? "Inventory list" : "Typed by an operator"}
+                      {r.hidden && <span className="ml-2 text-attn font-semibold">Hidden</span>}
+                    </td>
+                    <td className="px-3 py-2 text-ink-soft">
+                      {r.createdBy ?? "—"} · {isoDateShort(r.createdAt)}
+                    </td>
+                    <td className="px-3 py-2 text-right whitespace-nowrap">
+                      <div className="inline-flex gap-2">
+                        {isEditing ? (
+                          <>
+                            <button type="button" disabled={busy === r.id}
+                              onClick={() => save(r.id, { make: draft.make, model: draft.model })}
+                              className="px-3 py-1.5 rounded-lg border-2 border-cta bg-cta hover:bg-cta-dark text-white font-semibold disabled:opacity-50">
+                              Save
+                            </button>
+                            <button type="button" className={ghost}
+                              onClick={() => { setEditing(null); setRowError(null); }}>
+                              Cancel
+                            </button>
+                          </>
+                        ) : (
+                          <>
+                            <button type="button" className={ghost}
+                              onClick={() => { setEditing(r.id); setDraft({ make: r.make, model: r.model }); setRowError(null); }}>
+                              Fix spelling
+                            </button>
+                            <button type="button" className={ghost} disabled={busy === r.id}
+                              onClick={() => save(r.id, { hidden: !r.hidden })}>
+                              {r.hidden ? "Show" : "Hide"}
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                  {rowError?.id === r.id && (
+                    <tr className="border-t border-line">
+                      <td colSpan={5} className="px-3 py-2 text-attn">{rowError.message}</td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+            {shown.length === 0 && (
+              <tr><td colSpan={5} className="px-3 py-4 text-ink-faint">Nothing matches.</td></tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 export function AdminDashboard({ userEmail }: { userEmail: string }) {
   const [tab, setTab] = useState<TabId>("users");
   // Cross-tab filter — clicking "View projects" on a Users row sends
@@ -799,6 +973,7 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
     { id: "projects", label: "Projects" },
     { id: "usage",    label: "Usage"    },
     { id: "support",  label: "Support"  },
+    { id: "models",   label: "Makes & Models" },
   ];
 
   return (
@@ -857,6 +1032,7 @@ export function AdminDashboard({ userEmail }: { userEmail: string }) {
         )}
         {tab === "usage" && <UsageTab />}
         {tab === "support" && <SupportTab />}
+        {tab === "models" && <KnownModelsTab />}
       </main>
 
       <footer className="px-6 py-6 text-center">

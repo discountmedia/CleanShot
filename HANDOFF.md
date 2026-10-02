@@ -38,8 +38,27 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 - Verified by rendering the Enhance card on `next start` against a local mock
   FastAPI (no prod calls). The export form only renders with a picked winner,
   so it was typechecked, not rendered.
-- **Shipped alone on 2 Oct**, the same way as 1 Oct: the held Auto Crop +
-  Photoroom commit (`421f166`) and its docs commit stay local and unreleased.
+- **Shipped alone on 2 Oct (second push): Manual fuel + Dual Drive / Cab.**
+  Fuel gains `M` (Manual), in BOTH vocabularies (`_FUEL_CODES` and
+  `lib/equipment-fields.ts`). Two optional checkboxes in MetaCard and the
+  export form go into the name before the fuel, Dual Drive first:
+  `..._P-5K_DUAL_DRIVE_CAB_E_Luminous_Yellow`; unticked, names are unchanged.
+  New `projects.dual_drive` / `projects.cab` (`BOOLEAN NOT NULL DEFAULT
+  FALSE`). Out of scope on purpose: renaming anything that exists, parsing old
+  folder names, and any lift-type code. **The published Enhance-tab guide
+  Artifact needs republishing.**
+- **Same push: Make / Model dropdowns + the known-models list.**
+  New `known_models` table (seeded from the inventory CSV at API start, 34
+  pairs), `GET /api/v1/known-models`, admin `GET/PATCH
+  /api/v1/admin/known-models`, and a **Makes & Models** admin tab to fix
+  spelling or hide. "Other…" pairs are added at project save. Picking fills
+  nothing else (Stephen's call). Verified: Enhance card rendered against a
+  mock API; the SQL paths and admin endpoints against a real throwaway
+  Postgres (pgserver). NOT rendered locally: the admin tab (no local admin
+  session is possible) and the export form (needs a picked winner).
+- **Color shipped alone earlier on 2 Oct as `94dd762`.** After each push, local
+  `main` is rebuilt as origin/main → the held Auto Crop + Photoroom commit →
+  its docs commit, both re-IDed by the replay (see `git log`). Neither is released.
 
 ---
 

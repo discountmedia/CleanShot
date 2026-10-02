@@ -2,10 +2,16 @@
 Export naming: one function, `build_export_name`, names both the export folder
 and every image in it.
 
-    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color            folder / ZIP stem
-    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color_01.jpg     image
+    MAKE_YEAR_MODEL_TIRE-CAPACITY[_DUAL_DRIVE][_CAB]_FUEL_Color         folder / ZIP stem
+    MAKE_YEAR_MODEL_TIRE-CAPACITY[_DUAL_DRIVE][_CAB]_FUEL_Color_01.jpg  image
 
     e.g. LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_01.jpg
+         LIFT_HERO_2023_CPD25_P-5K_DUAL_DRIVE_CAB_E_Luminous_Yellow_01.jpg
+
+* **Dual Drive and Cab are checkboxes** (Stephen, 2 Oct 2026). Off, they add
+  nothing, so every name without them is exactly what it was. On, they sit
+  BEFORE the fuel, Dual Drive first. Never filled from the CSV. Dual Drive (2
+  wheels rear, 4 front) is not the DUAL fuel code; the two are unrelated.
 
 * **Colour is optional, last, and NOT uppercased** (Stephen, 2 Oct 2026, by
   example: `..._E_Luminous_Yellow`). An all-lowercase word is capitalised
@@ -73,6 +79,10 @@ _FUEL_CODES = {
     "lp/gas": "DUAL", "gas/lp": "DUAL", "lpg/gas": "DUAL", "gas/lpg": "DUAL",
     "e": "E", "electric": "E", "battery": "E",
     "lithium": "E", "lithium ion": "E", "li ion": "E",
+    # Propelled by a person: nothing powers travel or steering. A manual
+    # pallet jack with an electric pump for the forks is still Manual.
+    # Mirrored in apps/web/lib/equipment-fields.ts FUEL_OPTIONS / FUEL_SYNONYMS.
+    "m": "M", "manual": "M",
 }
 
 # Characters allowed in a name. Everything else, whitespace included, becomes
@@ -198,6 +208,19 @@ class Inventory:
         with path.open(newline="", encoding="utf-8-sig") as f:
             return cls.from_csv_rows(csv.reader(f))
 
+    def pairs(self) -> list[tuple[str, str]]:
+        """Every distinct (make, model) in the inventory, as written there.
+
+        Seeds the Make / Model dropdowns (services/known_models.py). Rows with
+        no make are skipped: a model with no make cannot go in the list.
+        """
+        out: dict[str, tuple[str, str]] = {}
+        for rows in self._by_model.values():
+            for r in rows:
+                if _key(r.make):
+                    out.setdefault(f"{_key(r.make)}|{_key(r.model)}", (r.make, r.model))
+        return list(out.values())
+
     def lookup(self, *, make: str, model: str) -> dict[str, str]:
         """
         Fields every matching row agrees on, normalised. A field is filled
@@ -246,13 +269,15 @@ def build_export_name(
     capacity: object = None,
     fuel: object = None,
     color: object = None,
+    dual_drive: bool = False,
+    cab: bool = False,
     sequence: int | None = None,
     total: int = 1,
     ext: str | None = None,
     inventory: Inventory | None | object = _DEFAULT,
 ) -> str:
     """
-    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color, with `_NN.ext` appended when
+    MAKE_YEAR_MODEL_TIRE-CAPACITY[_DUAL_DRIVE][_CAB]_FUEL_Color, with `_NN.ext` appended when
     `sequence` (1-based) is given. Blank fields are filled from the inventory
     CSV where it is unambiguous, and anything still blank is omitted.
 
@@ -275,8 +300,13 @@ def build_export_name(
                 given[field] = found[field]
 
     tire_capacity = "-".join(p for p in (_tire(tire), given["capacity"]) if p)
+    # `is True`, not truthiness: these arrive from a DB boolean, and a stray
+    # string such as "false" must not switch a part on.
     parts = [_safe(given["make"]), given["year"], _safe(given["model"]),
-             tire_capacity, given["fuel"], _color(color)]
+             tire_capacity,
+             "DUAL_DRIVE" if dual_drive is True else "",
+             "CAB" if cab is True else "",
+             given["fuel"], _color(color)]
     base = "_".join(p for p in parts if p) or "FORKLIFT"
 
     if sequence is None:

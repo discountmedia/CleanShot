@@ -324,11 +324,25 @@
       the same thing on screen.
     </p>
     <p>
+      <strong>Make and Model are dropdowns of machines we already know.</strong>
+      Pick the make first; Model then lists only that make&rsquo;s models. If
+      yours isn&rsquo;t there, choose <strong>Other&hellip;</strong> at the top
+      and type it in. When you export, it joins the list for everyone, so the
+      next person can pick it. Picking from the list only saves typing; it
+      doesn&rsquo;t fill in any other field. Spell a new one carefully: a typo
+      becomes everyone&rsquo;s choice until an admin fixes it.
+    </p>
+    <p>
       <strong>Year, Tire Type and Fuel Type are dropdowns.</strong> Leave Year
       on <strong>Unknown</strong> if you aren&rsquo;t sure; nothing is filled in
       for you. The letter in brackets on each tire and fuel choice is the one
       that goes in the export file name. Model, Capacity and the optional
       <strong>Color</strong> are typed.
+    </p>
+    <p>
+      Under the fields are two optional checkboxes, <strong>Dual Drive</strong>
+      and <strong>Cab</strong>. Both start unticked and are never filled in
+      for you.
     </p>
     <p class="note">
       Watch the indicator: <strong>&ldquo;&#10003; Ready to enhance&rdquo;</strong>
@@ -653,11 +667,15 @@
       <strong>MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color</strong>. The ZIP and
       the Photo Library folder use that name, and each image adds a number,
       for example <strong>LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_01.jpg</strong>.
+      Ticking <strong>Dual Drive</strong> or <strong>Cab</strong> adds them
+      before the fuel, Dual Drive first:
+      <strong>LIFT_HERO_2023_CPD25_P-5K_DUAL_DRIVE_CAB_E_Luminous_Yellow_01.jpg</strong>.
     </p>
     <ul class="bullets">
       <li><strong>Tire</strong> is P (pneumatic) or C (cushion). Anything else, such as non-marking, is left out.</li>
       <li><strong>Capacity</strong> is in thousands of pounds: 5500 becomes 5.5K, 500 becomes .5K. A capacity in kg is left out.</li>
-      <li><strong>Fuel</strong> is D, G, LP, DUAL or E. You can type the full word or the letters.</li>
+      <li><strong>Fuel</strong> is D, G, LP, DUAL, E or M, picked from the list. <strong>M is Manual</strong>: pushed or pulled by a person, with nothing powering travel or steering. A manual pallet jack with an electric pump for the forks is still Manual.</li>
+      <li><strong>Dual Drive</strong> means 2 wheels in the rear and 4 in the front. Tick it, or <strong>Cab</strong>, only when it&rsquo;s true; left unticked they add nothing to the name.</li>
       <li>A blank field is filled from the inventory list when that model has only one possible value there. If it doesn&rsquo;t, the field is left out of the name. The year is only filled when every unit of that model in the list has the same year.</li>
       <li><strong>Color</strong> is optional and goes last, written the way you typed it with each word capitalised. It is never filled in for you.</li>
       <li>Blank fields never stop an export.</li>

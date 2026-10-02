@@ -167,6 +167,62 @@ def test_color_is_never_filled_from_the_csv():
     )
 
 
+# ── Dual Drive and Cab: optional, before the fuel, Dual Drive first ────────
+
+CPD25 = dict(make="Lift Hero", year=2023, model="CPD25", tire="Pneumatic",
+             capacity="5000", fuel="Electric")
+
+
+def test_dual_drive_and_cab_with_color():
+    assert name(**CPD25, dual_drive=True, cab=True, color="luminous yellow") == (
+        "LIFT_HERO_2023_CPD25_P-5K_DUAL_DRIVE_CAB_E_Luminous_Yellow"
+    )
+
+
+def test_cab_only():
+    assert name(**FULL, cab=True) == "LIFT_HERO_2024_CPD30_P-6K_CAB_E"
+
+
+def test_dual_drive_only():
+    assert name(**FULL, dual_drive=True) == "LIFT_HERO_2024_CPD30_P-6K_DUAL_DRIVE_E"
+
+
+def test_both_with_fuel_blank_drops_the_fuel_and_its_separator():
+    assert name(**{**CPD25, "fuel": ""}, dual_drive=True, cab=True) == (
+        "LIFT_HERO_2023_CPD25_P-5K_DUAL_DRIVE_CAB"
+    )
+
+
+def test_both_with_tire_and_capacity_blank():
+    assert name(**{**CPD25, "tire": "", "capacity": ""}, dual_drive=True, cab=True) == (
+        "LIFT_HERO_2023_CPD25_DUAL_DRIVE_CAB_E"
+    )
+
+
+def test_both_with_a_sequence():
+    out = name(**CPD25, dual_drive=True, cab=True, color="luminous yellow",
+               sequence=1, total=3, ext="jpg")
+    assert out == "LIFT_HERO_2023_CPD25_P-5K_DUAL_DRIVE_CAB_E_Luminous_Yellow_01.jpg"
+
+
+@pytest.mark.parametrize("extra", [
+    {}, {"color": "Luminous Yellow"}, {"sequence": 2, "total": 12, "ext": "png"},
+])
+def test_neither_is_identical_to_todays_output(extra):
+    assert name(**CPD25, dual_drive=False, cab=False, **extra) == name(**CPD25, **extra)
+
+
+@pytest.mark.parametrize("flag", ["false", "true", 1, "yes", None])
+def test_only_a_real_true_switches_a_part_on(flag):
+    assert name(**FULL, dual_drive=flag, cab=flag) == "LIFT_HERO_2024_CPD30_P-6K_E"
+
+
+@pytest.mark.parametrize("fuel", ["Manual", "manual", "M", "m", " MANUAL "])
+def test_manual_fuel(fuel):
+    assert name(make="X", fuel=fuel) == "X_M"
+    assert name(**{**FULL, "fuel": fuel}) == "LIFT_HERO_2024_CPD30_P-6K_M"
+
+
 # ── CSV fallback ─────────────────────────────────────────────────────────────
 
 def inv(*rows):

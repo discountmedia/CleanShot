@@ -7,7 +7,10 @@
 // The option VALUES are words the export namer already understands
 // (apps/api/src/cleanshot_api/services/export_naming.py): Pneumatic -> P,
 // Cushion -> C, Diesel -> D, Gas -> G, LP -> LP, Dual Fuel -> DUAL,
-// Electric -> E. The letter in each label is what appears in the file name.
+// Electric -> E, Manual -> M. The letter in each label is what appears in the
+// file name. ⚠️ _FUEL_CODES there is the other copy of this vocabulary; a fuel
+// added here and not there is offered to operators and then dropped from the
+// name.
 //
 // A value that arrives from somewhere else -- typed before these were
 // dropdowns, or carried in by an import -- is matched to an option when it
@@ -30,6 +33,9 @@ export const FUEL_OPTIONS: readonly FieldOption[] = [
   { value: "LP",        label: "LP / Propane (LP)" },
   { value: "Dual Fuel", label: "Dual fuel (DUAL)" },
   { value: "Electric",  label: "Electric (E)" },
+  /* Propelled by a person: nothing powers travel or steering. A manual pallet
+     jack with an electric pump for the forks is still Manual. */
+  { value: "Manual",    label: "Manual (M)" },
 ];
 
 const TIRE_SYNONYMS: Record<string, string> = {
@@ -43,6 +49,7 @@ const FUEL_SYNONYMS: Record<string, string> = {
   lp: "LP", lpg: "LP", "lp gas": "LP", propane: "LP",
   dual: "Dual Fuel", "dual fuel": "Dual Fuel", "lp/gas": "Dual Fuel", "gas/lp": "Dual Fuel",
   e: "Electric", electric: "Electric", battery: "Electric",
+  m: "Manual", manual: "Manual",
 };
 
 const squash = (s: string) => s.trim().toLowerCase().replace(/[\s-]+/g, " ");

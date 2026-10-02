@@ -8,7 +8,11 @@ Production should use a proper migration tool (Alembic) once schema stabilises.
 
 from __future__ import annotations
 
+import logging
+
 import asyncpg
+
+logger = logging.getLogger(__name__)
 
 DDL = """
 -- Enable pgcrypto for gen_random_uuid() if not already enabled
@@ -85,6 +89,11 @@ ALTER TABLE projects ALTER COLUMN year DROP NOT NULL;
 -- (LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow). NULL means none given.
 -- ADD COLUMN IF NOT EXISTS is idempotent, so this is safe on every startup.
 ALTER TABLE projects ADD COLUMN IF NOT EXISTS color TEXT;
+-- Optional Dual Drive / Cab checkboxes (2026-10-02), placed before the fuel in
+-- the export name (..._P-5K_DUAL_DRIVE_CAB_E_...). NOT NULL DEFAULT FALSE, so
+-- every existing row reads as unchecked and its name is unchanged. Idempotent.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS dual_drive BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS cab BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- assets
 CREATE TABLE IF NOT EXISTS assets (
@@ -418,9 +427,44 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ingest_items_dedupe
 -- without the handoff id being in the URL. Additive, same shape as the
 -- user_email patch above.
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_id UUID;
+
+-- known_models (2026-10-02): the list behind the Make and Model dropdowns.
+-- Seeded from the inventory CSV on every start (services/known_models.py) and
+-- grown by operators through "Other". One row per pair: match_key is make +
+-- model uppercased with whitespace removed. Admins rename or HIDE rows; there
+-- is no delete, because the seed would bring an inventory row straight back.
+-- The year .. cab columns record what was entered the first time an operator
+-- saved the pair. Reference only: nothing fills a form from them.
+CREATE TABLE IF NOT EXISTS known_models (
+    id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    make        TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    match_key   TEXT NOT NULL UNIQUE,
+    source      TEXT NOT NULL CHECK (source IN ('inventory', 'operator')),
+    hidden      BOOLEAN NOT NULL DEFAULT FALSE,
+    created_by  TEXT,
+    year        INT,
+    tire_type   TEXT,
+    capacity    TEXT,
+    fuel_type   TEXT,
+    color       TEXT,
+    dual_drive  BOOLEAN,
+    cab         BOOLEAN,
+    created_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+    updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 """
 
 
 async def run_migrations(pool: asyncpg.Pool) -> None:
     async with pool.acquire() as conn:
         await conn.execute(DDL)
+        # Best effort, AFTER the schema: a bad inventory CSV must cost the
+        # dropdowns their seed rows, never the API its startup.
+        try:
+            from cleanshot_api.services.known_models import seed_from_inventory
+            added = await seed_from_inventory(conn)
+            if added:
+                logger.info("known_models: seeded %d pair(s) from the inventory CSV", added)
+        except Exception:
+            logger.exception("known_models: seeding from the inventory CSV failed")

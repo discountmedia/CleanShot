@@ -658,6 +658,8 @@ export interface SaveProjectInput {
   fuelType: string;
   /** Optional. Blank is sent as null, never as a placeholder word. */
   color: string | null;
+  dualDrive: boolean;
+  cab: boolean;
   username: string;
   photoType: "auction" | "studio";
 }

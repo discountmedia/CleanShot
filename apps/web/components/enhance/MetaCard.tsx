@@ -10,7 +10,9 @@
 
 import { useState } from "react";
 
+import { CheckField } from "../ui/CheckField";
 import { InfoTip } from "../ui/InfoTip";
+import { OptionOrOther } from "../ui/OptionOrOther";
 import { SelectField } from "../ui/SelectField";
 
 import {
@@ -22,6 +24,7 @@ import {
   yearOptions,
   type FieldOption,
 } from "../../lib/equipment-fields";
+import { isListed, makesOf, modelsFor, useKnownModels } from "../../lib/known-models";
 import {
   EQUIPMENT_GROUPS,
   EQUIPMENT_TYPE_LABELS,
@@ -51,13 +54,15 @@ type ExtraField = {
   hint: string;
 } & (
   | { kind: "text"; placeholder: string }
+  /* Model: the known models for the chosen make, with Other at the top. */
+  | { kind: "model" }
   | { kind: "select"; options: readonly FieldOption[]; emptyLabel: string;
       canonical: (raw: string) => string | null }
 );
 
 const EXTRA_FIELDS: ExtraField[] = [
-  { key: "model",    label: "Model",     kind: "text", placeholder: "e.g. 8FGU25",
-    hint: "Model number from the data plate." },
+  { key: "model",    label: "Model",     kind: "model",
+    hint: "Model number from the data plate. Not listed? Choose Other." },
   { key: "year",     label: "Year",      kind: "select", options: yearOptions(), emptyLabel: "Unknown",
     canonical: (v) => canonicalYear(v), hint: "Model year. Leave it on Unknown if you're not sure." },
   { key: "tireType", label: "Tire Type", kind: "select", options: TIRE_OPTIONS, emptyLabel: "Not set",
@@ -88,6 +93,20 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
   const [detailsOpen, setDetailsOpen] = useState(true);
 
   const makeValue = (meta.make ?? "");
+  /* The known Make + Model list (lib/known-models.ts). Picking from it fills
+     nothing else, by decision: it only saves typing. */
+  const { models: known } = useKnownModels();
+  const makeOptions = makesOf(known);
+  const modelOptions = modelsFor(known, makeValue);
+  /* A model picked from the OLD make's list does not belong to the new make,
+     so it is cleared. A model typed through Other is kept: it was never tied
+     to the make's list in the first place. */
+  const changeMake = (v: string) => {
+    const model = meta.model ?? "";
+    const pickedForOld = isListed(modelsFor(known, makeValue), model);
+    const fitsNew = isListed(modelsFor(known, v), model);
+    onChange({ ...meta, make: v, model: pickedForOld && !fitsNew ? "" : model });
+  };
   const makeValid = makeValue.trim().length > 0;
   const equipmentType: EquipmentType = meta.equipmentType ?? "forklift";
 
@@ -208,19 +227,16 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
             >
               Make <span className="text-attn" aria-label="required">*</span>
             </label>
-            <input
+            <OptionOrOther
               id="meta-make"
-              type="text"
               value={makeValue}
-              onChange={(e) => update("make", e.target.value)}
+              onChange={changeMake}
+              options={makeOptions}
+              emptyLabel="Choose a make"
+              newLabel="New make"
               placeholder="e.g. Toyota"
-              aria-required
-              aria-invalid={!makeValid || undefined}
-              className={`w-full bg-panel border rounded-md px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:border-transparent transition ${
-                makeValid
-                  ? "border-line focus:ring-attn"
-                  : "border-attn focus:ring-attn"
-              }`}
+              invalid={!makeValid}
+              required
             />
           </div>
 
@@ -252,7 +268,17 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
               >
                 {f.label}
               </label>
-              {f.kind === "select" ? (
+              {f.kind === "model" ? (
+                <OptionOrOther
+                  id={`meta-${f.key}`}
+                  value={meta.model ?? ""}
+                  onChange={(v) => update("model", v)}
+                  options={modelOptions}
+                  emptyLabel="Choose a model"
+                  newLabel="New model"
+                  placeholder="e.g. 8FGU25"
+                />
+              ) : f.kind === "select" ? (
                 <SelectField
                   id={`meta-${f.key}`}
                   value={meta[f.key] ?? ""}
@@ -276,6 +302,25 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
               </span>
             </div>
           ))}
+          {/* Dual Drive and Cab: optional, unticked by default, never filled
+              from the inventory CSV. Ticked, they go into the export name
+              before the fuel. */}
+          <div className="col-span-full grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <CheckField
+              id="meta-dualDrive"
+              label="Dual Drive"
+              hint="2 wheels in the rear, 4 in the front. Adds DUAL_DRIVE to the export file name."
+              checked={meta.dualDrive === true}
+              onChange={(v) => update("dualDrive", v)}
+            />
+            <CheckField
+              id="meta-cab"
+              label="Cab"
+              hint="Adds CAB to the export file name."
+              checked={meta.cab === true}
+              onChange={(v) => update("cab", v)}
+            />
+          </div>
           {/* Was "pre-fill the Resize tab's Save Project form" -- that tab and
               that button are both gone; the export form is on this page. */}
           <p className="col-span-full text-base text-ink leading-relaxed">

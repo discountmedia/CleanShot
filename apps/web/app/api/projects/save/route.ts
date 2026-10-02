@@ -23,6 +23,8 @@ interface ClientRequest {
   capacity: string;
   fuelType: string;
   color?: string | null;
+  dualDrive?: boolean;
+  cab?: boolean;
   username: string;
   photoType: "auction" | "studio";
 }
@@ -50,6 +52,9 @@ export async function POST(request: NextRequest) {
       capacity:   body.capacity,
       fuel_type:  body.fuelType,
       color:      body.color ?? null,
+      // Strictly true, so a missing or malformed value can never tick a box.
+      dual_drive: body.dualDrive === true,
+      cab:        body.cab === true,
       username:   body.username,
       photo_type: body.photoType,
     }),

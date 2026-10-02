@@ -45,6 +45,7 @@ from cleanshot_api.routers import (
     export,
     ingest,
     jobs,
+    known_models,
     modify,
     operations,
     profiles,
@@ -300,6 +301,7 @@ app.include_router(operations.router)
 app.include_router(modify.router)
 app.include_router(upload.router)
 app.include_router(projects.router)
+app.include_router(known_models.router)
 app.include_router(export.router)
 app.include_router(scan_results.router)
 app.include_router(approvals.router)

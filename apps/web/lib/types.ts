@@ -98,6 +98,12 @@ export interface ForkliftMeta {
       export name (…_E_Luminous_Yellow). Optional so every existing place that
       builds a meta object keeps compiling. */
   color?: string;
+  /** Optional checkboxes, unticked unless the operator ticks them. When ticked
+      they go into the export name before the fuel, Dual Drive first
+      (…_P-5K_DUAL_DRIVE_CAB_E_…). Dual Drive = 2 wheels rear, 4 front; it is
+      unrelated to the DUAL fuel code. */
+  dualDrive?: boolean;
+  cab?: boolean;
   /**
    * Equipment category — drives the per-type anatomy block in the
    * backend's enhance prompt. Optional; backend defaults to "forklift"
