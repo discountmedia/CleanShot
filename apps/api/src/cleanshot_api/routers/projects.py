@@ -42,6 +42,7 @@ async def save_project(
             tire_type=body.tire_type,
             capacity=body.capacity,
             fuel_type=body.fuel_type,
+            color=(body.color or "").strip() or None,
             username=body.username,
             photo_type=body.photo_type.value,
         )

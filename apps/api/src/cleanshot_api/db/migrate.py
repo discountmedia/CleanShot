@@ -81,6 +81,10 @@ CREATE TABLE IF NOT EXISTS projects (
 -- went into the export filenames. An unknown year is now recorded as unknown.
 -- DROP NOT NULL is idempotent, so this is safe on every startup.
 ALTER TABLE projects ALTER COLUMN year DROP NOT NULL;
+-- Optional paint colour (2026-10-02), the last part of the export name
+-- (LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow). NULL means none given.
+-- ADD COLUMN IF NOT EXISTS is idempotent, so this is safe on every startup.
+ALTER TABLE projects ADD COLUMN IF NOT EXISTS color TEXT;
 
 -- assets
 CREATE TABLE IF NOT EXISTS assets (

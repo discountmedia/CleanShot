@@ -137,13 +137,18 @@ Buttons stay **flat** — no drop shadows, and no coloured shadows at all (the `
 
 ## 6. Selected / active state pattern
 
-One pattern everywhere — equipment cards, provider chips, toggles, active tabs:
+One pattern everywhere — provider chips, toggles, active tabs. (Equipment type used to be cards here too; since 2026-10-02 it is a dropdown, see below.)
 
 **Raised surface + lime border.** `bg-panel-hi border-accent text-ink`, unselected `bg-panel border-line text-ink-soft`.
 
 The toggle switch (`ToggleSwitch` in `EnhancePanel.tsx`) follows it: track `bg-accent` when ON / `bg-panel-hi` when OFF, and the knob flips to `bg-header-bg` on the lime track (a white knob on lime disappears).
 
 ---
+
+### Dropdowns and info tips
+
+- **Fixed-choice fields are dropdowns** through `components/ui/SelectField.tsx`: field surface `bg-panel border-line rounded-lg`, a chevron, the form's own focus ring, and an empty choice in `text-muted`. Never style a `<select>` per call site.
+- **Explanations live in an `InfoTip`** (`components/ui/InfoTip.tsx`), not a `title` attribute: it opens on hover, focus and tap, closes on Escape or a tap elsewhere, and renders on `bg-panel-hi` with a bold title. A `title` never shows on a tablet or to a keyboard user.
 
 ## 7. Containers
 

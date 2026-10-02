@@ -100,6 +100,8 @@ class ProjectRecord(BaseModel):
     tire_type: str
     capacity: str
     fuel_type: str
+    # Optional paint colour; the last part of the export name. NULL = none.
+    color: str | None = None
     username: str
     photo_type: PhotoTypeEnum
     saved_at: datetime | None = None
@@ -550,6 +552,9 @@ class SaveProjectRequest(BaseModel):
     tire_type: str = Field(min_length=1, max_length=100)
     capacity: str = Field(min_length=1, max_length=50)
     fuel_type: str = Field(min_length=1, max_length=50)
+    # OPTIONAL with no default value beyond None, same rule as year: a colour
+    # nobody typed is absent, never guessed. Older web builds omit it.
+    color: str | None = Field(default=None, max_length=100)
     username: str = Field(min_length=1, max_length=100)
     photo_type: PhotoTypeEnum
 

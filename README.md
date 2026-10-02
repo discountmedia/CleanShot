@@ -529,7 +529,7 @@ gcloud run services update-traffic cleanshot-api \
 ### Enhance tab
 
 1. Drop images into the upload zone (drag-and-drop or file picker). Files over 4.5 MB are auto-compressed client-side (Vercel limit). Uploads cap at 1024 px long edge.
-2. Pick the equipment type (10 types, from forklift to turret truck) and fill in Make + optional metadata (Model, Year, Tire Type, Capacity, Fuel Type). Make is required; the rest pre-fills the export form.
+2. Pick the equipment type from the dropdown (10 types in two groups; the (i) button explains what it changes) and fill in Make + optional metadata. Year, Tire Type and Fuel Type are dropdowns (`lib/equipment-fields.ts`); Model, Capacity and the optional Color are typed. Make is required; the rest pre-fills the export form, which uses the same dropdowns.
 3. **Write the prompt** — required. The starter asks for a respray **in the same colour the unit already wears**, never an "original factory colour" (that phrasing makes the model correct a faded or repainted unit toward a remembered brand colour). Use **Insert recommended prompt** for an equipment-aware starter, or pick a **shared template** from the picker — the team's library, sortable by Newest, Top rated, or Most used, each entry showing who wrote it and when. `SAVE PROMPT TO SHARED TEMPLATES` publishes the current text under a title you choose, visible to everyone immediately.
    - **Titles are global and permanent.** A collision means the title is taken for good; there is no rename and no overwrite, because a template's upvotes and use count are ratings of a *specific* text. To customise one: load it, edit the box, save under a new title. The original is untouched.
    - **Loading a template gives you a copy** — editing the prompt box never writes back to the shared row.
@@ -576,7 +576,7 @@ Because a standalone upload has no pre-enhance original to compare against, it g
 3. Exported images are **upscaled**, so they must go through the image optimizer in PRO after upload — the button says so.
 4. An optional **AI disclaimer watermark** checkbox, **on by default**. This was briefly mandatory and is back to a checkbox pending a final decision on how the watermark gets applied; the rendering code is unchanged either way.
 5. Clicking export saves the project, writes the finished files and their originals to your Photo Library, and gives you per-image downloads plus a ZIP. **The ZIP downloads automatically** when the export finishes; the Download ZIP button remains as a fallback if the browser blocks it.
-6. **Naming.** `build_export_name` (`apps/api/src/cleanshot_api/services/export_naming.py`) names the ZIP, the Library folder and every image: `MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL`, plus `_NN.ext` per image, e.g. `LIFT_HERO_2024_CPD30_P-6K_E_01.jpg`. Tire is `P`/`C`, fuel `D`/`G`/`LP`/`DUAL`/`E` (full words accepted), capacity is lbs in thousands (`5500` → `5.5K`, `500` → `.5K`). Blank fields are filled from the packaged inventory CSV only when every matching make + model row agrees; anything still blank is dropped with its separator, so export never blocks. The year is never inferred.
+6. **Naming.** `build_export_name` (`apps/api/src/cleanshot_api/services/export_naming.py`) names the ZIP, the Library folder and every image: `MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color`, plus `_NN.ext` per image, e.g. `LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_01.jpg`. Color is optional and typed; it is the one part not uppercased. Tire is `P`/`C`, fuel `D`/`G`/`LP`/`DUAL`/`E` (full words accepted), capacity is lbs in thousands (`5500` → `5.5K`, `500` → `.5K`). Blank fields are filled from the packaged inventory CSV only when every matching make + model row agrees; anything still blank is dropped with its separator, so export never blocks. The year is never inferred.
 
 ---
 
@@ -592,9 +592,9 @@ gs://cleanshot-derivatives-493512/approved/{email}/{YYYY-MM-DD}_{export name}_{s
 
 Examples:
 ```
-approved/john_acme_com/2026-10-01_LIFT_HERO_2024_CPD30_P-6K_E_1a2b3c4d/LIFT_HERO_2024_CPD30_P-6K_E_01.jpg
-approved/john_acme_com/2026-10-01_LIFT_HERO_2024_CPD30_P-6K_E_1a2b3c4d/LIFT_HERO_2024_CPD30_P-6K_E_02.jpg
-approved/john_acme_com/2026-10-01_LIFT_HERO_2024_CPD30_P-6K_E_1a2b3c4d/original_{upload}.jpg
+approved/john_acme_com/2026-10-02_LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_1a2b3c4d/LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_01.jpg
+approved/john_acme_com/2026-10-02_LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_1a2b3c4d/LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_02.jpg
+approved/john_acme_com/2026-10-02_LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_1a2b3c4d/original_{upload}.jpg
 ```
 
 Images are stored for **30 days** then deleted automatically via a GCS lifecycle rule. The `/history` page shows all sets from the last 30 days with thumbnails, download links, and days-remaining indicators (yellow warning at ≤5 days).

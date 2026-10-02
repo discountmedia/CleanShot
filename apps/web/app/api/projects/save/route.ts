@@ -22,6 +22,7 @@ interface ClientRequest {
   tireType: string;
   capacity: string;
   fuelType: string;
+  color?: string | null;
   username: string;
   photoType: "auction" | "studio";
 }
@@ -48,6 +49,7 @@ export async function POST(request: NextRequest) {
       tire_type:  body.tireType,
       capacity:   body.capacity,
       fuel_type:  body.fuelType,
+      color:      body.color ?? null,
       username:   body.username,
       photo_type: body.photoType,
     }),

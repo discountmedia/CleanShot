@@ -2,10 +2,16 @@
 Export naming: one function, `build_export_name`, names both the export folder
 and every image in it.
 
-    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL            folder / ZIP stem
-    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_01.jpg     image
+    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color            folder / ZIP stem
+    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color_01.jpg     image
 
-    e.g. LIFT_HERO_2024_CPD30_P-6K_E_01.jpg
+    e.g. LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_01.jpg
+
+* **Colour is optional, last, and NOT uppercased** (Stephen, 2 Oct 2026, by
+  example: `..._E_Luminous_Yellow`). An all-lowercase word is capitalised
+  ("luminous yellow" -> Luminous_Yellow); a word typed with any capital keeps
+  its casing, so a paint code like "RAL 1016" is not mangled into Ral_1016.
+  Never filled from the CSV, which has no colour column.
 
 Rules that are easy to break by accident:
 
@@ -73,6 +79,7 @@ _FUEL_CODES = {
 # an underscore separator, so "CBD20/SL20L3" stays two tokens instead of
 # fusing into one model number.
 _UNSAFE_RE = re.compile(r"[^A-Z0-9.\-]+")
+_UNSAFE_MIXED_RE = re.compile(r"[^A-Za-z0-9.\-]+")
 
 # number, optional K, optional pound unit, optional "@ 24in load center" tail
 _CAPACITY_RE = re.compile(
@@ -93,6 +100,16 @@ def _safe(value: str) -> str:
     s = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode()
     s = _UNSAFE_RE.sub("_", s.upper())
     s = re.sub(r"_*-_*", "-", s)          # "CPD30- MODEX" -> CPD30-MODEX
+    s = re.sub(r"_+", "_", s)
+    return s.strip("_.-")
+
+
+def _color(value: object) -> str:
+    """Title-cased where typed in lowercase, spaces to underscores, unsafe removed."""
+    s = unicodedata.normalize("NFKD", _text(value)).encode("ascii", "ignore").decode()
+    words = [w if w != w.lower() else w[:1].upper() + w[1:] for w in s.split()]
+    s = _UNSAFE_MIXED_RE.sub("_", " ".join(words))
+    s = re.sub(r"_*-_*", "-", s)
     s = re.sub(r"_+", "_", s)
     return s.strip("_.-")
 
@@ -228,13 +245,14 @@ def build_export_name(
     tire: object = None,
     capacity: object = None,
     fuel: object = None,
+    color: object = None,
     sequence: int | None = None,
     total: int = 1,
     ext: str | None = None,
     inventory: Inventory | None | object = _DEFAULT,
 ) -> str:
     """
-    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL, with `_NN.ext` appended when
+    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color, with `_NN.ext` appended when
     `sequence` (1-based) is given. Blank fields are filled from the inventory
     CSV where it is unambiguous, and anything still blank is omitted.
 
@@ -258,7 +276,7 @@ def build_export_name(
 
     tire_capacity = "-".join(p for p in (_tire(tire), given["capacity"]) if p)
     parts = [_safe(given["make"]), given["year"], _safe(given["model"]),
-             tire_capacity, given["fuel"]]
+             tire_capacity, given["fuel"], _color(color)]
     base = "_".join(p for p in parts if p) or "FORKLIFT"
 
     if sequence is None:

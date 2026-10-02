@@ -10,6 +10,18 @@
 
 import { useState } from "react";
 
+import { InfoTip } from "../ui/InfoTip";
+import { SelectField } from "../ui/SelectField";
+
+import {
+  canonicalFuel,
+  canonicalTire,
+  canonicalYear,
+  FUEL_OPTIONS,
+  TIRE_OPTIONS,
+  yearOptions,
+  type FieldOption,
+} from "../../lib/equipment-fields";
 import {
   EQUIPMENT_GROUPS,
   EQUIPMENT_TYPE_LABELS,
@@ -30,17 +42,34 @@ interface MetaCardProps {
   restriction?: { customPromptOnly: boolean } | null;
 }
 
-const EXTRA_FIELDS: Array<{
-  key: keyof ForkliftMeta;
+/* Year, Tire Type and Fuel Type are dropdowns (2026-10-02); Model and
+   Capacity stay free text because their values are open-ended. The choices
+   live in lib/equipment-fields.ts so the export form offers the same ones. */
+type ExtraField = {
+  key: "model" | "year" | "tireType" | "capacity" | "fuelType" | "color";
   label: string;
-  placeholder: string;
   hint: string;
-}> = [
-  { key: "model",    label: "Model",     placeholder: "e.g. 8FGU25",    hint: "Model number from the data plate." },
-  { key: "year",     label: "Year",      placeholder: "e.g. 2019",      hint: "Model year. Helps buyers shortlist." },
-  { key: "tireType", label: "Tire Type", placeholder: "e.g. Pneumatic", hint: "Pneumatic, cushion, or solid." },
-  { key: "capacity", label: "Capacity",  placeholder: "e.g. 5000 lbs",  hint: "Rated load capacity in lbs." },
-  { key: "fuelType", label: "Fuel Type", placeholder: "e.g. LPG",       hint: "LPG, diesel, electric, gasoline." },
+} & (
+  | { kind: "text"; placeholder: string }
+  | { kind: "select"; options: readonly FieldOption[]; emptyLabel: string;
+      canonical: (raw: string) => string | null }
+);
+
+const EXTRA_FIELDS: ExtraField[] = [
+  { key: "model",    label: "Model",     kind: "text", placeholder: "e.g. 8FGU25",
+    hint: "Model number from the data plate." },
+  { key: "year",     label: "Year",      kind: "select", options: yearOptions(), emptyLabel: "Unknown",
+    canonical: (v) => canonicalYear(v), hint: "Model year. Leave it on Unknown if you're not sure." },
+  { key: "tireType", label: "Tire Type", kind: "select", options: TIRE_OPTIONS, emptyLabel: "Not set",
+    canonical: canonicalTire, hint: "Pneumatic (outdoor) or cushion (indoor)." },
+  { key: "capacity", label: "Capacity",  kind: "text", placeholder: "e.g. 5000 lbs",
+    hint: "Rated load capacity in lbs." },
+  { key: "fuelType", label: "Fuel Type", kind: "select", options: FUEL_OPTIONS, emptyLabel: "Not set",
+    canonical: canonicalFuel, hint: "The letter in brackets goes in the export file name." },
+  /* Typed, not a dropdown: paint names are open-ended (Luminous Yellow, RAL
+     1016). Optional; it ends the export name when given. */
+  { key: "color",    label: "Color",     kind: "text", placeholder: "e.g. Luminous Yellow",
+    hint: "Optional. Goes at the end of the export file name." },
 ];
 
 export function MetaCard({ meta, onChange, expanded, onExpand, restriction = null }: MetaCardProps) {
@@ -122,61 +151,52 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
       </header>
 
       <div className="px-5 py-4 space-y-5">
-        {/* Equipment type — single-select toggle-cards laid out on a
-            fixed-column grid so the chips line up in clean, equal-width
-            columns (content-width flex-wrap read ragged). Driven from
-            EQUIPMENT_GROUPS: each cluster (warehouse forks / aerial) gets
-            its own labelled sub-grid sharing the same column template, so
-            columns stay aligned across groups. Selected card pops with a
-            blue gradient + ring + shadow; unselected cards lift on hover. */}
-        <div className="flex flex-col gap-2">
-          <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">
-            Equipment
-          </span>
-          <div className="space-y-3">
-            {EQUIPMENT_GROUPS.map((group) => (
-              <div
-                key={group.label ?? group.members.join("-")}
-                role="group"
-                aria-label={group.label}
-              >
-                {group.label && (
-                  <span className="block text-[11px] uppercase tracking-[0.2em] font-semibold text-ink-faint mb-1.5">
-                    {group.label}
-                  </span>
-                )}
-                <div className="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-2">
-                  {group.members.map((t) => {
-                    const selected = t === equipmentType;
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => update("equipmentType", t)}
-                        aria-pressed={selected}
-                        /* Selected state is the spec's raised-surface pattern:
-                           panel-hi + a lime border/dot. Lime carries "active"
-                           here; the old blue gradient + blue ring is gone with
-                           the rest of the blue. */
-                        className={`group flex items-center gap-2.5 w-full px-3.5 py-3 rounded-lg border-2 text-left transition-all duration-150 ${
-                          selected
-                            ? "bg-panel-hi border-accent text-ink"
-                            : "bg-panel border-line text-ink-soft hover:border-ink-faint hover:bg-panel-hi/80 hover:text-ink"
-                        }`}
-                      >
-                        <span className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-colors ${selected ? "border-accent" : "border-line group-hover:border-ink-faint"}`}>
-                          {selected && <span className="w-2 h-2 rounded-full bg-accent" />}
-                        </span>
-                        <span className="text-sm uppercase tracking-[0.08em] font-bold leading-tight">
-                          {EQUIPMENT_TYPE_LABELS[t]}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            ))}
+        {/* Equipment type — a grouped dropdown (2026-10-02, operator request;
+            it was a grid of ten radio cards). Same EQUIPMENT_GROUPS, now as
+            <optgroup>s, so the Forklifts / Aerial split survives. The (i) tip
+            says what the choice actually changes, because "equipment type"
+            reads as a label and is not one: it rewrites the anatomy rule in
+            the safety block, the recommended prompt, and which fork controls
+            exist. Every claim in the tip is checked against
+            enhance_worker.EQUIPMENT_ANATOMY, lib/recommended-prompt.ts and
+            EnhancePanel's showForkControls gate -- keep them in step. */}
+        <div className="flex flex-col gap-1.5 max-w-md">
+          <div className="flex items-center gap-2">
+            <label
+              htmlFor="meta-equipment-type"
+              className="text-sm uppercase tracking-[0.16em] font-bold text-ink"
+            >
+              Equipment type
+            </label>
+            <InfoTip label="What the equipment type changes" title="What the equipment type changes">
+              <span className="block">
+                It tells the AI what kind of machine is in the photo, so the
+                rules sent with every image protect the right parts: a
+                forklift&apos;s mast, forks, overhead guard and counterweight;
+                a scissor lift&apos;s platform, guard rails and scissor stack;
+                a telehandler&apos;s boom, attachment and outriggers.
+              </span>
+              <span className="block">
+                The recommended prompt is written for the type you pick.
+              </span>
+              <span className="block">
+                Scissor Lift has a platform instead of forks, so fork options
+                don&apos;t apply to it.
+              </span>
+              <span className="block text-ink">
+                Pick the closest match before you press Enhance.
+              </span>
+            </InfoTip>
           </div>
+          <SelectField
+            id="meta-equipment-type"
+            value={equipmentType}
+            onChange={(v) => update("equipmentType", v as EquipmentType)}
+            options={EQUIPMENT_GROUPS.map((g) => ({
+              label: g.label ?? "Other",
+              options: g.members.map((t) => ({ value: t, label: EQUIPMENT_TYPE_LABELS[t] })),
+            }))}
+          />
         </div>
 
         {!hideMeta && (
@@ -223,28 +243,44 @@ export function MetaCard({ meta, onChange, expanded, onExpand, restriction = nul
       </div>
 
       {!hideMeta && expanded && (
-        <div className="border-t border-line px-5 py-5 grid grid-cols-2 md:grid-cols-5 gap-4">
-          {EXTRA_FIELDS.map(({ key, label, placeholder, hint }) => (
-            <label key={key} className="flex flex-col gap-1.5">
-              <span className="text-sm uppercase tracking-[0.16em] font-bold text-ink">
-                {label}
-              </span>
-              <input
-                type="text"
-                value={meta[key] ?? ""}
-                onChange={(e) => update(key, e.target.value)}
-                placeholder={placeholder}
-                className="bg-panel border border-line rounded-md px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
-              />
+        <div className="border-t border-line px-5 py-5 grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+          {EXTRA_FIELDS.map((f) => (
+            <div key={f.key} className="flex flex-col gap-1.5">
+              <label
+                htmlFor={`meta-${f.key}`}
+                className="text-sm uppercase tracking-[0.16em] font-bold text-ink"
+              >
+                {f.label}
+              </label>
+              {f.kind === "select" ? (
+                <SelectField
+                  id={`meta-${f.key}`}
+                  value={meta[f.key] ?? ""}
+                  onChange={(v) => update(f.key, v)}
+                  options={f.options}
+                  emptyLabel={f.emptyLabel}
+                  canonical={f.canonical}
+                />
+              ) : (
+                <input
+                  id={`meta-${f.key}`}
+                  type="text"
+                  value={meta[f.key] ?? ""}
+                  onChange={(e) => update(f.key, e.target.value)}
+                  placeholder={f.placeholder}
+                  className="bg-panel border border-line rounded-lg px-3 py-2.5 text-base text-ink placeholder:text-muted focus:outline-none focus:ring-2 focus:ring-attn focus:border-transparent transition"
+                />
+              )}
               <span className="text-base text-accent font-semibold leading-relaxed">
-                {hint}
+                {f.hint}
               </span>
-            </label>
+            </div>
           ))}
+          {/* Was "pre-fill the Resize tab's Save Project form" -- that tab and
+              that button are both gone; the export form is on this page. */}
           <p className="col-span-full text-base text-ink leading-relaxed">
-            These same values pre-fill the Resize tab&apos;s{" "}
-            <span className="font-mono text-accent font-bold">Save Project</span> form
-            when you&apos;re ready to export — no need to re-type them there.
+            These same values fill in the export details at the bottom of the
+            page, so there&apos;s no need to type them twice.
           </p>
         </div>
       )}

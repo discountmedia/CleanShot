@@ -7,7 +7,7 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
 ## 2026-10-01: export naming and ZIP auto-download
 
 - **Export names** now come from one function, `build_export_name`
-  (`apps/api/src/cleanshot_api/services/export_naming.py`, 82 unit tests in
+  (`apps/api/src/cleanshot_api/services/export_naming.py`, 98 unit tests in
   `tests/test_export_naming.py`). ZIP, Library folder and images are all
   `MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL`, images add `_NN.ext`. The provider
   suffix (`_Gemini`) is gone; the sequence number alone keeps names unique.
@@ -21,8 +21,25 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
   stays as the fallback. Not yet tested in a real browser.
 - Not run: the DB-backed `test_api.py` (needs local Postgres).
 - **The 27 Aug warning below is stale.** `dd2b8e7` and everything before it
-  are pushed and live. `802e1bc` (Auto Crop default + Photoroom-only) is still
+  are pushed and live. `421f166` (was `802e1bc`; Auto Crop default + Photoroom-only) is still
   HELD locally, with the 28 Aug rewrite of this file on top of it.
+
+## 2026-10-02: Color, dropdowns, equipment type
+
+- **Color** is a new optional typed field (MetaCard + export form), the last
+  part of the export name: `LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow`.
+  New nullable `projects.color` column, added by `ADD COLUMN IF NOT EXISTS` at
+  API startup. Either deploy order is safe: Pydantic ignores the unknown field
+  on an old API, and an old row reads as no colour.
+- **Year / Tire Type / Fuel Type are dropdowns**, and **equipment type is a
+  grouped dropdown with an InfoTip** (`components/ui/`). Year still has no
+  default. "Reach Truck" displays as "Stand-up Reach"; "Turret Truck (VNA)" is
+  waiting on DF's own word.
+- Verified by rendering the Enhance card on `next start` against a local mock
+  FastAPI (no prod calls). The export form only renders with a picked winner,
+  so it was typechecked, not rendered.
+- **Shipped alone on 2 Oct**, the same way as 1 Oct: the held Auto Crop +
+  Photoroom commit (`421f166`) and its docs commit stay local and unreleased.
 
 ---
 

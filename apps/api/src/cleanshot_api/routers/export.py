@@ -325,7 +325,7 @@ async def export_pro_preview(
       {"event": "error",    "message": "..."}
 
     Filenames come from `build_export_name` (services/export_naming.py):
-    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_NN.ext from the saved project, blank
+    MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color_NN.ext from the saved project, blank
     fields filled from the inventory CSV where unambiguous — no AI captioning.
     Captioning was tried but added ~2s per image of Vertex Gemini round-
     trips for no operator-visible benefit; the saved project metadata is
@@ -370,6 +370,7 @@ async def export_pro_preview(
         tire=project.tire_type,
         capacity=project.capacity,
         fuel=project.fuel_type,
+        color=project.color,
     )
     export_name = build_export_name(**name_fields)
 

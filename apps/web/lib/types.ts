@@ -75,7 +75,9 @@ export const EQUIPMENT_GROUPS: readonly EquipmentGroup[] = [
 export const EQUIPMENT_TYPE_LABELS: Record<EquipmentType, string> = {
   forklift:       "Forklift",
   rough_terrain:  "Rough Terrain",
-  reach_truck:    "Reach Truck",
+  /* DF says "Stand-up Reach", never "truck" (Stephen, 26 Sep 2026). Display
+     only: the key stays reach_truck because the backend reads it. */
+  reach_truck:    "Stand-up Reach",
   turret_truck:   "Turret Truck (VNA)",
   articulated_forklift: "Articulated (Bendi)",
   telehandler:    "Telehandler",
@@ -92,6 +94,10 @@ export interface ForkliftMeta {
   tireType: string;
   capacity: string;
   fuelType: string;
+  /** Optional paint colour, e.g. "Luminous Yellow". The last part of the
+      export name (…_E_Luminous_Yellow). Optional so every existing place that
+      builds a meta object keeps compiling. */
+  color?: string;
   /**
    * Equipment category — drives the per-type anatomy block in the
    * backend's enhance prompt. Optional; backend defaults to "forklift"

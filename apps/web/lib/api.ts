@@ -656,6 +656,8 @@ export interface SaveProjectInput {
   tireType: string;
   capacity: string;
   fuelType: string;
+  /** Optional. Blank is sent as null, never as a placeholder word. */
+  color: string | null;
   username: string;
   photoType: "auction" | "studio";
 }

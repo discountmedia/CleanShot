@@ -124,6 +124,49 @@ def test_unsafe_characters_are_stripped():
     assert all(c.isalnum() or c in "_-." for c in name(make='a<b>c"d|e*f\\g'))
 
 
+# ── colour: optional, last, not uppercased ──────────────────────────────────
+
+def test_spec_example_with_color():
+    kw = dict(make="Lift Hero", year=2024, model="CPD70", tire="Pneumatic",
+              capacity="15500", fuel="Electric", color="Luminous Yellow")
+    assert name(**kw) == "LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow"
+    assert name(**kw, sequence=1, total=4, ext="jpg") == (
+        "LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_01.jpg"
+    )
+
+
+@pytest.mark.parametrize("color,part", [
+    ("luminous yellow", "Luminous_Yellow"),     # lowercase words get capitalised
+    ("Luminous Yellow", "Luminous_Yellow"),
+    ("RAL 1016", "RAL_1016"),                   # typed capitals are kept
+    ("Hyster yellow", "Hyster_Yellow"),
+    ("  Octane   Red  ", "Octane_Red"),
+    ("Red/Black", "Red_Black"),                 # unsafe characters become separators
+    ("Blue & White", "Blue_White"),
+    ("Jaune Citron été", "Jaune_Citron_Ete"),
+])
+def test_color_formatting(color, part):
+    assert name(make="X", color=color) == f"X_{part}"
+
+
+@pytest.mark.parametrize("color", [None, "", "   ", "unknown", "N/A"])
+def test_missing_color_drops_its_separator(color):
+    assert name(**FULL, color=color) == "LIFT_HERO_2024_CPD30_P-6K_E"
+
+
+def test_color_follows_whatever_comes_before_it():
+    assert name(make="Lift Hero", model="CPD70", color="Luminous Yellow") == (
+        "LIFT_HERO_CPD70_Luminous_Yellow"
+    )
+
+
+def test_color_is_never_filled_from_the_csv():
+    i = inv(row("LIFT HERO", "2026", "LG50B", "11000"))
+    assert build_export_name(make="Lift Hero", model="LG50B", inventory=i) == (
+        "LIFT_HERO_2026_LG50B_11K"
+    )
+
+
 # ── CSV fallback ─────────────────────────────────────────────────────────────
 
 def inv(*rows):

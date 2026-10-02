@@ -331,11 +331,20 @@ export const GUIDE_HTML: GuideHtml[] = [
       at export, so filling both now saves you a trip back.
     </p>
     <p>
-      <strong>Equipment type is not cosmetic.</strong> Ten options in two
-      groups, eight forklift types and two aerial. It changes the anatomy line
-      inside the safety rules &mdash; wheel count, fork count, mast stages,
-      counterweight shape &mdash; and it hides the fork controls entirely for a
-      scissor lift, which has a platform instead.
+      <strong>Equipment type is not cosmetic.</strong> It&rsquo;s the dropdown
+      at the top of the card: ten options in two groups, eight forklift types
+      and two aerial. It changes the anatomy line inside the safety rules
+      &mdash; wheel count, fork count, mast stages, counterweight shape &mdash;
+      and it hides the fork controls entirely for a scissor lift, which has a
+      platform instead. The <span class="key">i</span> button beside it says
+      the same thing on screen.
+    </p>
+    <p>
+      <strong>Year, Tire Type and Fuel Type are dropdowns.</strong> Leave Year
+      on <strong>Unknown</strong> if you aren&rsquo;t sure; nothing is filled in
+      for you. The letter in brackets on each tire and fuel choice is the one
+      that goes in the export file name. Model, Capacity and the optional
+      <strong>Color</strong> are typed.
     </p>
     <p class="note">
       Watch the indicator: <strong>&ldquo;&#10003; Ready to enhance&rdquo;</strong>
@@ -657,15 +666,16 @@ export const GUIDE_HTML: GuideHtml[] = [
     </ul>
     <p>
       Exported files are renamed from the equipment details, in capitals:
-      <strong>MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL</strong>. The ZIP and the
-      Photo Library folder use that name, and each image adds a number, for
-      example <strong>LIFT_HERO_2024_CPD30_P-6K_E_01.jpg</strong>.
+      <strong>MAKE_YEAR_MODEL_TIRE-CAPACITY_FUEL_Color</strong>. The ZIP and
+      the Photo Library folder use that name, and each image adds a number,
+      for example <strong>LIFT_HERO_2024_CPD70_P-15.5K_E_Luminous_Yellow_01.jpg</strong>.
     </p>
     <ul class="bullets">
       <li><strong>Tire</strong> is P (pneumatic) or C (cushion). Anything else, such as non-marking, is left out.</li>
       <li><strong>Capacity</strong> is in thousands of pounds: 5500 becomes 5.5K, 500 becomes .5K. A capacity in kg is left out.</li>
       <li><strong>Fuel</strong> is D, G, LP, DUAL or E. You can type the full word or the letters.</li>
       <li>A blank field is filled from the inventory list when that model has only one possible value there. If it doesn&rsquo;t, the field is left out of the name. The year is only filled when every unit of that model in the list has the same year.</li>
+      <li><strong>Color</strong> is optional and goes last, written the way you typed it with each word capitalised. It is never filled in for you.</li>
       <li>Blank fields never stop an export.</li>
     </ul>
   </div>

@@ -31,6 +31,16 @@ import {
   type ExportProPreviewItem,
 } from "../../lib/api";
 import { formatBytes } from "../../lib/compress";
+import {
+  canonicalFuel,
+  canonicalTire,
+  canonicalYear,
+  FUEL_OPTIONS,
+  TIRE_OPTIONS,
+  yearOptions,
+  type FieldOption,
+} from "../../lib/equipment-fields";
+import { SelectField } from "../ui/SelectField";
 import { type ForkliftMeta } from "../../lib/types";
 
 /**
@@ -92,11 +102,12 @@ interface ProjectForm {
   tireType:  string;
   capacity:  string;
   fuelType:  string;
+  color:     string;
   username:  string;
 }
 
 const EMPTY_FORM: ProjectForm = {
-  make: "", year: "", model: "", tireType: "", capacity: "", fuelType: "", username: "",
+  make: "", year: "", model: "", tireType: "", capacity: "", fuelType: "", color: "", username: "",
 };
 
 function validateForm(form: ProjectForm): { valid: boolean; yearNum: number | null } {
@@ -151,6 +162,33 @@ function TextField({
   );
 }
 
+/* The dropdown twin of TextField: same label, hint and spacing, so the form
+   reads as one grid. The choices come from lib/equipment-fields.ts, shared with
+   the Enhance tab's details card. */
+function SelectRow({
+  id, label, value, onChange, options, emptyLabel, canonical, hint,
+}: {
+  id: string;
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+  options: readonly FieldOption[];
+  emptyLabel: string;
+  canonical: (raw: string) => string | null;
+  hint?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label htmlFor={id} className="text-sm uppercase tracking-[0.16em] text-ink font-bold">
+        {label}
+      </label>
+      <SelectField id={id} value={value} onChange={onChange} options={options}
+        emptyLabel={emptyLabel} canonical={canonical} ringClass="focus:ring-cta" />
+      {hint && <span className="text-base text-accent font-semibold leading-relaxed">{hint}</span>}
+    </div>
+  );
+}
+
 export function ExportControls({ sessionId, assets, meta, userEmail }: ExportControlsProps) {
   // ── Local reorderable copy of the incoming asset set ──
   // Stored as an order of assetIds so reorders survive prop refreshes and new
@@ -189,6 +227,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
     tireType: meta.tireType ?? "",
     capacity: meta.capacity ?? "",
     fuelType: meta.fuelType ?? "",
+    color:    meta.color    ?? "",
     username: userEmail && userEmail !== "dev@local" ? userEmail : "",
   }));
 
@@ -203,6 +242,7 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       tireType: prev.tireType || (meta.tireType ?? ""),
       capacity: prev.capacity || (meta.capacity ?? ""),
       fuelType: prev.fuelType || (meta.fuelType ?? ""),
+      color:    prev.color    || (meta.color    ?? ""),
       username: prev.username || (userEmail && userEmail !== "dev@local" ? userEmail : ""),
     }));
   }, [meta, userEmail]);
@@ -262,6 +302,9 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
       tireType:  form.tireType.trim() || "unknown",
       capacity:  form.capacity.trim() || "unknown",
       fuelType:  form.fuelType.trim() || "unknown",
+      // Optional and nullable in the DB, so blank is null rather than the
+      // "unknown" placeholder the three NOT NULL fields above still need.
+      color:     form.color.trim() || null,
       username:  usernameOut,
       photoType: "auction",
     });
@@ -447,18 +490,24 @@ export function ExportControls({ sessionId, assets, meta, userEmail }: ExportCon
             placeholder="Toyota" hint="OEM brand — Toyota, Hyster, Yale, Crown, etc." />
           <TextField label="Model *" value={form.model} onChange={(v) => updateField("model", v)}
             placeholder="8FGU25" hint="Model number from the data plate." />
-          <TextField label="Year" value={form.year}
-            onChange={(v) => updateField("year", v.replace(/[^0-9]/g, "").slice(0, 4))}
-            placeholder="strongly recommended"
-            hint="Model year (1900–2100). Strongly recommended — it goes in the export filename. Left blank it stays blank; nothing is guessed." />
+          <SelectRow id="export-year" label="Year" value={form.year}
+            onChange={(v) => updateField("year", v)}
+            options={yearOptions()} emptyLabel="Unknown" canonical={(v) => canonicalYear(v)}
+            hint="Strongly recommended: it goes in the export file name. Left on Unknown it stays blank; nothing is guessed." />
           <TextField label="Username" value={form.username} onChange={(v) => updateField("username", v)}
             placeholder="defaults to your login email" hint="Who's saving this — defaults to your account email." />
           <TextField label="Capacity" value={form.capacity} onChange={(v) => updateField("capacity", v)}
             placeholder="5000 lbs" hint="Rated load capacity from the data plate." />
-          <TextField label="Tire type" value={form.tireType} onChange={(v) => updateField("tireType", v)}
-            placeholder="Pneumatic / Cushion / Non-marking" hint="Pneumatic (outdoor), cushion (indoor), or non-marking." />
-          <TextField label="Fuel type" value={form.fuelType} onChange={(v) => updateField("fuelType", v)}
-            placeholder="LP / Diesel / Electric" hint="LP, diesel, electric, gasoline, dual-fuel." />
+          <SelectRow id="export-tire" label="Tire type" value={form.tireType}
+            onChange={(v) => updateField("tireType", v)}
+            options={TIRE_OPTIONS} emptyLabel="Not set" canonical={canonicalTire}
+            hint="Pneumatic (outdoor) or cushion (indoor). The letter goes in the file name." />
+          <SelectRow id="export-fuel" label="Fuel type" value={form.fuelType}
+            onChange={(v) => updateField("fuelType", v)}
+            options={FUEL_OPTIONS} emptyLabel="Not set" canonical={canonicalFuel}
+            hint="The letter in brackets goes in the file name." />
+          <TextField label="Color" value={form.color} onChange={(v) => updateField("color", v)}
+            placeholder="e.g. Luminous Yellow" hint="Optional. Goes at the end of the file name." />
         </div>
       </section>
 
