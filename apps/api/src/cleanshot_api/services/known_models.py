@@ -3,8 +3,14 @@ The known Make + Model list behind the Make and Model dropdowns (2 Oct 2026).
 
 Settled with Stephen:
 
-* **Seeded from the inventory CSV**, then grown by operators: a make and model
-  typed through "Other" joins everyone's list when the project is saved.
+* **Seeded from two lists**, then grown by operators: the inventory CSV, and
+  (from 2 Oct, later the same day) the forklift catalog, every make and model
+  DF has had photos of, built by scripts/build_catalog_models.py into
+  data/known_models_catalog.csv with the folder-name leftovers skipped. A make
+  and model typed through "Other" joins everyone's list when the project is
+  saved. Both seeds are stored as source 'inventory'; the column's CHECK has
+  only 'inventory' and 'operator', and 'inventory' here means "a starting
+  list", not "currently in stock".
 * **Fill nothing.** Picking a known pair fills no other field. The meta columns
   on a row record what the operator entered the first time that pair was saved,
   for reference only; nothing reads them back into a form.
@@ -22,14 +28,19 @@ inventory lookup in export_naming uses. Hyphens and punctuation still count:
 
 from __future__ import annotations
 
+import csv
 import logging
 import re
+from functools import lru_cache
+from pathlib import Path
 
 import asyncpg
 
 from cleanshot_api.services.export_naming import default_inventory
 
 logger = logging.getLogger(__name__)
+
+CATALOG_CSV = Path(__file__).resolve().parent.parent / "data" / "known_models_catalog.csv"
 
 
 def _key_part(value: str | None) -> str:
@@ -45,25 +56,60 @@ def tidy(value: str | None) -> str:
     return " ".join((value or "").split())
 
 
+@lru_cache(maxsize=1)
+def catalog_pairs() -> tuple[tuple[str, str], ...]:
+    """(make, model) pairs from the packaged catalog list. A missing or
+    unreadable file is an empty list, never a startup failure."""
+    try:
+        with CATALOG_CSV.open(encoding="utf-8", newline="") as f:
+            return tuple(
+                (row["Make"], row["Model"])
+                for row in csv.DictReader(f)
+                if (row.get("Make") or "").strip() and (row.get("Model") or "").strip()
+            )
+    except (OSError, KeyError, csv.Error):
+        logger.exception("known_models: could not read %s", CATALOG_CSV)
+        return ()
+
+
+def seed_pairs() -> list[tuple[str, str]]:
+    """Every starting pair, inventory first, one per match_key.
+
+    The inventory's spelling wins a tie ("LIFT HERO" over the catalog's
+    "Lift Hero") only because it is inserted first; the seed never rewrites
+    an existing row, so this order matters on a fresh table only.
+    """
+    out: dict[str, tuple[str, str]] = {}
+    for make, model in [*default_inventory().pairs(), *catalog_pairs()]:
+        out.setdefault(match_key(make, model), (make, model))
+    return list(out.values())
+
+
 async def seed_from_inventory(conn: asyncpg.Connection) -> int:
-    """Insert every inventory pair not already present. Returns rows added.
+    """Insert every starting pair not already present (inventory CSV and the
+    forklift catalog list). Returns rows added.
 
     ON CONFLICT DO NOTHING is what keeps an admin's rename or hide: an existing
     row, hidden or not, is never touched by the seed.
     """
-    pairs = default_inventory().pairs()
-    added = 0
-    for make, model in pairs:
-        status = await conn.execute(
-            """
-            INSERT INTO known_models (make, model, match_key, source)
-            VALUES ($1, $2, $3, 'inventory')
-            ON CONFLICT (match_key) DO NOTHING
-            """,
-            tidy(make), tidy(model), match_key(make, model),
-        )
-        added += status.endswith(" 1")
-    return added
+    pairs = seed_pairs()
+    if not pairs:
+        return 0
+    # One statement for the ~1,150 pairs, so every API start costs one round
+    # trip, not one per pair.
+    status = await conn.execute(
+        """
+        INSERT INTO known_models (make, model, match_key, source)
+        SELECT make, model, match_key, 'inventory'
+          FROM unnest($1::text[], $2::text[], $3::text[]) AS t(make, model, match_key)
+        ON CONFLICT (match_key) DO NOTHING
+        """,
+        [tidy(m) for m, _ in pairs],
+        [tidy(n) for _, n in pairs],
+        [match_key(m, n) for m, n in pairs],
+    )
+    # asyncpg returns "INSERT 0 <rows>".
+    return int(status.rsplit(" ", 1)[-1])
 
 
 async def record_from_project(

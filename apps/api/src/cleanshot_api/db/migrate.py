@@ -429,7 +429,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_ingest_items_dedupe
 ALTER TABLE sessions ADD COLUMN IF NOT EXISTS handoff_id UUID;
 
 -- known_models (2026-10-02): the list behind the Make and Model dropdowns.
--- Seeded from the inventory CSV on every start (services/known_models.py) and
+-- Seeded from the inventory CSV and the forklift catalog list on every start
+-- (services/known_models.py, data/known_models_catalog.csv) and
 -- grown by operators through "Other". One row per pair: match_key is make +
 -- model uppercased with whitespace removed. Admins rename or HIDE rows; there
 -- is no delete, because the seed would bring an inventory row straight back.
@@ -465,6 +466,6 @@ async def run_migrations(pool: asyncpg.Pool) -> None:
             from cleanshot_api.services.known_models import seed_from_inventory
             added = await seed_from_inventory(conn)
             if added:
-                logger.info("known_models: seeded %d pair(s) from the inventory CSV", added)
+                logger.info("known_models: seeded %d pair(s) from the inventory CSV and catalog list", added)
         except Exception:
-            logger.exception("known_models: seeding from the inventory CSV failed")
+            logger.exception("known_models: seeding from the starting lists failed")

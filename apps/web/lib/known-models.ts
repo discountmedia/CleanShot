@@ -4,8 +4,9 @@
 // once per page and shared by every component that asks (the Enhance details
 // card and the export form both show it).
 //
-// Seeded from the inventory CSV; an "Other" pair joins it when the project is
-// saved (FastAPI does that, not the browser). Picking a known pair fills NO
+// Seeded from the inventory CSV and the forklift catalog (~1,150 pairs); an
+// "Other" pair joins it when the project is saved (FastAPI does that, not the
+// browser). Picking a known pair fills NO
 // other field, by Stephen's decision of 2 Oct 2026.
 //
 // A pair is matched the way the server matches it (services/known_models.py

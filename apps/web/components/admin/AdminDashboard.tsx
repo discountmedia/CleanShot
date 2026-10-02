@@ -789,10 +789,11 @@ function SupportTab() {
 // ─── Main dashboard ───────────────────────────────────────────────────────────
 
 // ─── Makes & Models (the Make / Model dropdown list) ─────────────────────────
-// Seeded from the inventory CSV; operators add to it through "Other" on every
-// export. This is where a typo ("Toyta") gets fixed or hidden. There is no
-// delete on purpose: the inventory seed runs on every API start and would put
-// a deleted inventory row straight back, so Hide is the removal.
+// Seeded from the inventory CSV and the forklift catalog (shown as "Starting
+// list"); operators add to it through "Other" on every export. This is where a
+// typo ("Toyta") gets fixed or hidden. There is no delete on purpose: the seed
+// runs on every API start and would put a deleted starting row straight back,
+// so Hide is the removal.
 
 interface KnownModelRow {
   id:        string;
@@ -909,7 +910,7 @@ function KnownModelsTab() {
                         : r.model}
                     </td>
                     <td className="px-3 py-2 text-ink-soft">
-                      {r.source === "inventory" ? "Inventory list" : "Typed by an operator"}
+                      {r.source === "inventory" ? "Starting list" : "Typed by an operator"}
                       {r.hidden && <span className="ml-2 text-attn font-semibold">Hidden</span>}
                     </td>
                     <td className="px-3 py-2 text-ink-soft">

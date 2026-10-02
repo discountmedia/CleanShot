@@ -2,8 +2,9 @@
 // BFF Route Handler — GET the known Make + Model list behind the Make and
 // Model dropdowns. Company-wide, so any signed-in user; never public.
 //
-// Seeded from the inventory CSV and grown by operators through "Other": a new
-// pair is recorded by FastAPI when a project is saved, not by this route.
+// Seeded from the inventory CSV and the forklift catalog, and grown by
+// operators through "Other": a new pair is recorded by FastAPI when a project
+// is saved, not by this route.
 // Hidden entries are left out here. Renaming and hiding are admin-only, under
 // /api/admin/known-models.
 

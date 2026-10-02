@@ -68,3 +68,7 @@ pnpm-debug.log*
 .idea/
 *.swp
 *.swo
+
+# Stephen's full forklift catalog: has D: drive paths. Only the slim
+# Make,Model copy made by scripts/build_catalog_models.py is committed.
+forklift_catalog.csv
