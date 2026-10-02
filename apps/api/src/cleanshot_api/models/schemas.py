@@ -334,13 +334,11 @@ class EnhanceToggles(BaseModel):
     # df-auto-edit, whose framing constants were measured, not chosen.
     # Independent of every other toggle: it changes framing, not pixels.
     #
-    # Defaults TRUE, matching the UI. It was False until 2026-08-29 for one
-    # reason only: df-auto-edit fed the API-key ingest path and had ALREADY
-    # cropped its images, so an omitted flag must not crop them twice. That
-    # caller has been retired, so the exception went with it and the wire and
-    # the UI agree again. If a pre-cropped source ever starts arriving over the
-    # API again, this is the line that has to go back to False.
-    auto_crop: bool = Field(True, alias="autoCrop")
+    # Defaults FALSE, matching the UI (Stephen, 2026-10-02: crop is never
+    # switched on for anyone; the operator ticks it). An API caller that omits
+    # the flag gets an uncropped image, which also keeps an already-cropped
+    # source from being cropped twice.
+    auto_crop: bool = Field(False, alias="autoCrop")
     # Identity-preservation flag for 3-wheel forklifts (single rear
     # pivot/steer wheel under the counterweight). When ON, the prompt
     # adds a guardrail telling the AI to preserve the single-rear-wheel

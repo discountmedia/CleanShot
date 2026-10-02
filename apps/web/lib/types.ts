@@ -225,12 +225,10 @@ export const DEFAULT_TOGGLES: EnhanceToggles = {
   showroomFloor: false,
   transparentBackground: false,
   cutoutPhotoroom: false,
-  // The ONE exception to the all-off rule above (operator request,
-  // 2026-08-29). Consistent framing is wanted on essentially every
-  // batch, so making operators tick it each time is friction with no
-  // upside — and with df-auto-edit retired from the chain, nothing
-  // upstream crops any more, so this IS the cropping step now.
-  autoCrop: true,
+  // OFF like every other toggle. It was briefly default-ON (an
+  // unreleased 2026-08-29 change); Stephen reversed that on 2026-10-02
+  // before it shipped: the operator ticks it when they want it.
+  autoCrop: false,
   threeWheel: false,
 };
 

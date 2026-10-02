@@ -1,8 +1,26 @@
-# Session handoff — updated 2026-10-01
+# Session handoff — updated 2026-10-02
 
 Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the authoritative, continuously-updated project briefing** — read it first (esp. "Enhance tab — current shape"). This file is the "where we are right now / what's pending" snapshot.
 
 ---
+
+## 2026-10-02 (last push of the day): nothing is held any more
+
+- **Photoroom is the only background-removal engine, and Auto Crop is OFF by
+  default.** Stephen asked for both on 2 Oct, after operators had been ticking
+  Remove Background AND the Photoroom A/B toggle to get good cutouts (with
+  only the first, the live code used fal). The 28 Aug held commit
+  (`7bc4523`, earlier `802e1bc` / `421f166` / `a487aab`) shipped, with one
+  reversal on top: its Auto Crop default-ON was turned back OFF in the UI
+  (`DEFAULT_TOGGLES`) AND the API schema. The Photoroom toggle is hidden and
+  ignored; `CUTOUT_ENGINE` (unset in Cloud Run, so `photoroom`) picks the
+  engine, and erase/tweak re-mattes follow it too. Same push: its pricing rows
+  (Gemini 3.1 $0.101, Photoroom $0.02 amortised), the 28 Aug docs commit, and
+  the forklift-catalog seed for the Make/Model dropdowns.
+- **There is no held commit now.** `main` and `origin/main` match; the
+  replay-and-restack routine below is history.
+- **The published Enhance-tab guide Artifact needs republishing** (Manual,
+  Cab/Dual Drive, Make/Model dropdowns, one background toggle).
 
 ## 2026-10-01: export naming and ZIP auto-download
 
@@ -49,23 +67,36 @@ Resume notes for picking CleanShot back up in a new chat. **`CLAUDE.md` is the a
   folder names, and any lift-type code. **The published Enhance-tab guide
   Artifact needs republishing.**
 - **Same push: Make / Model dropdowns + the known-models list.**
-  New `known_models` table (seeded from the inventory CSV at API start, 34
-  pairs), `GET /api/v1/known-models`, admin `GET/PATCH
+  New `known_models` table (seeded at API start from the inventory CSV, 34
+  pairs, and, from the next push, the forklift catalog: 1,144 pairs in all), `GET /api/v1/known-models`, admin `GET/PATCH
   /api/v1/admin/known-models`, and a **Makes & Models** admin tab to fix
   spelling or hide. "Other…" pairs are added at project save. Picking fills
   nothing else (Stephen's call). Verified: Enhance card rendered against a
   mock API; the SQL paths and admin endpoints against a real throwaway
   Postgres (pgserver). NOT rendered locally: the admin tab (no local admin
   session is possible) and the export form (needs a picked winner).
-- **Color shipped alone earlier on 2 Oct as `94dd762`.** After each push, local
-  `main` is rebuilt as origin/main → the held Auto Crop + Photoroom commit →
-  its docs commit, both re-IDed by the replay (see `git log`). Neither is released.
+- **Forklift catalog feeds the dropdowns (2 Oct, third push).** Stephen's
+  `forklift_catalog.csv` (repo root, gitignored: it carries D: paths) is cut
+  down by `scripts/build_catalog_models.py` to Make,Model only in
+  `apps/api/src/cleanshot_api/data/known_models_catalog.csv` (1,132 pairs, 87
+  makes). Underscores become spaces; 35 folder-name leftovers are skipped
+  and printed (Hyster NO_MODEL/DIESEL/CUSHION/C, tire letters glued on like
+  Octane FD25_P, MODEX and CRASHCHAMPIONS tags, makes "Un" and "Vegas Media",
+  one Genie filed under Gehl). Seeded as source 'inventory' (the CHECK allows
+  only that and 'operator'); the admin tab now labels it "Starting list".
+  The seed is one `unnest` INSERT now (7 ms on a re-run). Re-run the script
+  whenever Stephen drops a new catalog.
+- **Color shipped alone earlier on 2 Oct as `94dd762`.** Until the last push of
+  the day, each push replayed new work onto origin/main and re-stacked the held
+  Auto Crop + Photoroom commit and its docs commit on top. Both are released
+  now (see the top of this file).
 
 ---
 
 ## ⚠️ 2026-08-28 — read this first
 
-**Everything below is pushed and deployed EXCEPT one held commit.** That reverses
+**(2 Oct: the held commit below has since shipped, with Auto Crop left OFF by
+default. Read the top of this file.)** Everything below is pushed and deployed EXCEPT one held commit. That reverses
 the 27 Aug warning this file used to open with; the branch is `main`, it is
 current with the remote, and the API has served real batches all day.
 
@@ -125,7 +156,7 @@ difference — keep them.
 ### The one thing that is broken right now
 
 **The per-image Retry button silently drops every toggle**, so a retry produces
-no cutout and, once the held commit lands, no crop either. It is not a plumbing
+no cutout (and no crop, if Auto Crop was ticked). It is not a plumbing
 bug — the batch auto-reset wipes toggles before a Retry button is even
 clickable. Diagnosed, unfixed, and the recommended fix (a per-batch toggle
 snapshot that Retry reuses) is in CLAUDE.md. **This is the first thing to pick
